@@ -6,7 +6,7 @@ Tampermonkey-Userscript für das Browser-MMORPG Margonem (margonem.com und margo
 
 | Datei | Zweck |
 |---|---|
-| `margobot_auto.user.js` | Das Userscript. Alles in einer Datei. Version in `@version` bei jeder Änderung erhöhen. |
+| `margobot_auto.user.js` | Das Userscript. Alles in einer Datei. Version in `@version` bei jeder Änderung erhöhen: Tampermonkey holt Updates über `@updateURL` (Branch `main`) nur, wenn die Version höher ist. |
 | `margobot_world.json` | Weltkarte fürs Skript (2785 Karten: Größe, Türen, Mobs). Lädt der Nutzer einmal im Panel, liegt dann im GM-Speicher. |
 | `world_scrape.py` | Holt die Rohdaten von margoworld.pl nach `templates/_maps/worldgraph.json` (ca. 30 min, abbrechbar). |
 | `worldgraph.py` | Wegsuche auf der Kommandozeile und `export` nach `margobot_world.json`. |
