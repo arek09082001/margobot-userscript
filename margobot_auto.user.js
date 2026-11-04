@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.0
+// @version      7.1
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -1537,6 +1537,27 @@
         if (now < w.end) return `Respawn jederzeit · Fenster bis ${clock(w.end)}`;
         return `überfällig seit ${mmss(now - w.end)} – warte weiter`;
     }
+    function e2Find(t) {
+        /* E2 auf der Karte suchen. Erst nach Namen (auch dem im Spiel gelernten), ohne Typ-Filter – falls das Spiel
+           die E2 anders einordnet als normale Mobs. Sonst ein Mob mit genau ihrem Level nah am Spawnpunkt: der Name
+           auf margoworld kann vom Namen im Spiel abweichen. */
+        const L = E().npcs.getDrawableList().map(n => n.d).filter(d => d && d.nick && d.x != null);
+        const names = [fold(t.nick), fold(t.gameNick || '')].filter(Boolean);
+        let d = L.find(x => names.includes(fold(x.nick))), how = 'Name';
+        if (!d && t.x != null && t.lvl) {
+            d = L.filter(x => (+x.lvl || 0) === +t.lvl && Math.max(Math.abs(x.x - t.x), Math.abs(x.y - t.y)) <= 12)
+                 .sort((a, b) => Math.max(Math.abs(a.x - t.x), Math.abs(a.y - t.y)) - Math.max(Math.abs(b.x - t.x), Math.abs(b.y - t.y)))[0];
+            how = 'Level';
+        }
+        return d ? { id: d.id, nick: d.nick, lvl: +d.lvl || 0, x: d.x, y: d.y, how } : null;
+    }
+    function e2Seen(t) {
+        /* Für die Anzeige: Mobs nah am Spawnpunkt (bzw. am Helden), damit man sieht, was der Bot erkennt. */
+        const [hx, hy] = heroXY(), cx = t && t.x != null ? t.x : hx, cy = t && t.x != null ? t.y : hy;
+        return E().npcs.getDrawableList().map(n => n.d).filter(d => d && d.nick && d.x != null && (d.type === 2 || d.type === 3 || +d.lvl > 0))
+            .map(d => [d, Math.max(Math.abs(d.x - cx), Math.abs(d.y - cy))]).sort((a, b) => a[1] - b[1]).slice(0, 5)
+            .map(([d, r]) => `${d.nick} (${d.lvl || '?'}, ${r} Felder)`);
+    }
     function e2Stop(why) { cfg.e2.on = false; cfg.e2.offline = false; cfg.e2.wakeAt = 0; e2rt = null; goal = null; log('E2-Jagd gestoppt' + (why ? ' (' + why + ')' : '')); save(); lastStatic = ''; }
     function e2Step() {
         const E2 = cfg.e2, t = e2Cur(), now = Date.now();
@@ -1555,8 +1576,13 @@
         lastTravel = null;
         if (!e2rt || e2rt.mapAt !== mapAt) e2rt = { mapAt, since: now, alive: false, atk: 0, tries: 0 };
         const [hx, hy] = heroXY();
-        const m = mobs().find(x => fold(x.nick) === fold(t.nick));
+        const m = e2Find(t);
+        if (m && m.how === 'Level' && fold(m.nick) !== fold(t.gameNick || '')) {
+            t.gameNick = m.nick; save();
+            log(`E2: im Spiel heißt sie „${m.nick}“ (Lvl ${m.lvl}) – erkannt am Level, Name gemerkt`);
+        }
         if (m) {
+            e2rt.patrol = null;
             if (!e2rt.alive) {
                 e2rt.alive = true; e2rt.tries = 0;
                 // Respawn messen – nur, wenn der Bot schon vorher hier gewartet hat (sonst ist es nur der Zeitpunkt der Ankunft)
@@ -1569,7 +1595,7 @@
                 if (t.x == null) { t.x = m.x; t.y = m.y; }
                 save(); lastStatic = '';
             }
-            e2rt.id = m.id; e2rt.x = m.x; e2rt.y = m.y;
+            e2rt.id = m.id; e2rt.x = m.x; e2rt.y = m.y; e2rt.lastSeen = now;
             if (Math.abs(m.x - hx) <= 1 && Math.abs(m.y - hy) <= 1) {
                 if (now - e2rt.atk < 2500) return;               // letzter Versuch läuft noch
                 if (++e2rt.tries > 5 && e2rt.tries % 10) return;   // klappt nicht (anderer kämpft?) → seltener versuchen
@@ -1594,10 +1620,12 @@
             }
         }
         // Warteplatz neben dem Spawnpunkt
-        if (t.x != null) {
+        const w0 = e2Window(t);
+        if (t.x != null && !e2Patrol(t, w0, hx, hy, now)) {
             const [sx, sy] = e2Spot(t);
             if (hx !== sx || hy !== sy) { walkTo(sx, sy, 'Warteplatz ' + t.nick); return; }
         }
+        if (e2rt.patrol) return;
         // Lange Wartezeit → Spiel verlassen, Erinnerung vor dem Respawn
         const w = e2Window(t);
         if (E2.away === 'leave' && w && !inBattle()) {
@@ -1612,6 +1640,35 @@
                 setTimeout(() => { location.href = home; }, 1500);
             }
         }
+    }
+    function e2Patrol(t, w, hx, hy, now) {
+        /* Die E2 erscheint 2–10 Felder neben ihrem festen Platz (margoatlas). Auf Karten mit Nebel liefert das Spiel
+           nur Mobs in Sichtweite – dann sieht der Bot sie vom Warteplatz aus womöglich nicht. Deshalb: ist das
+           Respawn-Fenster offen (oder unbekannt) und seit 20 s nichts zu sehen, eine Runde um den Spawnpunkt laufen.
+           Nicht nötig, wenn das Spiel auch weit entfernte Mobs liefert (kein Nebel). Rückgabe: true = läuft gerade. */
+        const open = !w || now >= w.start;
+        const far = E().npcs.getDrawableList().some(n => n.d && n.d.x != null && Math.max(Math.abs(n.d.x - hx), Math.abs(n.d.y - hy)) > 15);
+        if (!open || far || now - (e2rt.lastSeen || e2rt.since) < 20000) { e2rt.patrol = null; return false; }
+        let P = e2rt.patrol;
+        if (!P) {
+            if (e2rt.patrolDone && now - e2rt.patrolDone < 25000) return false;    // nach einer Runde kurz am Warteplatz bleiben
+            const field = bfs(hx, hy), pts = [];
+            for (const [dx, dy] of [[6, 0], [4, 5], [0, 6], [-4, 5], [-6, 0], [-4, -5], [0, -6], [4, -5]]) {
+                const x = t.x + dx, y = t.y + dy;
+                if (x < 0 || y < 0 || x >= MW || y >= MH || walls[y * MW + x] || cost(field, x, y) === Infinity) continue;
+                pts.push([x, y]);
+            }
+            if (!pts.length) return false;
+            P = e2rt.patrol = { pts, i: 0, at: now };
+            log(`E2: ${t.nick} nicht zu sehen – laufe eine Runde um den Spawnpunkt (${pts.length} Punkte)`);
+        }
+        const [px, py] = P.pts[P.i];
+        if (Math.max(Math.abs(px - hx), Math.abs(py - hy)) <= 1 || now - P.at > 10000) {
+            P.i++; P.at = now;
+            if (P.i >= P.pts.length) { e2rt.patrol = null; e2rt.patrolDone = now; return false; }
+        }
+        walkTo(P.pts[P.i][0], P.pts[P.i][1], 'Runde um ' + t.nick);
+        return true;
     }
     function e2Away() {
         /* Läuft auf Seiten ohne Spiel (Startseite nach dem Verlassen): Erinnerung zur gemerkten Zeit,
@@ -3037,6 +3094,7 @@
             <div class="rg">${stp('respMin', t.respMin, 1, 600)}<span class="to">bis</span>${stp('respMax', t.respMax, 1, 600)}</div>
             <div class="hint">Richtwert für Lvl ${t.lvl || '?'}: ~${e2Resp(t.lvl).toFixed(1).replace('.', ',')} min${+E2.speed > 1 ? ' (Welt ×' + E2.speed + ')' : ''}
               ${t.respAuto ? '· eingestellt' : `· <button class="chip" data-a="e2auto" style="margin:0;padding:2px 6px">übernehmen</button>`}</div>
+            ${mapId() === t.map ? `<div class="hint">Bot sieht hier: ${esc(e2Seen(t).join(' · ') || 'keine Mobs')}${t.gameNick ? ' · im Spiel: „' + esc(t.gameNick) + '“' : ''}</div>` : ''}
             <div class="fld"><button class="btn" data-a="e2kill">${ico('check')}Gerade getötet</button>
               ${mapId() === t.map ? `<button class="btn" data-a="e2here">${ico('pin')}Spawn = hier</button>` : ''}
               <span></span><button class="btn bad" data-a="e2del" title="E2 entfernen">${ico('trash')}</button></div>
