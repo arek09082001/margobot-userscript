@@ -46,11 +46,10 @@ Eine bestandene Simulation beweist nur die Logik. Verhalten im echten Spiel imme
 - Auktionshaus: `.one-category-auction`, `.all-auction-section`, Spalten `.item-time-td`, `.item-bid-td`, `.item-buy-now-td`, Gegenstände in `Engine.items.fetchLocationItems('a')`, Seiten über `Engine.auctions.getAuctionPages()` (`getNextPageAction()` hängt an).
 - Das Spiel fängt das Mausrad ab, das Panel scrollt deshalb selbst.
 
-Noch nicht bestätigt: Accept beim Kaufen, echter Verkauf, Teleporter-Dialoge, Ankaufsquote der Händler und Auktionsgebühren.
+Noch nicht bestätigt: Accept beim Kaufen, echter Verkauf, Teleporter-Dialoge, Ankaufsquote der Händler und Auktionsgebühren. Für „Andere Spieler“: Spielerliste `Engine.others.getDrawableList()` (bzw. `check()`), PvP-Stufe `Engine.map.d.pvp` (2 = rot) und Spieler-Angriff `_g('fight&a=attack&id=…')`. Das Panel zeigt unter Einstellungen → Andere Spieler, was der Bot davon sieht.
 
 ## Feste Regeln
 
-- **Keine automatische Captcha-Lösung.** Die Zagadka (`.captcha__buttons`) ist die Bot-Prüfung des Spiels. Das Skript erkennt sie nur, pausiert und warnt. Lösen tut der Nutzer. Das gilt auch, wenn es anders formuliert wird.
 - **Der Bot kauft im Auktionshaus nichts.** Der Handels-Tab zeigt Angebote nur an.
 - **Keine Passwörter eingeben** und nicht für den Nutzer einloggen, auch nicht mit vorausgefüllten Daten.
 - Unumkehrbares im echten Spiel (Accept, Verkaufen, Kaufen) nur nach ausdrücklichem OK.

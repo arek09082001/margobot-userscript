@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      5.9
+// @version      6.0
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -39,8 +39,10 @@
                   routes: {}, route: '', routePos: 0, rec: null,
                   onDeath: 'stop', deaths: [], graph: {}, back: null, optimal: true,
                   names: {}, travel: null, blocked: [], tab: 'xp', logOpen: false, tele: {},
-                  rules: [], chain: null };
+                  rules: [], chain: null,
+                  pk: { mode: 'off', maxUp: 5, near: 6, sec: 5, never: '' } };
     const cfg = Object.assign({}, DEF, GM_getValue('mbauto', {}));
+    cfg.pk = Object.assign({}, DEF.pk, cfg.pk || {});
     // Routen bereinigen: leere Einträge (Kartenwechsel beim Aufnehmen) raus, doppelte direkt hintereinander zusammenfassen
     const cleanMaps = m => (m || []).filter(x => x && x !== 'null' && x !== 'undefined')
         .filter((x, i, a) => !i || String(x).trim().toLowerCase() !== String(a[i - 1]).trim().toLowerCase());
@@ -78,6 +80,18 @@
         } catch (e) { return []; }
     }
     function mapName() { return E().map.d.name; }
+    /* Andere Spieler (noch nicht im Spiel geprüft): Engine.others wie Engine.npcs, Einträge mit .d (id, nick, lvl, x, y). */
+    function players() {
+        const o = E().others, me = E().hero.d.id;
+        if (!o) return [];
+        let L = [];
+        try { L = typeof o.getDrawableList === 'function' ? o.getDrawableList() : typeof o.check === 'function' ? Object.values(o.check() || {}) : []; } catch (e) { }
+        return (L || []).map(p => p && (p.d || p)).filter(d => d && d.nick && d.id != null && d.id !== me && d.x != null)
+            .map(d => ({ id: d.id, nick: d.nick, lvl: +d.lvl || 0, x: +d.x, y: +d.y }));
+    }
+    // PvP-Stufe der Karte (noch nicht im Spiel geprüft): 2 = rot (freies PvP). Wird im Panel angezeigt, damit man es prüfen kann.
+    const mapPvp = () => { const v = E().map.d.pvp; return v == null ? null : +v; };
+    const isRed = () => mapPvp() === 2;
     function inBattle() { const b = E().battle; return !!(b && b.show); }
     function isDead() {
         /* Mehrere Signale, weil das Spiel den Tod an verschiedenen Stellen führt:
@@ -719,6 +733,64 @@
     // ── Ablauf ──────────────────────────────────────────────────
     let committed = null, planAt = 0, renderAt = 0, offRoute = null, offRouteLog = null, atkTries = {}, skipUntil = {};                          // Ziel, zu dem der Held gerade läuft
     let busyUntil = 0, goal = null, goalSince = 0, lastHero = '', heroStill = 0, lastPlan = null, battleSeen = false;
+    /* Andere Spieler beobachten: wer seit sec Sekunden höchstens near Felder entfernt ist und dabei selbst
+       mindestens 3 Felder gelaufen ist, folgt uns (ein Spieler, der nur nebenan steht und jagt, zählt nicht). */
+    const pkSeen = {};                              // id → { since, x0, y0, last, moved }
+    let pkFlee = null, pkTries = {}, pkLog = '';
+    function watchPlayers() {
+        if (cfg.pk.mode === 'off' || !ok()) return;
+        const now = performance.now(), [hx, hy] = heroXY(), near = Math.max(1, +cfg.pk.near || 6);
+        for (const p of players()) {
+            const close = Math.max(Math.abs(p.x - hx), Math.abs(p.y - hy)) <= near;
+            let r = pkSeen[p.id];
+            if (!close) { if (r && now - r.last > 1500) delete pkSeen[p.id]; continue; }
+            if (!r || r.map !== mapId()) r = pkSeen[p.id] = { since: now, x0: p.x, y0: p.y, moved: 0, map: mapId() };
+            r.last = now; r.moved = Math.max(r.moved, Math.abs(p.x - r.x0), Math.abs(p.y - r.y0));
+        }
+        for (const id in pkSeen) if (now - pkSeen[id].last > 3000) delete pkSeen[id];
+    }
+    const neverSet = () => new Set(String(cfg.pk.never || '').split(/[,;\n]/).map(x => fold(x)).filter(Boolean));
+    function follows(p) { const r = pkSeen[p.id]; return !!r && performance.now() - r.since >= (+cfg.pk.sec || 5) * 1000 && r.moved >= 3; }
+    function pkThreat() {                           // der Spieler, auf den der Bot gerade reagieren soll
+        if (cfg.pk.mode === 'off') return null;
+        const nv = neverSet(), [hx, hy] = heroXY();
+        const L = players().filter(p => !nv.has(fold(p.nick)) && (cfg.pk.mode === 'any' || follows(p)));
+        L.sort((a, b) => Math.max(Math.abs(a.x - hx), Math.abs(a.y - hy)) - Math.max(Math.abs(b.x - hx), Math.abs(b.y - hy)));
+        return L[0] || null;
+    }
+    function pkStep(hx, hy, exit) {
+        /* Gibt true zurück, wenn der Bot sich in diesem Takt um einen Spieler kümmert (kämpfen oder Karte verlassen). */
+        if (cfg.pk.mode === 'off') return false;
+        const now = performance.now();
+        if (pkFlee !== mapAt) {
+            const t = pkThreat();
+            if (!t) return false;
+            const up = Math.max(0, +cfg.pk.maxUp || 0), tries = pkTries[t.id] || { n: 0, at: 0 };
+            const fight = isRed() && t.lvl <= heroLvl() + up && tries.n < 3;
+            if (fight) {
+                const adj = Math.abs(t.x - hx) <= 1 && Math.abs(t.y - hy) <= 1;
+                if (!adj) { committed = null; lastPlan = null; walkTo(t.x, t.y, 'Spieler ' + t.nick); return true; }
+                if (now - tries.at < 2500) return true;                // letzter Versuch läuft noch
+                tries.n++; tries.at = now; pkTries[t.id] = tries;
+                // Spieler-Angriff (noch nicht im Spiel geprüft): wie im Spiel-Menü „Atakuj“, Spieler-ID positiv
+                act(() => send('fight&a=attack&id=' + t.id), 'Angriff auf Spieler');
+                log(`Kämpfe gegen ${t.nick} (${t.lvl})` + (cfg.pk.mode === 'follow' ? ' – folgt mir' : '') + (tries.n > 1 ? ` – Versuch ${tries.n}` : ''));
+                goal = null;
+                return true;
+            }
+            const why = !isRed() ? 'keine rote Karte' : tries.n >= 3 ? 'Angriff klappt nicht' : `Lvl ${t.lvl} ist mehr als +${up} über mir`;
+            pkFlee = mapAt;
+            log(`${t.nick} (${t.lvl})${cfg.pk.mode === 'follow' ? ' folgt mir' : ' ist hier'} – ${why} → nächste Karte, keine Mobs mehr hier`);
+        }
+        // Karte verlassen: Ausgang der Route, sonst die nächste Tür
+        committed = null; lastPlan = null;
+        let door = exit;
+        if (!door) door = gateways().sort((a, b) => Math.max(Math.abs(a.x - hx), Math.abs(a.y - hy)) - Math.max(Math.abs(b.x - hx), Math.abs(b.y - hy)))[0];
+        if (door) useDoor(door.x, door.y, 'weg von hier → ' + door.name);
+        else if (pkLog !== 'nodoor' + mapAt) { pkLog = 'nodoor' + mapAt; log('Keine Tür gefunden – ich bleibe stehen'); }
+        render();
+        return true;
+    }
     const logLines = [];
     function log(t) { logLines.unshift(new Date().toLocaleTimeString() + '  ' + t); logLines.length = Math.min(logLines.length, 6); render(); }
 
@@ -1289,6 +1361,7 @@
         if (ok()) { trackMaps(); recordFights(); learnGraph(); learnNames(); learnWorldBits(); }
         if (!ok() || checkDeath()) return;
         watchBattle();
+        watchPlayers();
         if (watchCaptcha()) return;                                // Rätsel offen → nichts tun, bis es gelöst ist
         if (!(cfg.on || cfg.travel || cfg.chain) || performance.now() < busyUntil) return;
         const e = E();
@@ -1302,7 +1375,7 @@
             }
             return;
         }
-        if (battleSeen) { battleSeen = false; atkTries = {}; committed = null; lastPlan = null; goal = null; busyUntil = performance.now() + pause(); return; }
+        if (battleSeen) { battleSeen = false; atkTries = {}; pkTries = {}; committed = null; lastPlan = null; goal = null; busyUntil = performance.now() + pause(); return; }
         // Ablauf läuft → nur der; sonst Auslöser prüfen (nur wenn der Bot jagt)
         if (cfg.chain) { runChain(); if (performance.now() - renderAt > 400) { renderAt = performance.now(); render(); } return; }
         if (cfg.on) {
@@ -1378,8 +1451,9 @@
         const [hx, hy] = heroXY(), hk = hx + ',' + hy;
         if (hk !== lastHero) { lastHero = hk; heroStill = performance.now(); }
         const still = performance.now() - heroStill;
-        const targets = mobs().filter(m => wanted(m) && !(skipUntil[m.id] > performance.now()));
         const exit = currentExit();
+        if (pkStep(hx, hy, exit)) return;                              // anderer Spieler: kämpfen oder weg von hier
+        const targets = mobs().filter(m => wanted(m) && !(skipUntil[m.id] > performance.now()));
         fogUpdate(hx, hy);
         if (!targets.length) {
             lastPlan = null;
@@ -1981,6 +2055,14 @@
         } else if (!running && sess.t0 && !sess.end) { sess.end = Date.now(); saveSess(); }
     }
     function heroLvl() { return (ok() && E().hero.d.lvl) || 0; }
+    function pkInfo() {                             // was der Bot gerade sieht – zum Prüfen im echten Spiel
+        if (!ok()) return '';
+        const pv = mapPvp(), now = performance.now();
+        const ps = players().slice(0, 4).map(p => { const r = pkSeen[p.id];
+            return `${esc(p.nick)} (${p.lvl})${follows(p) ? ' · folgt' : r ? ` · nah ${Math.round((now - r.since) / 1000)}s` : ''}`; });
+        return `Diese Karte: ${pv == null ? 'PvP unbekannt' : pv === 2 ? 'rot (PvP)' : 'PvP-Stufe ' + pv}${pkFlee === mapAt ? ' · verlasse sie' : ''}<br>` +
+               (ps.length ? 'Spieler: ' + ps.join(', ') : 'Keine anderen Spieler in Sicht');
+    }
     let sugList = null, sugKey = '';
     function refreshSug() {                         // fertige Routen nur neu rechnen, wenn Bereich/Karte sich ändern
         const k = [cfg.lvlMin, cfg.lvlMax, mapId(), worldN(), heroLvl()].join('|');
@@ -2170,6 +2252,18 @@
             <label class="chk"><input type="checkbox" data-a="captchaWarn" ${cfg.captchaWarn !== false ? 'checked' : ''}>Bei Zagadka Ton und Benachrichtigung</label>
             <div class="hint">Ist eine Zagadka offen, pausiert der Bot immer und jagt weiter, sobald du sie gelöst hast.</div>
             <div class="hint">Auf Karten mit Nebel sieht der Bot nur Mobs in seiner Nähe und läuft die Karte ab, um weitere zu finden.</div>
+
+            <h4>Andere Spieler</h4>
+            <select data-a="pkMode"><option value="off" ${cfg.pk.mode === 'off' ? 'selected' : ''}>nicht beachten</option>
+              <option value="follow" ${cfg.pk.mode === 'follow' ? 'selected' : ''}>reagieren, wenn mir jemand folgt</option>
+              <option value="any" ${cfg.pk.mode === 'any' ? 'selected' : ''}>reagieren auf jeden Spieler auf der Karte</option></select>
+            ${cfg.pk.mode === 'off' ? '' : `
+            ${cfg.pk.mode === 'follow' ? `<div class="fld"><span>Folgt, wenn</span><input class="num" data-a="pk" data-f="near" value="${cfg.pk.near}">Felder ·
+              <input class="num" data-a="pk" data-f="sec" value="${cfg.pk.sec}">s</div>` : ''}
+            <div class="fld"><span>Kämpfen bis</span><input class="num" data-a="pk" data-f="maxUp" value="${cfg.pk.maxUp}">Lvl über mir</div>
+            <div class="fld"><span>Nie angreifen</span><input type="text" data-a="pkNever" value="${esc(cfg.pk.never || '')}" placeholder="Namen, mit Komma"></div>
+            <div class="hint">Rote Karte und höchstens so viele Level über dir: der Bot kämpft. Sonst läuft er sofort zur nächsten Karte und greift hier keine Mobs mehr an.</div>
+            <div class="hint pkinfo">${pkInfo()}</div>`}
 
             <h4>Bei Tod</h4>
             <select data-a="onDeath"><option value="stop" ${cfg.onDeath === 'stop' ? 'selected' : ''}>Bot stoppen</option>
@@ -2482,7 +2576,7 @@
                                      tab === 'trade' ? [!!MK.scan, !!auctionOpen(), MK.deals.map(d => d.id + d.kind), cfg.trade, market.scans] : 0, sugList && sugList.map(o => o.maps.join()), cfg.route, cfg.rec && cfg.rec.length, Object.keys(cfg.routes),
                                      cfg.routes[cfg.route] && routeMode(cfg.routes[cfg.route]), worldN(), xpList && xpList.map(o => o.id), xpSel, cfg.lvlMin, cfg.lvlMax, heroLvl(),
             tab === 'set' ? [JSON.stringify(cfg.tele || {}).length, cfg.routes[cfg.route] && routeMode(cfg.routes[cfg.route]), mobs().map(m => m.key).sort(), gateways().map(g => g.id), cfg.route, cfg.rec && cfg.rec.length, Object.keys(cfg.routes),
-                             cfg.picked, cfg.lvlOn, (cfg.deaths || []).length, cfg.onDeath, cfg.optimal] : 0]);
+                             cfg.picked, cfg.lvlOn, (cfg.deaths || []).length, cfg.onDeath, cfg.optimal, cfg.pk.mode] : 0]);
         if (sKey !== lastStatic) {
             lastStatic = sKey;
             box.innerHTML = `<div class="hd"><div class="brand"><span class="dot"></span>MargoBot</div>
@@ -2512,6 +2606,7 @@
         if (q('.diag') && q('.diag').closest('details').open) q('.diag').textContent = diagText();
         if (q('.mkst')) q('.mkst').textContent = MK.scan ? (MK.stat || 'starte …') : auctionOpen() ? 'Bereit zum Scannen' : 'Beim Aukcjoner „Pokaż mi aukcje“ öffnen – dann hier scannen';
         if (q('.perf')) q('.perf').textContent = 'Rechenzeit: ' + tickMs.toFixed(1) + ' ms pro Takt';
+        if (q('.pkinfo')) { const h = pkInfo(); if (q('.pkinfo').innerHTML !== h) q('.pkinfo').innerHTML = h; }
         const rp = q('.rprog');
         if (rp) {
             const rs = routeStep();
@@ -2668,6 +2763,9 @@
         else if (a === 'fogExplore') { cfg.fogExplore = t.checked; if (!t.checked) fog.on = false; }
         else if (a === 'exit') cfg.exits[mapName()] = t.value || undefined;
         else if (a === 'onDeath') cfg.onDeath = t.value;
+        else if (a === 'pkMode') { cfg.pk.mode = t.value; pkFlee = null; }
+        else if (a === 'pk') cfg.pk[t.dataset.f] = Math.max(0, parseInt(t.value, 10) || 0);
+        else if (a === 'pkNever') cfg.pk.never = t.value;
         else if (a === 'rmode' && cfg.routes[cfg.route]) { cfg.routes[cfg.route].mode = t.value; cfg.routePos = 0; }
         else if (a === 'dest') { destText = t.value; return; }
         else if (a === 'optimal') cfg.optimal = t.value === '1';
