@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      6.6
+// @version      6.7
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -782,7 +782,7 @@
     /* Andere Spieler beobachten: wer seit sec Sekunden höchstens near Felder entfernt ist und dabei selbst
        mindestens 3 Felder gelaufen ist, folgt uns (ein Spieler, der nur nebenan steht und jagt, zählt nicht). */
     const pkSeen = {};                              // id → { since, x0, y0, last, moved }
-    let pkFlee = null, pkTries = {}, pkLog = '';
+    let pkEsc = null, pkTries = {}, pkLog = '';
     function watchPlayers() {
         if (cfg.pk.mode === 'off' || !ok()) return;
         const now = performance.now(), [hx, hy] = heroXY(), near = Math.max(1, +cfg.pk.near || 6);
@@ -808,7 +808,7 @@
         /* Gibt true zurück, wenn der Bot sich in diesem Takt um einen Spieler kümmert (kämpfen oder Karte verlassen). */
         if (cfg.pk.mode === 'off') return false;
         const now = performance.now();
-        if (pkFlee !== mapAt) {
+        {
             const t = pkThreat();
             if (!t) return false;
             const up = Math.max(0, +cfg.pk.maxUp || 0), tries = pkTries[t.id] || { n: 0, at: 0 };
@@ -818,21 +818,79 @@
                 if (!adj) { committed = null; lastPlan = null; walkTo(t.x, t.y, 'Spieler ' + t.nick); return true; }
                 if (now - tries.at < 2500) return true;                // letzter Versuch läuft noch
                 tries.n++; tries.at = now; pkTries[t.id] = tries;
-                // Spieler-Angriff (noch nicht im Spiel geprüft): wie im Spiel-Menü „Atakuj“, Spieler-ID positiv
-                act(() => send('fight&a=attack&id=' + t.id), 'Angriff auf Spieler');
+                /* Spieler-Angriff (noch nicht im Spiel geprüft): wie „Atakuj“ im Spiel-Menü, Spieler-ID positiv.
+                   ff=1 = schnelle Walka (wie heroAtackRequest(id, true) bei Mobs) – der Bot spielt keine Runden selbst. */
+                act(() => send('fight&a=attack&ff=1&id=' + t.id), 'Angriff auf Spieler');
                 log(`Kämpfe gegen ${t.nick} (${t.lvl})` + (cfg.pk.mode === 'follow' ? ' – folgt mir' : '') + (tries.n > 1 ? ` – Versuch ${tries.n}` : ''));
                 goal = null;
                 return true;
             }
             const why = !isRed() ? 'keine rote Karte' : tries.n >= 3 ? 'Angriff klappt nicht' : `Lvl ${t.lvl} ist mehr als +${up} über mir`;
-            pkFlee = mapAt;
-            log(`${t.nick} (${t.lvl})${cfg.pk.mode === 'follow' ? ' folgt mir' : ' ist hier'} – ${why} → nächste Karte, keine Mobs mehr hier`);
+            log(`${t.nick} (${t.lvl})${cfg.pk.mode === 'follow' ? ' folgt mir' : ' ist hier'} – ${why} → Flucht`);
+            pkEsc = { id: t.id, nick: t.nick, lvl: t.lvl, lastSeen: now, at: now, home: mapId(), homeName: mapName(),
+                      x: t.x, y: t.y, mapAt: null, cur: null, prev: null, door: null, hide: null, maps: 0 };
+            return escapeStep();
         }
-        // Karte verlassen: Ausgang der Route, sonst die nächste Tür
+    }
+    /* Flucht vor einem zu starken Spieler: durch eine Tür, die von ihm weg führt (nicht zurück, woher wir kamen),
+       Höhlen bevorzugt. Ist er auf der neuen Karte nicht zu sehen und es ist eine Höhle → in die hinterste Ecke und
+       warten. Sonst weiter von Karte zu Karte, bis er 30 s nicht mehr zu sehen war; dann zurück zum Jagdort. */
+    const CAVE = /jaskin|grot|pieczar|kopalni|loch|lochy|podziem|tunel|krypt|grobow|nora|piwnic|\bcave|grotto|\bmine|\blair|tunnel|dungeon|crypt|tomb|cellar|cavern|burrow/i;
+    const mapLabel = id => ((world && world[id] && world[id][2]) || '') + ' ' + ((cfg.names || {})[id] || '');
+    const isCave = id => CAVE.test(mapLabel(id));
+    const cheb = (ax, ay, bx, by) => Math.max(Math.abs(ax - bx), Math.abs(ay - by));
+    function escapeStep() {
+        const now = performance.now(), [hx, hy] = heroXY(), e = pkEsc;
         committed = null; lastPlan = null;
-        let door = exit;
-        if (!door) door = gateways().sort((a, b) => Math.max(Math.abs(a.x - hx), Math.abs(a.y - hy)) - Math.max(Math.abs(b.x - hx), Math.abs(b.y - hy)))[0];
-        if (door) useDoor(door.x, door.y, 'weg von hier → ' + door.name);
+        const seen = players().find(p => p.id === e.id || nameEq(p.nick, e.nick));
+        if (seen) { e.lastSeen = now; e.x = seen.x; e.y = seen.y; }
+        if (e.mapAt !== mapAt) {                                   // neue Karte: Eingang merken (dort käme er nach)
+            if (e.cur != null && e.cur !== mapId()) e.prev = e.cur;
+            e.cur = mapId(); e.mapAt = mapAt; e.entry = [hx, hy]; e.door = null; e.hide = null;
+            if (e.maps++) log('Flucht: ' + mapName() + (seen ? ` – ${e.nick} ist auch hier` : ''));
+        }
+        if (now - e.lastSeen >= 30000 || now - e.at > 300000) {
+            log(`${e.nick} seit 30 s nicht gesehen – Flucht vorbei`);
+            pkEsc = null; goal = null;
+            const r = cfg.routes[cfg.route];
+            if (!(r && r.maps.length) && e.home !== mapId() && world && world[e.home]) startTravel([e.home], e.homeName, 'hunt');
+            return true;
+        }
+        // Gefahrenpunkt: wo er steht, sonst der Eingang dieser Karte
+        const [dx, dy] = seen ? [seen.x, seen.y] : e.entry;
+        // Höhle oder Sackgasse (einzige Tür führt zurück zu ihm) und er ist nicht hier:
+        // verstecken (hinterste Ecke vom Eingang aus) und abwarten
+        const deadEnd = e.prev != null && gateways().every(g => String(g.id) === String(e.prev));
+        if (!seen && (isCave(mapId()) || deadEnd) && walls) {
+            if (!e.hide) {
+                const d = bfs(e.entry[0], e.entry[1]), gw = new Set(gateways().map(g => g.y * MW + g.x));
+                let best = -1;
+                for (let i = 0; i < d.length; i++) if (d[i] > 0 && !walls[i] && !gw.has(i) && (best < 0 || d[i] > d[best])) best = i;
+                e.hide = best >= 0 ? [best % MW, (best / MW) | 0] : [hx, hy];
+                log(`Verstecke mich in ${mapName()}${deadEnd && !isCave(mapId()) ? ' (Sackgasse)' : ''} – warte, bis ${e.nick} 30 s weg ist`);
+            }
+            if (hx !== e.hide[0] || hy !== e.hide[1]) walkTo(e.hide[0], e.hide[1], 'Versteck');
+            render();
+            return true;
+        }
+        e.hide = null;
+        // Tür wählen: weit weg von ihm, nah bei mir, nicht zurück; Höhlen bevorzugt, etwas Zufall
+        const gws = gateways();
+        const pick = () => {
+            const sc = gws.map(g => {
+                const dh = cheb(hx, hy, g.x, g.y), dd = cheb(dx, dy, g.x, g.y);
+                let v = (dd - dh) + (isCave(g.id) ? 15 : 0) + Math.random() * 6;
+                if (String(g.id) === String(e.prev) && gws.length > 1) v -= 1000;   // nicht zurück zu ihm
+                if (dd <= 2) v -= 500;                                             // er steht an der Tür
+                return [g, v];
+            }).sort((a, b) => b[1] - a[1]);
+            return sc.length ? sc[0][0] : null;
+        };
+        if (!e.door || (seen && cheb(dx, dy, e.door.x, e.door.y) < cheb(hx, hy, e.door.x, e.door.y))) {
+            const old = e.door; e.door = pick();
+            if (e.door && (!old || old.id !== e.door.id)) log(`Flucht → ${e.door.name}${isCave(e.door.id) ? ' (Höhle)' : ''}`);
+        }
+        if (e.door) useDoor(e.door.x, e.door.y, 'Flucht → ' + e.door.name);
         else if (pkLog !== 'nodoor' + mapAt) { pkLog = 'nodoor' + mapAt; log('Keine Tür gefunden – ich bleibe stehen'); }
         render();
         return true;
@@ -1445,6 +1503,7 @@
             return;
         }
         if (!cfg.on) return;
+        if (pkEsc && cfg.pk.mode !== 'off') { if (loadCols()) escapeStep(); return; }   // Flucht vor einem Spieler hat Vorrang
         // Rückweg nach dem Tod: zur Todeskarte bzw. zur nächsten Karte der Route
         if (cfg.back) {
             const r = cfg.routes[cfg.route];
@@ -2255,7 +2314,7 @@
         const pv = mapPvp(), now = performance.now();
         const ps = players().slice(0, 4).map(p => { const r = pkSeen[p.id];
             return `${esc(p.nick)} (${p.lvl})${follows(p) ? ' · folgt' : r ? ` · nah ${Math.round((now - r.since) / 1000)}s` : ''}`; });
-        return `Diese Karte: ${pv == null ? 'PvP unbekannt' : pv === 2 ? 'rot (PvP)' : 'PvP-Stufe ' + pv}${pkFlee === mapAt ? ' · verlasse sie' : ''}<br>` +
+        return `Diese Karte: ${pv == null ? 'PvP unbekannt' : pv === 2 ? 'rot (PvP)' : 'PvP-Stufe ' + pv}${pkEsc ? ` · Flucht vor ${esc(pkEsc.nick)} (zuletzt vor ${Math.round((now - pkEsc.lastSeen) / 1000)} s)` : ''}<br>` +
                (ps.length ? 'Spieler: ' + ps.join(', ') : 'Keine anderen Spieler in Sicht');
     }
     let sugList = null, sugKey = '';
@@ -2462,7 +2521,7 @@
               <input class="num" data-a="pk" data-f="sec" value="${cfg.pk.sec}">s</div>` : ''}
             <div class="fld"><span>Kämpfen bis</span><input class="num" data-a="pk" data-f="maxUp" value="${cfg.pk.maxUp}">Lvl über mir</div>
             <div class="fld"><span>Nie angreifen</span><input type="text" data-a="pkNever" value="${esc(cfg.pk.never || '')}" placeholder="Namen, mit Komma"></div>
-            <div class="hint">Rote Karte und höchstens so viele Level über dir: der Bot kämpft. Sonst läuft er sofort zur nächsten Karte und greift hier keine Mobs mehr an.</div>
+            <div class="hint">Rote Karte und höchstens so viele Level über dir: der Bot kämpft (schnelle Walka). Sonst flieht er: durch Türen weg vom Spieler, bevorzugt in Höhlen, bis er ihn 30 s nicht mehr sieht. Danach zurück zum Jagdort.</div>
             <div class="hint pkinfo">${pkInfo()}</div>`}
 
             <h4>Bei Tod</h4>
@@ -2980,7 +3039,7 @@
         else if (a === 'fogPct') cfg.fogPct = +t.value || 100;
         else if (a === 'exit') cfg.exits[mapName()] = t.value || undefined;
         else if (a === 'onDeath') cfg.onDeath = t.value;
-        else if (a === 'pkMode') { cfg.pk.mode = t.value; pkFlee = null; }
+        else if (a === 'pkMode') { cfg.pk.mode = t.value; pkEsc = null; }
         else if (a === 'pk') cfg.pk[t.dataset.f] = Math.max(0, parseInt(t.value, 10) || 0);
         else if (a === 'pkNever') cfg.pk.never = t.value;
         else if (a === 'rmode' && cfg.routes[cfg.route]) { cfg.routes[cfg.route].mode = t.value; cfg.routePos = 0; }
