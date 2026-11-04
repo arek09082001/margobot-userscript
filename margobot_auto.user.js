@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      5.6
+// @version      5.7
 // @match        https://*.margonem.com/*
 // @match        https://*.margonem.pl/*
 // @grant        GM_getValue
@@ -1690,7 +1690,7 @@
     #mba{--bg:#16130f;--bg2:#1f1b15;--bg3:#2a241c;--line:#3a3227;--tx:#efe8da;--mut:#b3a892;--dim:#857a66;
          --amb:#e8a93c;--amb2:#f4c46a;--ambtx:#1d1408;--ok:#7fcf8a;--bad:#ec7a6a;--blue:#8fb4ef;
          --disp:'Barlow Semi Condensed','Segoe UI',system-ui,sans-serif;
-         position:fixed;z-index:100000;width:360px;background:var(--bg);color:var(--tx);
+         position:fixed;z-index:100000;width:min(360px,calc(100vw - 16px));background:var(--bg);color:var(--tx);
          font:12.5px/1.4 'Segoe UI',system-ui,sans-serif;border:1px solid var(--line);border-radius:12px;
          box-shadow:0 12px 32px -8px rgba(0,0,0,.65),0 2px 6px rgba(0,0,0,.4);user-select:none;overflow:hidden}
     #mba *{box-sizing:border-box}
@@ -1698,7 +1698,7 @@
     #mba button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
     #mba button:focus-visible,#mba input:focus-visible,#mba select:focus-visible{outline:2px solid var(--amb);outline-offset:1px}
 
-    #mba .hd{display:flex;align-items:center;gap:8px;padding:9px 10px 9px 12px;cursor:move;background:var(--bg2)}
+    #mba .hd{display:flex;align-items:center;gap:8px;padding:9px 10px 9px 12px;cursor:move;background:var(--bg2);touch-action:none}
     #mba .brand{font:700 15px/1 var(--disp);letter-spacing:.01em;flex:1;display:flex;align-items:center;gap:8px}
     #mba .dot{width:8px;height:8px;border-radius:50%;background:var(--dim)}
     #mba .dot.run{background:var(--ok);animation:mbaPulse 2.4s cubic-bezier(.16,1,.3,1) infinite}
@@ -1725,7 +1725,15 @@
     #mba .tab{font:600 13px/1 var(--disp);letter-spacing:.02em;color:var(--dim);padding:8px 10px 9px;border-bottom:2px solid transparent;margin-bottom:-1px}
     #mba .tab:hover{color:var(--mut)} #mba .tab.on{color:var(--tx);border-bottom-color:var(--amb)}
 
-    #mba .bd{padding:12px;max-height:68vh;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+    #mba .bd{padding:12px;max-height:68vh;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--line) transparent;overscroll-behavior:contain}
+    /* Handy/Tablet: Finger statt Maus – größere Tippflächen, Kopfzeile ist Griff, Inhalt scrollt per Wischen (siehe touch-Handler) */
+    @media (pointer:coarse){
+      #mba .ib{width:34px;height:34px}
+      #mba .mini{padding:9px 12px}
+      #mba .tab{padding:11px 10px 12px}
+      #mba .bd{max-height:60vh;touch-action:none}
+    }
+    @media (max-height:500px){#mba .bd{max-height:calc(100vh - 140px)}}
     #mba h4{font:600 12px/1 var(--disp);letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin:18px 0 8px}
     #mba h4:first-child{margin-top:2px}
 
@@ -1850,7 +1858,7 @@
 
     const box = document.createElement('div');
     box.id = 'mba';
-    box.style.left = (cfg.x ?? (innerWidth - 390)) + 'px';
+    box.style.left = (cfg.x ?? 0) + 'px';
     box.style.top = (cfg.y ?? 80) + 'px';
     document.body.appendChild(box);
     box.addEventListener('mousedown', ev => ev.stopPropagation());   // Klicks im Panel nicht ans Spiel
@@ -1870,20 +1878,59 @@
     }, { passive: false });
     box.addEventListener('keypress', ev => ev.stopPropagation());
 
+    /* Panel im sichtbaren Bereich halten: auf dem Handy ist der Bildschirm schmaler als 390 px,
+       und beim Drehen ins Hoch-/Querformat würde eine gespeicherte Position sonst draußen liegen */
+    const clampBox = (x, y) => [Math.min(innerWidth - Math.min(60, box.offsetWidth || 60), Math.max(0, x)), Math.min(innerHeight - 40, Math.max(0, y))];
+    const placeBox = () => {
+        const [x, y] = clampBox(box.offsetLeft, box.offsetTop);
+        box.style.left = Math.min(x, Math.max(0, innerWidth - box.offsetWidth - 8)) + 'px'; box.style.top = y + 'px';
+    };
+    if (cfg.x == null) box.style.left = Math.max(8, innerWidth - box.offsetWidth - 30) + 'px';
+    if (typeof addEventListener === 'function') {   // fehlt nur in den Node-Simulationen
+        placeBox();
+        addEventListener('resize', placeBox);
+        addEventListener('orientationchange', () => setTimeout(placeBox, 300));
+    }
+
+    /* Verschieben über Pointer-Events: geht mit Maus und Finger gleich */
     let dragging = null;
-    box.addEventListener('mousedown', ev => {
+    box.addEventListener('pointerdown', ev => {
+        ev.stopPropagation();
         if (!ev.target.closest('.hd') || ev.target.closest('button')) return;
-        dragging = [ev.clientX - box.offsetLeft, ev.clientY - box.offsetTop];
+        dragging = [ev.clientX - box.offsetLeft, ev.clientY - box.offsetTop, ev.pointerId];
+        try { box.setPointerCapture(ev.pointerId); } catch (e) { }
     });
-    document.addEventListener('mousemove', ev => {
-        if (!dragging) return;
-        const x = Math.min(innerWidth - 60, Math.max(0, ev.clientX - dragging[0])), y = Math.min(innerHeight - 40, Math.max(0, ev.clientY - dragging[1]));
+    box.addEventListener('pointermove', ev => {
+        if (!dragging || ev.pointerId !== dragging[2]) return;
+        const [x, y] = clampBox(ev.clientX - dragging[0], ev.clientY - dragging[1]);
         box.style.left = x + 'px'; box.style.top = y + 'px';
+        ev.preventDefault();
     });
-    document.addEventListener('mouseup', () => {
+    const dragEnd = () => {
         if (dragging) { cfg.x = box.offsetLeft; cfg.y = box.offsetTop; save(); }
         dragging = null;
-    });
+    };
+    box.addEventListener('pointerup', dragEnd);
+    box.addEventListener('pointercancel', dragEnd);
+
+    /* Wischen im Panel: das Spiel wertet Touch-Gesten selbst aus (Karte ziehen, Zoom) und verhindert
+       dabei das normale Scrollen. Darum scrollt das Panel wie beim Mausrad selbst und gibt nichts ans Spiel weiter. */
+    let touchY = null;
+    box.addEventListener('touchstart', ev => {
+        ev.stopPropagation();
+        touchY = ev.touches.length === 1 ? ev.touches[0].clientY : null;
+    }, { passive: true });
+    box.addEventListener('touchmove', ev => {
+        ev.stopPropagation();
+        const bd = box.querySelector('.bd');
+        if (touchY == null || !bd || !bd.contains(ev.target) || dragging) return;
+        if (ev.target.tagName === 'SELECT' && ev.target.size > 1) return;
+        if (ev.target.type === 'range') return;
+        const y = ev.touches[0].clientY;
+        bd.scrollTop += touchY - y; touchY = y;
+        if (ev.cancelable) ev.preventDefault();
+    }, { passive: false });
+    box.addEventListener('touchend', ev => { ev.stopPropagation(); touchY = null; });
 
     const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     const fmt = n => Math.round(n).toLocaleString('de-DE');
