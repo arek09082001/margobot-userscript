@@ -29,7 +29,8 @@ const world = { 1: [20, 20, 'A', G[1], []], 2: [20, 20, 'B', G[2], [['Mushita', 
 const store = { mbworld: world, mbauto: { on: false, pauseMin: 300, pauseMax: 300 } };
 const timers = [], later = [];
 let left = false;                              // Seitenwechsel: ab dann läuft das Spiel nicht mehr
-const loc = { hostname: 'jaruna.margonem.pl', _h: 'https://jaruna.margonem.pl/', get href() { return this._h; }, set href(v) { this._h = v; left = true; W.Engine = undefined; } };
+const loc = { _h: 'https://jaruna.margonem.pl/', get href() { return this._h; }, set href(v) { this._h = v; left = true; W.Engine = undefined; },
+  get hostname() { return this._h.split('/')[2]; }, get origin() { return this._h.replace(/\/$/, ''); } };
 const doc = { createElement: el, head: el(), body: el(), addEventListener() {}, querySelector: () => null };
 const sb = { unsafeWindow: W, GM_getValue: (k, d) => store[k] || d, GM_setValue: (k, v) => store[k] = v, GM_notification: o => notes.push(o.text),
   document: doc, innerWidth: 1400, setInterval: f => timers.push(f), setTimeout: (f, ms) => later.push([now + (ms || 0), f]),
@@ -67,22 +68,38 @@ ok(hits.length === 1 && t().kills === 1 && Math.abs(t().lastKill - (BASE + hits[
 min(20); npcs = [boss()]; min(0.2);
 ok(hits.length === 2 && t().kills === 2 && t().meas.length === 1 && Math.abs(t().meas[0] - 20) < 0.3, 'Respawn gemessen und wieder angegriffen', `gemessen ${t().meas.join(', ')} min, Kills ${t().kills}`);
 
-// 4) „Spiel verlassen“: nach dem Kill offline, Erinnerung 2–4 min vor frühestem Respawn
-e2().away = 'leave'; npcs = [boss()]; min(0.2); min(0.1);
-const killAt = t().lastKill, wake = e2().wakeAt, lead = (killAt + 15 * 60000 - wake) / 60000;
-ok(e2().offline && loc.href === 'https://www.margonem.pl/' && lead >= 2 && lead <= 4, 'geht offline zur Startseite, Erinnerung vor dem Respawn',
-   `Seite ${loc.href}, erinnert ${lead.toFixed(1)} min vor dem frühesten Respawn`);
+// Neue Seite = Skript frisch geladen; game = ob dort das Spiel läuft (sonst Startseite oder Anmeldung)
+const newPage = game => { W.Engine = game ? Engine : undefined; left = false; tickIdx = timers.length; new Function(...Object.keys(sb), src)(...Object.values(sb)); };
+const SERVER = 'https://jaruna.margonem.pl/';
+const leaveCycle = () => {                      // E2 erscheint, wird getötet → Bot geht offline
+    npcs = [boss()]; min(0.2); min(0.1);
+    return { killAt: t().lastKill, wake: e2().wakeAt };
+};
 
-// 5) Erinnerung auf der Startseite (kein Spiel, Engine ist seit dem Seitenwechsel weg): bis zur Erinnerung vorspulen
-min((wake - (BASE + now)) / 60000 + 0.1);
-ok(notes.some(n => /jetzt einloggen/.test(n)), 'Erinnerung auf der Startseite', notes.slice(-1)[0]);
+// 4) „Spiel verlassen“: nach dem Kill von [server].margonem.pl auf die Hauptseite, Rückkehr 2–4 min vor dem Respawn
+e2().away = 'leave';
+let c = leaveCycle(), lead = (c.killAt + 15 * 60000 - c.wake) / 60000;
+ok(e2().offline && loc.href === 'https://www.margonem.pl/' && e2().back === SERVER && lead >= 2 && lead <= 4, 'geht von jaruna.margonem.pl auf www.margonem.pl',
+   `Seite ${loc.href}, zurück nach ${e2().back}, ${lead.toFixed(1)} min vor dem frühesten Respawn`);
 
-// 6) Selbst wieder eingeloggt (neue Seite = Skript frisch geladen) → Bot macht weiter
-ok(e2().offline && left, 'bleibt offline, bis du dich einloggst', 'offline=' + e2().offline);
-W.Engine = Engine;
-tickIdx = timers.length;                       // ab jetzt nur noch der Takt der neuen Seite
-new Function(...Object.keys(sb), src)(...Object.values(sb));
-const e2n = () => store.mbauto.e2;
-min(0.2);
-ok(!e2n().offline && e2n().on && Math.abs(hero.d.x - 15) + Math.abs(hero.d.y - 15) === 1, 'nach dem Einloggen weiter am Spawnpunkt', 'offline=' + e2n().offline + ', Held ' + hero.d.x + ',' + hero.d.y);
+// 5) Hauptseite (kein Spiel): zur Rückkehrzeit wieder die Spielseite öffnen
+newPage(false);
+min((c.wake - (BASE + now)) / 60000 + 0.1);
+ok(loc.href === SERVER && notes.some(n => /zurück ins Spiel/.test(n)), 'öffnet zur Rückkehrzeit wieder die Spielseite', 'Seite ' + loc.href);
+
+// 6) Spielseite lädt mit bestehender Sitzung → Bot macht am Spawnpunkt weiter
+newPage(true); min(0.2);
+ok(!e2().offline && e2().on && Math.abs(hero.d.x - 15) + Math.abs(hero.d.y - 15) === 1, 'zurück im Spiel, weiter am Spawnpunkt', 'offline=' + e2().offline + ', Held ' + hero.d.x + ',' + hero.d.y);
+
+// 7) Sitzung abgelaufen: Spielseite zeigt eine Anmeldung → kein zweiter Seitenwechsel, nur Erinnerung
+c = leaveCycle(); newPage(false);
+min((c.wake - (BASE + now)) / 60000 + 0.1);
+const n0 = notes.length; newPage(false); min(1.5);
+ok(loc.href === SERVER && !left && notes.slice(n0).some(n => /jetzt einloggen/.test(n)), 'Anmeldung statt Spiel: bleibt dort, erinnert nur', 'Seite ' + loc.href + ' · ' + notes.slice(-1)[0]);
+
+// 8) Rückkehr aus: nur Erinnerung auf der Hauptseite
+newPage(true); min(0.2); e2().autoBack = false;
+c = leaveCycle(); newPage(false);
+min((c.wake - (BASE + now)) / 60000 + 0.1);
+ok(loc.href === 'https://www.margonem.pl/' && /jetzt einloggen/.test(notes.slice(-1)[0]), 'ohne Rückkehr: Erinnerung auf der Hauptseite', notes.slice(-1)[0]);
 if (fail) process.exit(1);

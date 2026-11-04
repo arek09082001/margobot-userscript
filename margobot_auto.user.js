@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      6.8
+// @version      6.9
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -44,8 +44,9 @@
     const cfg = Object.assign({}, DEF, GM_getValue('mbauto', {}));
     cfg.pk = Object.assign({}, DEF.pk, cfg.pk || {});
     /* E2-Jagd: list = gemerkte Bosse (Schlüssel „Name|Karte“), sel = aktiver. away: 'stay' = am Spawnpunkt
-       warten, 'leave' = bei langer Wartezeit das Spiel verlassen und rechtzeitig erinnern. */
-    const E2DEF = { on: false, sel: '', list: {}, away: 'stay', leaveMin: 10, remindMin: 2, remindMax: 4, wakeAt: 0, offline: false };
+       warten, 'leave' = bei langer Wartezeit das Spiel verlassen und rechtzeitig erinnern. back = Adresse der
+       Spielseite ([server].margonem.pl), autoBack = zur Erinnerungszeit diese Seite wieder öffnen. */
+    const E2DEF = { on: false, sel: '', list: {}, away: 'stay', leaveMin: 10, remindMin: 2, remindMax: 4, wakeAt: 0, offline: false, autoBack: true, back: '', returned: false };
     cfg.e2 = Object.assign({}, E2DEF, cfg.e2 || {});
     const running = () => !!(cfg.on || cfg.travel || cfg.chain || cfg.e2.on);
     // Routen bereinigen: leere Einträge (Kartenwechsel beim Aufnehmen) raus, doppelte direkt hintereinander zusammenfassen
@@ -1531,7 +1532,7 @@
         const E2 = cfg.e2, t = e2Cur(), now = Date.now();
         if (!t) return e2Stop('keine E2 gewählt');
         if (e2Leaving) return;                            // Seite wechselt gleich – Offline-Merker nicht anrühren
-        if (E2.offline) { E2.offline = false; E2.wakeAt = 0; save(); log('E2: wieder im Spiel – weiter mit ' + t.nick); }
+        if (E2.offline) { E2.offline = false; E2.wakeAt = 0; E2.returned = false; save(); log('E2: wieder im Spiel – weiter mit ' + t.nick); }
         if (mapId() !== t.map) {
             e2rt = null;
             const r = world ? travelStep([t.map], wname(t.map)) : 'kein Weg';
@@ -1594,8 +1595,9 @@
             const wake = w.start - lead;
             if (wake - now > E2.leaveMin * 60000) {
                 e2Leaving = true;
-                E2.wakeAt = wake; E2.offline = true; save();
-                log(`E2: Respawn frühestens ${clock(w.start)} – verlasse das Spiel, Erinnerung um ${clock(wake)}`);
+                // Von [server].margonem.pl auf die Hauptseite – dort ist man nicht mehr in der Spielwelt
+                E2.wakeAt = wake; E2.offline = true; E2.returned = false; E2.back = location.origin + '/'; save();
+                log(`E2: Respawn frühestens ${clock(w.start)} – verlasse das Spiel, ${E2.autoBack ? 'zurück' : 'Erinnerung'} um ${clock(wake)}`);
                 const home = /margonem\.com$/.test(location.hostname) ? 'https://www.margonem.com/' : 'https://www.margonem.pl/';
                 setTimeout(() => { location.href = home; }, 1500);
             }
@@ -1607,7 +1609,17 @@
         const E2 = cfg.e2;
         if (!E2.offline || !E2.wakeAt || ok()) return;
         const now = Date.now();
-        if (now >= E2.wakeAt && now - e2Remind > 60000) {
+        if (now < E2.wakeAt) return;
+        /* Zurück: nur die gemerkte Spielseite öffnen (bestehende Sitzung). Login-Formulare fasst der Bot nie an –
+           steht dort statt des Spiels eine Anmeldung, bleibt es bei der Erinnerung. Nur ein Versuch pro Wartezeit. */
+        if (E2.autoBack && E2.back && !E2.returned && /^https:\/\/[a-z0-9-]+\.margonem\.(pl|com)\/$/.test(E2.back)) {
+            E2.returned = true; save();
+            e2Notify(`E2 ${(e2Cur() || {}).nick || ''}: zurück ins Spiel`);
+            setTimeout(() => { location.href = E2.back; }, 800);
+            return;
+        }
+        if (E2.returned && performance.now() < 30000) return;      // Spielseite lädt noch – nicht gleich drängeln
+        if (now - e2Remind > 60000) {
             e2Remind = now;
             const t = e2Cur(), w = e2Window(t);
             e2Notify(`E2 ${t ? t.nick : ''}: jetzt einloggen – Respawn ${w && w.start > now ? 'in ca. ' + Math.ceil((w.start - now) / 60000) + ' min' : 'jederzeit'}`);
@@ -1629,11 +1641,11 @@
         const t = e2Cur(), w = e2Window(t), now = Date.now(), left = cfg.e2.wakeAt - now;
         const html = `<div class="hd"><div class="brand"><span class="dot trv"></span>MargoBot · E2</div>
             <button class="mini stop" data-a="e2stop">${ico('stop')}Abbrechen</button></div>
-            <div class="bd"><div class="now"><div class="st">${left > 0 ? 'Offline bis ' + clock(cfg.e2.wakeAt) : 'Jetzt einloggen!'}</div>
+            <div class="bd"><div class="now"><div class="st">${left > 0 ? 'Offline bis ' + clock(cfg.e2.wakeAt) : cfg.e2.returned ? 'Bitte selbst einloggen' : 'Jetzt einloggen!'}</div>
               <div class="dt">${t ? esc(t.nick) + ' · ' + esc(wname(t.map)) : ''}</div>
               <div class="dt">${left > 0 ? 'Erinnerung in ' + mmss(left) : ''}${w ? ' · Respawn ' + clock(w.start) + '–' + clock(w.end) : ''}</div></div>
-              <div class="hint">Diese Seite offen lassen, sonst kommt keine Erinnerung. Einloggen tust du selbst – danach läuft der Bot
-              zum Spawnpunkt und wartet weiter.</div></div>`;
+              <div class="hint">Diese Seite offen lassen. ${cfg.e2.autoBack ? `Um ${clock(cfg.e2.wakeAt)} öffnet der Bot wieder ${esc(cfg.e2.back.replace(/^https:\/\/|\/$/g, '') || 'die Spielseite')}. Ist die Sitzung abgelaufen, loggst du dich selbst ein.`
+                : 'Einloggen tust du selbst.'} Danach wartet der Bot weiter am Spawnpunkt.</div></div>`;
         if (box.dataset.away !== html) { box.dataset.away = html; box.innerHTML = html; }
     }
 
@@ -3025,9 +3037,11 @@
             <div class="fld"><span>Nur wenn länger als (min)</span>${stp('leaveMin', E2.leaveMin, 3, 600)}</div>
             <div class="hint" style="margin-top:8px">Erinnern vor dem Respawn (Minuten, zufällig dazwischen)</div>
             <div class="rg">${stp('remindMin', E2.remindMin, 0, 60)}<span class="to">bis</span>${stp('remindMax', E2.remindMax, 0, 60)}</div>
-            <div class="hint">Der Bot geht vom Spawnpunkt offline und wechselt zur Startseite. Dort zählt er herunter und meldet sich
-              (Benachrichtigung, Ton, Vibration) zufällig im eingestellten Abstand vor dem Respawn. <b>Einloggen tust du selbst</b> –
-              danach wartet der Bot weiter. Die Startseite muss dafür offen bleiben.</div>` : ''}
+            <label class="chk"><input type="checkbox" data-a="e2back" ${E2.autoBack ? 'checked' : ''}>Dann selbst zurück auf die Spielseite</label>
+            <div class="hint">Der Bot geht vom Spawnpunkt offline: von der Spielseite (z. B. classic.margonem.pl) auf www.margonem.pl.
+              Dort zählt er herunter und öffnet zufällig im eingestellten Abstand vor dem Respawn wieder die Spielseite – mit deiner
+              bestehenden Sitzung. Passwörter gibt er nie ein: Ist die Sitzung abgelaufen, meldet er sich (Benachrichtigung, Ton,
+              Vibration) und du loggst dich selbst ein. Die Seite muss offen bleiben.</div>` : ''}
 
             ${t ? (run ? `<button class="cta stop" data-a="stopall">${ico('stop')}Stopp</button>`
                        : `<button class="cta" data-a="e2go">${ico('play')}${mapId() === t.map ? 'Hier auf ' : 'Hin & auf '}${esc(t.nick)} warten</button>`) : ''}
@@ -3312,6 +3326,7 @@
         }
         if (a === 'e2sel') { cfg.e2.sel = t.value; if (cfg.e2.on) { e2rt = null; goal = null; } save(); lastStatic = ''; render(); return; }
         if (a === 'e2away') { cfg.e2.away = t.value; save(); lastStatic = ''; render(); return; }
+        if (a === 'e2back') { cfg.e2.autoBack = t.checked; save(); lastStatic = ''; render(); return; }
         if (a === 'e2set') {
             const f = t.dataset.f, obj = /^(leaveMin|remindMin|remindMax)$/.test(f) ? cfg.e2 : e2Cur();
             if (obj) { obj[f] = Math.max(0, parseInt(t.value, 10) || 0); const c = e2Cur(); if (c && c.respMax < c.respMin) c.respMax = c.respMin; }
