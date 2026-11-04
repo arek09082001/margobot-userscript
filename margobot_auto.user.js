@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.2
+// @version      7.3
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -2315,8 +2315,27 @@
     #mba .capt b{font:700 14px/1.2 var(--disp)} #mba .capt span{font-size:11.5px}
     #mba .capt.open{background:rgba(236,122,106,.16);color:#ffb3a8} #mba .capt.open b{color:var(--bad)}
     #mba .capt.soon{background:rgba(232,169,60,.12);color:var(--amb2)}
+    #mba .skp{display:flex;align-items:center;gap:11px;background:var(--bg2);border-radius:10px;padding:10px 12px}
+    #mba .skp>b{font:700 28px/1 var(--disp);color:var(--amb2);font-variant-numeric:tabular-nums}
+    #mba .skp strong{display:block;font:700 15px/1.2 var(--disp)} #mba .skp span{color:var(--mut);font-size:11.5px}
+    #mba .skg{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin:10px 2px 0;font-size:12px}
+    #mba .skg span{color:var(--dim)} #mba .skg b{font-weight:500;min-width:0;overflow-wrap:anywhere}
+    #mba .skr{margin-top:16px} #mba .skr.lock .skl{opacity:.5}
+    #mba .skh{display:flex;justify-content:space-between;gap:8px;align-items:baseline;padding:0 2px 5px}
+    #mba .skh b{font:600 12px/1 var(--disp);letter-spacing:.06em;text-transform:uppercase;color:var(--mut)} #mba .skh span{color:var(--dim);font-size:11px;text-align:right}
+    #mba .skl{display:grid;grid-template-columns:1fr auto;gap:1px 8px;width:100%;text-align:left;padding:6px 8px 7px;border-radius:7px}
+    #mba .skl:hover,#mba .skl[aria-expanded=true]{background:var(--bg2)}
+    #mba .skl .nm{font-weight:500;min-width:0} #mba .skl .lv{grid-row:1/3;grid-column:2;align-self:center;font:700 14px/1 var(--disp);color:var(--dim);font-variant-numeric:tabular-nums}
+    #mba .skl.full .lv{color:var(--ok)} #mba .skl.some .lv{color:var(--amb2)}
+    #mba .skl .tg{grid-column:1;color:var(--dim);font-size:11px} #mba .skl .tg i{font-style:normal;color:var(--bad)}
+    #mba .skl .br{grid-column:1/-1;height:3px;margin-top:4px;border-radius:2px;background:var(--bg3);overflow:hidden}
+    #mba .skl .br u{display:block;height:100%;background:var(--amb);text-decoration:none} #mba .skl.full .br u{background:var(--ok)}
+    #mba .skd{padding:4px 8px 10px;font-size:11.5px;color:var(--mut)} #mba .skd .sdsc{line-height:1.45}
+    #mba .skd table{width:100%;border-collapse:collapse;margin-top:6px;font-variant-numeric:tabular-nums}
+    #mba .skd th{text-align:right;font-weight:500;color:var(--dim);padding:2px 0 2px 8px} #mba .skd th:first-child,#mba .skd td:first-child{text-align:left;padding-left:0;overflow-wrap:anywhere}
+    #mba .skd td{text-align:right;padding:2px 0 2px 8px;color:var(--tx)} #mba .skd td:first-child{color:var(--mut)}
     #mba .tabs{display:flex;gap:2px;padding:0 10px;overflow-x:auto;scrollbar-width:none;background:var(--bg2);border-bottom:1px solid var(--line)}
-    #mba .tab{white-space:nowrap;flex:none;font:600 13px/1 var(--disp);letter-spacing:.02em;color:var(--dim);padding:8px 10px 9px;border-bottom:2px solid transparent;margin-bottom:-1px}
+    #mba .tab{white-space:nowrap;flex:none;font:600 13px/1 var(--disp);letter-spacing:.02em;color:var(--dim);padding:8px 7px 9px;border-bottom:2px solid transparent;margin-bottom:-1px}
     #mba .tab:hover{color:var(--mut)} #mba .tab.on{color:var(--tx);border-bottom-color:var(--amb)}
 
     #mba .bd{padding:12px;max-height:68vh;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--line) transparent;overscroll-behavior:contain}
@@ -2463,6 +2482,8 @@
     });
     box.addEventListener('keyup', ev => ev.stopPropagation());
     box.addEventListener('wheel', ev => {
+        const bar = ev.target.closest && ev.target.closest('.tabs');          // über der Tab-Leiste: seitlich
+        if (bar) { bar.scrollLeft += ev.deltaY || ev.deltaX; ev.preventDefault(); ev.stopPropagation(); return; }
         // Das Spiel fängt das Mausrad ab (Zoom) – deshalb scrollt das Panel selbst
         const bd = box.querySelector('.bd');
         if (!bd) return;
@@ -3163,6 +3184,88 @@
     const RCOL = { common: 'var(--mut)', unique: '#e9d66b', heroic: '#7fb3ef', upgraded: '#e8a93c', legendary: '#f08a4b', artefact: '#ec7a6a' };
     const KIND = { markt: ['Unter Marktpreis', 'var(--ok)'], npc: ['Unter NPC-Wert', 'var(--amb2)'], bald: ['Endet bald', 'var(--blue)'] };
     function fmtLeft(s) { return !s ? '' : s < 60 ? s + ' s' : s < 3600 ? Math.round(s / 60) + ' min' : (s / 3600).toFixed(1).replace('.', ',') + ' h'; }
+    // ── Tab „Fähigkeiten“: nur anzeigen ──
+    /* Liest ausschließlich (Engine.skills, angelegte Gegenstände, Fensterzahlen) und schickt nichts ans Spiel:
+       kein _g, kein Klick im Spiel – Punkte setzt weiter der Spieler. Geprüft am Paladin, siehe docs/skills_api.md.
+       Die Daten füllt das Spiel, sobald sein Fähigkeiten-Fenster einmal offen war. */
+    const SK_ROW_PTS = [1, 10, 25, 55, 95, 145, 205];         // „Wymagania: … pkt“ aus dem Fenster, gesetzte Punkte
+    const SK_ELEM = { fire: 'Feuer', frost: 'Frost', light: 'Blitz', poison: 'Gift', wound: 'Blutung' };
+    const SK_REQW = { fire: 'Feuer', frost: 'Frost', light: 'Blitz', '1h': 'Einhand', sh: 'Schild', sw: 'Nahkampf?' };
+    let skOpen = null;
+    function skillGear() {
+        let worn = [];
+        try { worn = (E().items.fetchLocationItems('g') || []).map(x => x.d || x).filter(d => +d.st > 0); } catch (e) {}
+        const w = worn.find(d => +d.st === 5), sh = worn.find(d => +d.st === 7);
+        const st = w ? parseStat(w.stat) : {};
+        return { w, sh, cl: w ? +w.cl : 0, elems: Object.keys(SK_ELEM).filter(k => k in st), hasShield: !!(sh && +sh.cl === 14) };
+    }
+    function skillData() {
+        /* null = das Spiel hat die Fähigkeiten noch nicht geladen. Reihen: gleiche grp, aufsteigend (Paladin 9–15 → 1–7). */
+        const S = E().skills;
+        if (!S || typeof S.getSkills !== 'function') return null;
+        let all, gr;
+        try { all = S.getSkills(); gr = S.getGroupedSkills(); } catch (e) { return null; }
+        const list = Object.values(all || {}).filter(x => x && +x.id > 0 && x.grp !== undefined && x.lvl !== undefined);
+        if (!list.length) return null;
+        const hero = heroLvl(), used = list.reduce((n, x) => n + (+x.cLvl || 0), 0);
+        const gk = Object.keys(gr || {}).sort((a, b) => a - b);
+        const rows = Array.from(new Set(list.map(x => +x.grp))).sort((a, b) => a - b).map((g, i) => {
+            const skills = list.filter(x => +x.grp === g).sort((a, b) => (+a.xy || 0) - (+b.xy || 0) || a.id - b.id);
+            const reqLvl = +(gr && gr[gk[i]] && gr[gk[i]].requiredLvl) || +parseStat(skills[0].regs).lvl || 0;
+            const need = i ? SK_ROW_PTS[i] || 0 : 0;                  // Reihe 1: der erste Punkt geht in sie selbst
+            return { n: i + 1, reqLvl, need, points: skills.reduce((t, x) => t + (+x.cLvl || 0), 0), skills,
+                     open: hero >= reqLvl && used >= need };
+        });
+        const totEl = document.querySelector && document.querySelector('.skills_total');
+        const shown = totEl ? parseInt(totEl.textContent, 10) : NaN;
+        return { rows, used, total: shown || Math.max(0, hero - 24), estimated: !shown };
+    }
+    function skillFit(x, g) {
+        /* '' passt oder ohne Vorgabe, 'no' passt sicher nicht, '?' unklar (Waffenarten sind erst teilweise geprüft). */
+        const r = parseStat(x.regs).reqw;
+        if (!r) return '';
+        if (r in SK_ELEM) return g.elems.includes(r) ? '' : 'no';
+        if (r === 'sh') return g.hasShield ? '' : 'no';
+        if (r === '1h') return !g.w ? 'no' : g.cl === 1 ? '' : '?';
+        return '?';
+    }
+    function skillSig() {
+        const d = skillData(), g = skillGear();
+        return [d && d.total, d && d.rows.map(r => [r.open, r.skills.map(x => x.cLvl)]), g.w && g.w.id, g.sh && g.sh.id, skOpen];
+    }
+    function skillDetail(x) {
+        const c = +x.cLvl || 0, as = x.allStats || [], cur = c ? parseStat(as[c - 1]) : {}, nxt = c < as.length ? parseStat(as[c]) : null;
+        const keys = Array.from(new Set(Object.keys(cur).concat(Object.keys(nxt || {})))).filter(k => !nxt || cur[k] !== nxt[k]);
+        const rows = keys.map(k => `<tr><td>${esc(k)}</td><td>${esc(cur[k] ?? '–')}</td><td>${nxt ? esc(nxt[k] ?? '–') : ''}</td></tr>`).join('');
+        return `<div class="skd"><div class="sdsc">${esc(String(x.desc || '').replace(/<[^>]+>/g, ' ').trim())}</div>
+            ${keys.length ? `<table><tr><th>Wert im Spiel</th><th>${c ? 'Stufe ' + c : 'jetzt'}</th><th>${nxt ? 'Stufe ' + (c + 1) : ''}</th></tr>${rows}</table>` : ''}</div>`;
+    }
+    function skillsTab() {
+        const d = skillData(), g = skillGear();
+        const weapon = g.w ? `${esc(g.w.name)} · ${g.cl === 1 ? 'Einhand' : 'Waffenklasse ' + g.cl}${g.elems.length ? ' · ' + g.elems.map(k => SK_ELEM[k]).join(', ') : ''}` : 'keine Waffe angelegt';
+        const gear = `<div class="skg"><span>Waffe</span><b>${weapon}</b><span>Nebenhand</span><b>${g.sh ? esc(g.sh.name) + (g.hasShield ? ' · Schild' : '') : 'nichts'}</b></div>`;
+        if (!d) return `<div class="empty">Öffne einmal im Spiel dein <b>Fähigkeiten-Fenster</b>. Erst dann liegen die Daten vor, und sie erscheinen hier von selbst.</div>${gear}`;
+        const free = d.total - d.used;
+        const rows = d.rows.map(r => `
+            <div class="skr ${r.open ? '' : 'lock'}">
+              <div class="skh"><b>Reihe ${r.n}</b><span>${r.open ? r.points + ' Punkte gesetzt' : 'gesperrt: Lvl ' + r.reqLvl + (r.need ? ', ' + r.need + ' gesetzte Punkte' : '')}</span></div>
+              ${r.skills.map(x => {
+                  const c = +x.cLvl || 0, m = +x.mLvl || 10, fit = skillFit(x, g), rw = parseStat(x.regs).reqw, op = skOpen === +x.id;
+                  return `<button class="skl ${c >= m ? 'full' : c ? 'some' : ''}" data-a="skopen" data-i="${+x.id}" aria-expanded="${op}">
+                      <span class="nm">${esc(x.name)}</span>
+                      <span class="tg">${x.type === 'active' ? 'aktiv' : 'passiv'}${rw ? ' · ' + esc(SK_REQW[rw] || rw) : ''}${fit === 'no' ? ' · <i>passt nicht</i>' : ''}</span>
+                      <span class="lv">${c}/${m}</span>
+                      <span class="br"><u style="width:${Math.round(c / m * 100)}%"></u></span>
+                    </button>${op ? skillDetail(x) : ''}`;
+              }).join('')}
+            </div>`).join('');
+        return `
+            <div class="skp"><b>${free > 0 ? free : 0}</b><div><strong>${free > 0 ? (free === 1 ? 'Punkt frei' : 'Punkte frei') : 'Keine Punkte frei'}</strong>
+              <span>${d.used} von ${d.estimated ? '~' : ''}${d.total} gesetzt${d.estimated ? ' (geschätzt: Level − 24, genau bei offenem Fenster)' : ''}</span></div></div>
+            ${gear}
+            ${rows}
+            <div class="hint">Nur Anzeige. Der Bot setzt hier nichts, Punkte verteilst du im Fähigkeiten-Fenster des Spiels. „Passt nicht“ bezieht sich auf die angelegte Waffe.</div>`;
+    }
     function tradeTab() {
         const tc = tradeCfg(), open = !!auctionOpen(), nItems = Object.keys(market.items).length;
         const ago = market.last ? Math.round((Date.now() - market.last) / 60000) : null;
@@ -3210,13 +3313,14 @@
         if (cfg.lvlMin === 1 && cfg.lvlMax === 300 && heroLvl()) {   // erster Start: Bereich um das eigene Level
             cfg.lvlMin = Math.max(1, heroLvl() - 5); cfg.lvlMax = heroLvl() + 3; save();
         }
-        const mn = mapName(), tab = ['set', 'rules', 'trade', 'e2'].includes(cfg.tab) ? cfg.tab : 'xp';
+        const mn = mapName(), tab = ['set', 'rules', 'trade', 'e2', 'skills'].includes(cfg.tab) ? cfg.tab : 'xp';
         const run = running();
         if (tab === 'xp') refreshXp();
         const rk = editId ? [editId, !!shopOpen(), (cfg.rules || []).map(r => [r.id, r.when.t, r.steps.map(x => x.t)])] : cfg.rules;
         if (tab === 'xp' && botMode() === 'route') refreshSug();
         if (botMode() === 'xp') refreshXp();
         const sKey = JSON.stringify([cfg.open, tab, run, mn, rk, cfg.chain, botMode(), capt.state,
+                                     tab === 'skills' ? skillSig() : 0,
                                      tab === 'trade' ? [!!MK.scan, !!auctionOpen(), MK.deals.map(d => d.id + d.kind), cfg.trade, market.scans] : 0, sugList && sugList.map(o => o.maps.join()), cfg.route, cfg.rec && cfg.rec.length, Object.keys(cfg.routes),
                                      cfg.routes[cfg.route] && routeMode(cfg.routes[cfg.route]), worldN(), xpList && xpList.map(o => o.id), xpSel, cfg.lvlMin, cfg.lvlMax, heroLvl(),
             tab === 'e2' ? [JSON.stringify(cfg.e2), mapId(), mobs().map(m => m.id).sort().join()] : 0,
@@ -3232,9 +3336,14 @@
                     <button class="tab ${tab === 'rules' ? 'on' : ''}" data-a="tab" data-t="rules">Abläufe${(cfg.rules || []).length ? ' · ' + cfg.rules.filter(r => r.on).length : ''}</button>
                     <button class="tab ${tab === 'trade' ? 'on' : ''}" data-a="tab" data-t="trade">Handel</button>
                     <button class="tab ${tab === 'e2' ? 'on' : ''}" data-a="tab" data-t="e2">E2</button>
+                    <button class="tab ${tab === 'skills' ? 'on' : ''}" data-a="tab" data-t="skills">Fähigkeiten</button>
                     <button class="tab ${tab === 'set' ? 'on' : ''}" data-a="tab" data-t="set">Einstellungen</button></div>
-                    <div class="bd">${tab === 'xp' ? xpTab() : tab === 'rules' ? rulesTab() : tab === 'trade' ? tradeTab() : tab === 'e2' ? e2Tab() : setTab()}</div>` : '');
+                    <div class="bd">${tab === 'xp' ? xpTab() : tab === 'rules' ? rulesTab() : tab === 'trade' ? tradeTab() : tab === 'e2' ? e2Tab() : tab === 'skills' ? skillsTab() : setTab()}</div>` : '');
         }
+        // aktiven Tab sichtbar halten (die Leiste scrollt seitlich)
+        const onTab = box.querySelector('.tab.on'), tabBar = box.querySelector('.tabs');
+        if (onTab && tabBar && tabBar.scrollWidth > tabBar.clientWidth && (onTab.offsetLeft < tabBar.scrollLeft || onTab.offsetLeft + onTab.offsetWidth > tabBar.scrollLeft + tabBar.clientWidth))
+            tabBar.scrollLeft = onTab.offsetLeft - 10;
         // Live-Werte
         sessTick(); countXp();
         const [cls, title, detail] = state();
@@ -3295,6 +3404,7 @@
             tc[f] = Math.max(+el.dataset.lo, Math.min(+el.dataset.hi, (+tc[f] || 0) + +el.dataset.d));
             cfg.trade = tc; save(); if (MK.deals.length) MK.deals = findDeals(dealPool()); lastStatic = ''; render(); return;
         }
+        if (a === 'skopen') { const i = +el.dataset.i; skOpen = skOpen === i ? null : i; lastStatic = ''; render(); return; }
         if (a === 'tab') cfg.tab = el.dataset.t;
         else if (a === 'fold') cfg.open = !cfg.open;
         else if (a === 'stopall') { if (sess.t0 && !sess.end) { sess.end = Date.now(); saveSess(); } if (cfg.chain) endChain('von Hand'); if (cfg.e2.on) e2Stop(); cfg.on = false; cfg.travel = null; lastTravel = null; goal = null; log('Gestoppt'); }
