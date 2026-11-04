@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      5.8
+// @version      5.9
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -10,6 +10,8 @@
 // @grant        GM_setValue
 // @grant        unsafeWindow
 // @grant        GM_notification
+// @grant        GM_xmlhttpRequest
+// @connect      raw.githubusercontent.com
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -1934,6 +1936,26 @@
     }, { passive: false });
     box.addEventListener('touchend', ev => { ev.stopPropagation(); touchY = null; });
 
+    /* Weltkarte direkt aus dem öffentlichen Repo: am Handy ist Herunterladen + Datei wählen umständlich.
+       GM_xmlhttpRequest umgeht die Content-Security-Policy der Spielseite; fetch nur als Rückfall
+       (raw.githubusercontent.com erlaubt CORS, die Seite könnte es aber sperren). */
+    const WORLD_URL = 'https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_world.json';
+    let worldDl = false;
+    const fetchText = url => new Promise((ok, fail) => {
+        if (typeof GM_xmlhttpRequest === 'function') {
+            GM_xmlhttpRequest({ method: 'GET', url, timeout: 60000,
+                onload: r => r.status === 200 ? ok(r.responseText) : fail(new Error('HTTP ' + r.status)),
+                onerror: () => fail(new Error('keine Verbindung')), ontimeout: () => fail(new Error('Zeitüberschreitung')) });
+        } else fetch(url, { cache: 'no-store' }).then(r => r.ok ? r.text() : Promise.reject(new Error('HTTP ' + r.status))).then(ok, fail);
+    });
+    function useWorld(t) {
+        const d = JSON.parse(t), n = Object.keys(d).length, any = d[Object.keys(d)[0]];
+        if (!n || !Array.isArray(any) || !Array.isArray(any[3])) throw new Error('keine Weltkarte');
+        world = d; GM_setValue('mbworld', d); cfg.blocked = []; save();
+        log('Weltkarte geladen: ' + n + ' Karten');
+        xpKey = ''; lastStatic = ''; render();
+    }
+
     const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     const fmt = n => Math.round(n).toLocaleString('de-DE');
     let lastStatic = '', xpSel = 0, xpKey = '';
@@ -2035,8 +2057,8 @@
         let body, cta;
         if (mode === 'xp') {
             const sel = xpList && xpList[xpSel];
-            if (!world) body = `<div class="empty">Damit der Bot XP-Orte findet und selbst hinläuft, lade einmal die Weltkarte:
-                                 <b>margobot_world.json</b> im MargoBot-Ordner.</div>`;
+            if (!world) body = `<div class="empty">Damit der Bot XP-Orte findet und selbst hinläuft, lade einmal die Weltkarte.
+                                 Sie kommt direkt aus dem GitHub-Repo, alternativ als Datei <b>margobot_world.json</b>.</div>`;
             else if (!xpList.length) body = `<div class="empty">Kein XP-Ort für Level ${cfg.lvlMin}–${cfg.lvlMax} erreichbar. Bereich größer machen?</div>`;
             else body = `<div class="spots">${xpList.map((o, i) => `
                 <button class="spot ${i === xpSel ? 'sel' : ''} ${o.id === here ? 'here' : ''}" data-a="xpsel" data-i="${i}">
@@ -2046,7 +2068,8 @@
                   <span class="mt xpl">${xpLine(o.r)}</span>
                 </button>`).join('')}</div>`;
             if (running) cta = `<button class="cta stop" data-a="stopall">${ico('stop')}Stopp</button>`;
-            else if (!world) cta = `<button class="cta" data-a="loadworld">${ico('map')}Weltkarte laden</button>`;
+            else if (!world) cta = `<button class="cta" data-a="loadworldgh">${ico('map')}${worldDl ? 'Lädt …' : 'Weltkarte von GitHub laden'}</button>
+                                    <button class="sub" data-a="loadworld">oder Datei wählen</button>`;
             else if (sel && sel.id === here) cta = `<button class="cta" data-a="huntxp">${ico('play')}Hier jagen</button>`;
             else if (sel) cta = `<button class="cta" data-a="goxp">${ico('play')}Hinlaufen & jagen</button>
                                  <button class="sub" data-a="huntxp">oder gleich hier jagen</button>`;
@@ -2157,7 +2180,8 @@
 
             <h4>Weltkarte</h4>
             <div class="fld"><span>${world ? worldN() + ' Karten geladen' : 'nicht geladen'}</span>
-              <button class="btn" data-a="loadworld">${ico('map')}${world ? 'Neu laden' : 'Laden'}</button></div>
+              <span style="display:flex;gap:6px"><button class="btn" data-a="loadworldgh">${ico('map')}${worldDl ? 'Lädt …' : 'Von GitHub'}</button>
+              <button class="btn" data-a="loadworld">Datei</button></span></div>
             <div class="hint perf"></div>`;
     }
 
@@ -2584,19 +2608,23 @@
         else if (a === 'delroute') { if (W.confirm('Route „' + cfg.route + '“ löschen?')) { delete cfg.routes[cfg.route]; cfg.route = ''; cfg.mode = 'route'; } }
         else if (a === 'teleforget') { if (W.confirm('Alle gelernten Teleporter vergessen?')) { cfg.tele = {}; travelCache = null; } }
         else if (a === 'clearDeaths') cfg.deaths = [];
+        else if (a === 'loadworldgh') {
+            if (worldDl) return;
+            worldDl = true; lastStatic = ''; render();
+            log('Weltkarte wird von GitHub geladen …');
+            fetchText(WORLD_URL)
+                .then(useWorld)
+                .catch(er => log('Weltkarte von GitHub fehlgeschlagen: ' + er.message + '. Alternativ „Datei“ wählen.'))
+                .finally(() => { worldDl = false; lastStatic = ''; render(); });
+            return;
+        }
         else if (a === 'loadworld') {
             const inp = document.createElement('input');
             inp.type = 'file'; inp.accept = '.json';
             inp.onchange = () => {
                 const f = inp.files[0];
                 if (!f) return;
-                f.text().then(t => {
-                    const d = JSON.parse(t), n = Object.keys(d).length, any = d[Object.keys(d)[0]];
-                    if (!n || !Array.isArray(any) || !Array.isArray(any[3])) throw new Error('keine Weltkarte');
-                    world = d; GM_setValue('mbworld', d); cfg.blocked = []; save();
-                    log('Weltkarte geladen: ' + n + ' Karten');
-                    xpKey = ''; lastStatic = ''; render();
-                }).catch(er => log('Weltkarte nicht lesbar: ' + er.message));
+                f.text().then(useWorld).catch(er => log('Weltkarte nicht lesbar: ' + er.message));
             };
             inp.click();
             return;
