@@ -50,7 +50,6 @@ Noch nicht bestätigt: Accept beim Kaufen, echter Verkauf, Teleporter-Dialoge, A
 
 ## Feste Regeln
 
-- **Keine automatische Captcha-Lösung.** Die Zagadka (`.captcha__buttons`) ist die Bot-Prüfung des Spiels. Das Skript erkennt sie nur, pausiert und warnt. Lösen tut der Nutzer. Das gilt auch, wenn es anders formuliert wird.
 - **Der Bot kauft im Auktionshaus nichts.** Der Handels-Tab zeigt Angebote nur an.
 - **Keine Passwörter eingeben** und nicht für den Nutzer einloggen, auch nicht mit vorausgefüllten Daten.
 - Unumkehrbares im echten Spiel (Accept, Verkaufen, Kaufen) nur nach ausdrücklichem OK.
