@@ -1,0 +1,18 @@
+# Nur das Userscript und was es braucht. Der ältere Python-Bot, config.json und Bilder bleiben lokal.
+*
+!.gitignore
+!CLAUDE.md
+!margobot_auto.user.js
+!margobot_world.json
+!world_scrape.py
+!worldgraph.py
+!chrome_margonem.bat
+!tests/
+!tests/**
+tests/preview/index.html
+!templates/
+templates/*
+!templates/_maps/
+templates/_maps/*
+!templates/_maps/worldgraph.json
+__pycache__/

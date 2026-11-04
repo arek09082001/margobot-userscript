@@ -1,0 +1,38 @@
+const fs = require('fs');
+const src = fs.readFileSync(require('path').join(__dirname, '..', 'margobot_auto.user.js'), 'utf8').replace('function log(t) {', 'function log(t) { if (process.env.LOG) console.log("   log:", t);');
+let seed = 3; const R = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+const W = 130, H = 40, wall = new Set();
+for (let x = 0; x < 126; x++) wall.add(x + ',20');   // Mauer, Durchgang nur ganz rechts (x=58,59)           // Mauer mit Lücke
+let all = [];
+all.push({ d: { id: 1, nick: 'Ghul', lvl: 41, x: 8, y: 24, type: 2, icon: 'hum/ghul.gif' } });   // hinter der Mauer, in Sichtweite
+all.push({ d: { id: 2, nick: 'Ghul', lvl: 41, x: 40, y: 24, type: 2, icon: 'hum/ghul.gif' } });
+for (let i = 0; i < 0; i++) all.push({ d: { id: 10 + i, nick: 'Ghul', lvl: 41, x: 50 + (i % 5), y: 30 + i, type: 2, icon: 'hum/ghul.gif' } });   // weit weg, für die Nebel-Erkennung
+const hero = { d: { x: 24, y: 18, lvl: 41, exp: 0 }, autoGoTo(p) { tgt = p; }, heroAtackRequest(id) { kills++; all = all.filter(n => n.d.id !== id); } };
+let tgt = null, kills = 0, now = 0;
+const near = () => all.filter(n => Math.abs(n.d.x - hero.d.x) <= 7 && Math.abs(n.d.y - hero.d.y) <= 7);   // Nebel
+const Engine = { hero, battle: { show: false }, npcs: { getDrawableList: near }, deadController: {},
+  map: { d: { id: 500, name: 'Defiled Tomb' }, size: { x: W, y: H }, col: { check: (x, y) => wall.has(x + ',' + y) ? 1 : 0 },
+    getGateways: () => ({ townnames: {}, getList: () => [] }) } };
+const world = { 500: [W, H, 'Grobowiec', [], [['Ghul', 41, 12]]] };
+const el = () => ({ style: {}, dataset: {}, addEventListener() {}, appendChild() {}, querySelector: () => null, querySelectorAll: () => [], set innerHTML(v) {}, closest: () => null });
+const store = { mbworld: world, mbauto: { on: true, pauseMin: 0, pauseMax: 0, lvlOn: true, lvlMin: 40, lvlMax: 42 } };
+const timers = [];
+const doc = { createElement: el, head: el(), body: el(), addEventListener() {}, querySelector: () => null };
+const sb = { unsafeWindow: { Engine }, GM_getValue: (k, d) => store[k] || d, GM_setValue: (k, v) => store[k] = v,
+  document: doc, innerWidth: 1400, innerHeight: 900, setInterval: f => timers.push(f), performance: { now: () => now } };
+new Function(...Object.keys(sb), src)(...Object.values(sb));
+// Held läuft 1 Feld pro Takt (BFS-frei, Mauer: an Lücke vorbei vereinfacht → gerade Linie, Mauer blockt)
+let lastX = null, dir = 0, rev = 0;
+for (let i = 0; i < 1500 && all.length; i++) {
+  if (lastX !== null && hero.d.x !== lastX) { const d = Math.sign(hero.d.x - lastX); if (dir && d !== dir) rev++; dir = d; } lastX = hero.d.x;
+  now += 200;
+  if (tgt && !(tgt.x === hero.d.x && tgt.y === hero.d.y)) {
+    const prev = new Map([[hero.d.x + ',' + hero.d.y, null]]), q = [[hero.d.x, hero.d.y]]; let found = null;
+    while (q.length && !found) { const [x, y] = q.shift(); for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) { const nx = x + dx, ny = y + dy, k = nx + ',' + ny;
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H || prev.has(k) || (wall.has(k) && !(nx === tgt.x && ny === tgt.y))) continue; prev.set(k, x + ',' + y);
+      if (nx === tgt.x && ny === tgt.y) { found = k; break; } q.push([nx, ny]); } }
+    if (found) { let k = found; while (prev.get(k) !== hero.d.x + ',' + hero.d.y) k = prev.get(k); const [nx, ny] = k.split(',').map(Number); if (!wall.has(k)) { hero.d.x = nx; hero.d.y = ny; } }
+  }
+  timers[0]();
+}
+console.log('beide erledigt:', !all.length, '| nach', (now / 1000).toFixed(0), 's | Richtungswechsel:', rev);
