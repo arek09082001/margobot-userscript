@@ -163,6 +163,10 @@ _g('skills&battleaction=set&battleskills=92,38,112,197,112,38,249,108&rpt=1')
 
 Geschätzt, nicht aus der Doku: `SK_WEIGHT` im Skript gewichtet jeden Wert für XP und PvP. Aktive Fähigkeiten bekommen einen Abschlag, weil sie nicht jede Runde wirken. Verteilt werden nur freie Punkte, immer die erlaubte Fähigkeit mit dem höchsten Wert pro fehlendem Punkt. Gewichte nur mit Begründung aus der Mechanik ändern.
 
+Das Setzen der Punkte hat der Nutzer im Spiel bestätigt.
+
+Mistrzostwo-Vorschlag, ebenfalls geschätzt: gelernte aktive Fähigkeiten, die zur Waffe passen. Zuerst die mit Abklingzeit, danach die ohne, jeweils die stärkste vorn, weil eine Fähigkeit ohne Abklingzeit fast immer klappt und alles dahinter kaum noch drankäme. Der Knopf sendet `skills&battleaction=set&battleskills=<ids>&rpt=1` einmal nach Rückfrage. Noch nicht im Spiel getestet, auch nicht, ob der Befehl ohne offenes „Edytuj“ wirkt. Die aktuelle Kette kann der Bot nicht lesen, er kann also nicht nachprüfen. Freie Plätze stellt der Nutzer ein (Standard 7).
+
 ## Vermutet (nicht bestätigt)
 
 - **Punkte gesamt = Level − 24.** Passt zu Level 232 und 208 Punkten, ist aber nur ein Datenpunkt.

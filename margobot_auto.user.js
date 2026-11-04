@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.4
+// @version      7.5
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -181,12 +181,13 @@
         return d.length ? [d[d.length >> 1][1], d[d.length >> 1][2]] : [m[0] >> 1, m[1] >> 1];
     }
     const TELE_COST = 30;
-    function worldSearch(start, sxy, goals) {
+    function worldSearch(start, sxy, goals, closed) {
         /* Dijkstra über alle Karten: Laufweg in der Karte (Luftlinie ×1.3) + 8 je Kartenwechsel.
+           closed: zusätzlich gesperrte Türen nur für diese Suche ('von>nach').
            Rückgabe: {best, prev} – prev[id] = [vorige Karte, Tür auf der vorigen Karte]. */
         const at = cfg.blockedAt || {};
         cfg.blocked = (cfg.blocked || []).filter(k => at[k] && Date.now() - at[k] < 15 * 60000);
-        const blocked = new Set(cfg.blocked), goal = goals ? new Set(goals.map(Number)) : null;
+        const blocked = new Set(cfg.blocked.concat(closed || [])), goal = goals ? new Set(goals.map(Number)) : null;
         const best = { [start]: 0 }, prev = { [start]: null }, pos = { [start]: sxy };
         const heap = [[0, start]];
         const push = it => { heap.push(it); let i = heap.length - 1; while (i) { const p = (i - 1) >> 1; if (heap[p][0] <= heap[i][0]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
@@ -345,7 +346,7 @@
             r = travelCache.r;
         }
         if (!r || r.path.length < 2) {
-            if (!world[mapId()]) log(`Karte „${mapName()}“ (#${mapId()}) fehlt in der Weltkarte`);
+            if (world && !world[mapId()]) log(`Karte „${mapName()}“ (#${mapId()}) fehlt in der Weltkarte`);
             return 'kein Weg';
         }
         const next = r.path[1].id, [hx, hy] = heroXY(), now = performance.now();
@@ -671,8 +672,127 @@
         return go(best, 'Erkunden');
     }
 
+    // ── Hinter der Wand: Umweg über andere Karten ───────────────
+    /* Manche Karten sind geteilt, die andere Seite erreicht man nur über eine Nachbarkarte (z. B. eine Höhle).
+       Welche Rücktür auf welcher Seite herauskommt, verrät die Weltkarte nicht. Darum: hingehen, durch eine Tür zurück,
+       dann nachsehen. Falsche Seite → nächste Tür, und nach DET_MS ist Schluss. Unterwegs wird nichts angegriffen. */
+    const DET_HOPS = 4, DET_MS = 180000;
+    let det = null, detVisit = null, detEnd = 0, detFail = {}, behindLog = '', badExit = {}, exitWalk = null, exitUn = null, exitLog = '';
+    const hops = (r, to) => { let n = 0; for (let p = r.prev[to]; p; p = r.prev[p[0]]) n++; return n; };
+    function closedDoors(f) {                       // Türen dieser Karte, die von der eigenen Seite aus keiner erreicht
+        const A = mapId(), gws = gateways(), open = new Set(gws.filter(g => cost(f, g.x, g.y) < Infinity).map(g => +g.id));
+        return gws.filter(g => !open.has(+g.id)).map(g => A + '>' + g.id);
+    }
+    function startDetour(hx, hy, behind, exit) {
+        const A = mapId(), now = performance.now();
+        if (cfg.detour === false || !world || !world[A] || detFail[A] > now) return false;
+        // mit Route nur einmal pro Besuch, sonst pendelt er zwischen beiden Seiten, statt weiterzugehen
+        if (exit ? detVisit === A : now - detEnd < 60000) return false;
+        const spot = behind.slice().sort((a, b) => (Math.abs(a.x - hx) + Math.abs(a.y - hy)) - (Math.abs(b.x - hx) + Math.abs(b.y - hy)))[0];
+        const theirs = field(spot.x, spot.y), closed = closedDoors(bfs(hx, hy));
+        const out = new Set(gateways().filter(g => +g.id !== A && cost(theirs, g.x, g.y) < Infinity).map(g => +g.id)), cands = [];
+        for (const X of out) {
+            const r = worldSearch(A, [hx, hy], [X], closed);
+            if (r.end !== null && hops(r, X) <= DET_HOPS) cands.push([r.best[X], X]);
+        }
+        if (!cands.length) {
+            detFail[A] = now + 15 * 60000;
+            log(`${behind.length} ${behind.length === 1 ? 'Mob' : 'Mobs'} hinter einer Wand, kein kurzer Umweg bekannt – lasse sie aus`);
+            return false;
+        }
+        det = { home: A, spot: { x: spot.x, y: spot.y }, cands: cands.sort((a, b) => a[0] - b[0]).map(c => c[1]), i: 0, tried: [], door: null, left: false,
+                t0: now, pos: cfg.routePos, cur: A, prev: null, arr: null, moved: now, xy: '' };
+        log(`${spot.nick} steht hinter einer Wand – Umweg über ${wname(det.cands[0])}`);
+        return true;
+    }
+    function detAbort(why) {
+        const A = det.home, now = performance.now();
+        det = null; detEnd = now; detFail[A] = now + 15 * 60000;
+        log('Umweg abgebrochen: ' + why);
+        if (mapId() !== A && !cfg.routes[cfg.route]) startTravel([A], wname(A), 'hunt');   // mit Route führt der Bot selbst zurück
+    }
+    function detStep() {
+        const now = performance.now(), here = mapId(), [hx, hy] = heroXY(), A = det.home;
+        if (now - det.t0 > DET_MS) return detAbort('dauert zu lange');
+        if (det.exit) {                                // nur außen herum zum Ausgang der Route
+            const s = travelStep([det.to], wname(det.to));
+            if (s === 'da') det = null;
+            else if (s === 'kein Weg') detAbort('kein Weg nach ' + wname(det.to));
+            return;
+        }
+        if (here !== det.cur) { det.prev = det.cur; det.cur = here; det.arr = [hx, hy]; }
+        if (hx + ',' + hy !== det.xy) { det.xy = hx + ',' + hy; det.moved = now; }
+        if (here === A && det.left) {                  // zurück: richtige Seite?
+            if (now - mapAt < 1500) return;
+            det.left = false;
+            if (cost(bfs(hx, hy), det.spot.x, det.spot.y) < Infinity) {
+                log('Umweg geschafft: andere Seite von ' + mapName());
+                cfg.routePos = det.pos; save();        // die Fahrt durch die Nachbarkarte zählt nicht als Route
+                det = null; detVisit = A; detEnd = now; goal = null; committed = null;
+                return;
+            }
+            if (det.door) det.tried.push(det.door);
+            det.door = null;
+            log('Falsche Seite – versuche eine andere Tür');
+        }
+        if (here !== A) det.left = true;
+        const X = det.cands[det.i];
+        if (X === undefined) return detAbort('keine Tür führt auf die andere Seite');
+        if (here !== X) {
+            if (travelStep([X], wname(X)) === 'kein Weg') { det.i++; det.tried = []; }
+            return;
+        }
+        if (now - mapAt < 1200) return;                // Karte lädt noch
+        const f = bfs(hx, hy), arr = det.arr || [hx, hy], from = g => Math.abs(g.x - arr[0]) + Math.abs(g.y - arr[1]);
+        const opts = gateways().filter(g => +g.id === A && cost(f, g.x, g.y) < Infinity && !det.tried.some(t => Math.abs(t.x - g.x) <= 3 && Math.abs(t.y - g.y) <= 3));
+        if (!opts.length) { det.i++; det.tried = []; return; }
+        // direkt von A gekommen: Die Tür am Ankunftsort führt auf die alte Seite zurück, also zuerst die entfernteste
+        opts.sort((a, b) => det.prev === A ? from(b) - from(a) : from(a) - from(b));
+        det.door = { x: opts[0].x, y: opts[0].y };
+        if (now - det.moved > 10000 && Math.abs(hx - det.door.x) + Math.abs(hy - det.door.y) > 1) { det.tried.push(det.door); det.door = null; det.moved = now; return; }
+        useDoor(det.door.x, det.door.y, 'Umweg → ' + wname(A));
+    }
+    function goExit(hx, hy, exit) {
+        /* Zum Ausgang der Route. Steht die Tür hinter einer Wand, außen herum gehen statt davor zu warten. */
+        const A = mapId(), now = performance.now(), k = A + '>' + exit.id, f = bfs(hx, hy);
+        const reach = gateways().filter(g => String(g.id) === String(exit.id)).map(g => [g, cost(f, g.x, g.y)]).filter(t => t[1] < Infinity).sort((a, b) => a[1] - b[1]);
+        if (reach.length && !(badExit[k] > now)) {
+            const door = reach[0][0], pos = hx + ',' + hy;
+            if (!exitWalk || exitWalk.k !== k || exitWalk.pos !== pos) exitWalk = { k, pos, at: now };
+            if (now - exitWalk.at > 10000 + (+cfg.pauseMax || 0) && reach[0][1] > 1) {
+                badExit[k] = now + 5 * 60000; exitWalk = null; loadCols(true);
+                log('Held kommt nicht zur Tür nach ' + exit.name + ' – suche anderen Weg');
+                return;
+            }
+            exitUn = null;
+            useDoor(door.x, door.y, 'Ausgang ' + exit.name);
+            return;
+        }
+        if (now - mapAt < 4000) return;                // Wände vielleicht erst halb geladen
+        if (!exitUn || exitUn.k !== k) { exitUn = { k, at: now }; loadCols(true); return; }
+        if (now - exitUn.at < 2000) return;
+        if (cfg.detour !== false && world && world[A]) {
+            const r = worldSearch(A, [hx, hy], [+exit.id], closedDoors(f));
+            if (r.end !== null && hops(r, +exit.id) <= DET_HOPS + 2) {
+                det = { exit: true, home: A, to: +exit.id, t0: now };
+                log('Tür nach ' + exit.name + ' ist von hier nicht erreichbar – gehe außen herum');
+                return;
+            }
+        }
+        if (exitLog !== k) { exitLog = k; log('Ausgang nach ' + exit.name + ' ist nicht erreichbar, und ich kenne keinen anderen Weg – bitte selbst hinlaufen'); }
+    }
+    function moveOn(hx, hy, exit, behind) {         // nichts (mehr) erreichbar: erkunden, Umweg oder weiter zum Ausgang
+        if (fog.on && cfg.fogExplore !== false && exploreStep(hx, hy, !!exit)) return;
+        if (behind.length && startDetour(hx, hy, behind, exit)) return;
+        if (exit) goExit(hx, hy, exit);
+        else if (behind.length && behindLog !== String(mapId())) {
+            behindLog = String(mapId());
+            log(`${behind.length} ${behind.length === 1 ? 'Mob' : 'Mobs'} hier hinter einer Wand – warte auf neue Mobs`);
+        }
+    }
+
     // ── Reihenfolge: Start → alle Ziele → Ausgang ───────────────
-    const fieldCache = new Map();                  // BFS-Felder ab Mob-Kacheln (Mobs stehen meist still) – pro Karte
+    const fieldCache = new Map();                // BFS-Felder ab Mob-Kacheln (Mobs stehen meist still) – pro Karte
     function field(x, y) {
         const k = x + ',' + y;
         let f = fieldCache.get(k);
@@ -771,6 +891,7 @@
         lastMap = mn;
         // neue Karte: alte Laufziele vergessen, kurz warten, bis das Spiel die Karte geladen hat
         mapAt = performance.now(); goal = null; committed = null; lastPlan = null; travelDoor = null;
+        if (!det) detVisit = null;
         if (prev) busyUntil = Math.max(busyUntil, mapAt + 900);
         if (cfg.rec) {
             if (cfg.rec[cfg.rec.length - 1] !== mn) { cfg.rec.push(mn); save(); log('Aufnahme: ' + cfg.rec.join(' → ')); }
@@ -785,6 +906,7 @@
     // ── Ablauf ──────────────────────────────────────────────────
     let committed = null, planAt = 0, renderAt = 0, offRoute = null, offRouteLog = null, atkTries = {}, skipUntil = {};                          // Ziel, zu dem der Held gerade läuft
     let busyUntil = 0, goal = null, goalSince = 0, lastHero = '', heroStill = 0, lastPlan = null, battleSeen = false;
+    let walkStuck = { id: null, pos: '', at: 0, last: 0, reread: false }, walkFails = {}, noReachAt = 0;
     /* Andere Spieler beobachten: wer seit sec Sekunden höchstens near Felder entfernt ist und dabei selbst
        mindestens 3 Felder gelaufen ist, folgt uns (ein Spieler, der nur nebenan steht und jagt, zählt nicht). */
     const pkSeen = {};                              // id → { since, x0, y0, last, moved }
@@ -1751,6 +1873,7 @@
         if (cfg.e2.on) { e2Step(); if (performance.now() - renderAt > 500) { renderAt = performance.now(); render(); } return; }
         // Reise zu einer Karte (Weltkarte)
         if (cfg.travel) {
+            det = null;
             const s = travelStep(cfg.travel.to, cfg.travel.label);
             if (s === 'da') {
                 const then = cfg.travel.then;
@@ -1765,10 +1888,11 @@
             lastPlan = null; render();
             return;
         }
-        if (!cfg.on) return;
+        if (!cfg.on) { det = null; return; }
         if (pkEsc && cfg.pk.mode !== 'off') { if (loadCols()) escapeStep(); return; }   // Flucht vor einem Spieler hat Vorrang
         // Rückweg nach dem Tod: zur Todeskarte bzw. zur nächsten Karte der Route
         if (cfg.back) {
+            det = null;
             const r = cfg.routes[cfg.route];
             const targets = r ? r.maps.map(entryName) : [cfg.back.map];
             const mn = mapName();
@@ -1795,6 +1919,8 @@
                 return;
             }
         }
+        // Umweg läuft: Vorrang vor der Route, sonst schickt sie den Helden von der Nachbarkarte gleich wieder zurück
+        if (det) { detStep(); lastPlan = null; offRoute = null; render(); return; }
         // Route gewählt, aber diese Karte gehört nicht dazu → nur hinlaufen, NICHTS angreifen.
         // Gejagt wird ausschließlich auf den Karten der Route (vorher fiel der Bot ohne Weg in den Jagdmodus).
         const rt = cfg.routes[cfg.route];
@@ -1831,10 +1957,7 @@
         if (!targets.length) {
             lastPlan = null;
             // Nebel: das Spiel zeigt nur Mobs in Sichtweite → Karte ablaufen, bevor sie als leer gilt
-            if (fog.on && cfg.fogExplore !== false && exploreStep(hx, hy, !!exit)) { render(); return; }
-            if (exit) {
-                useDoor(exit.x, exit.y, 'Ausgang ' + exit.name);
-            }
+            moveOn(hx, hy, exit, []);
             render();
             return;
         }
@@ -1850,10 +1973,17 @@
         else { p = plan(targets, exit); planAt = tNow; if (keepT && still >= 6000) { committed = null; goal = null; } }
         lastPlan = p;
         if (tNow - renderAt > 500) { renderAt = tNow; render(); }
-        if (!p) {                                                      // kein Ziel erreichbar → Wände neu lesen
-            if (performance.now() - colAt > 3000) loadCols(true);
+        if (!p) {
+            // Kein Ziel erreichbar: Erst den Wänden nach frischem Einlesen glauben (nach dem Kartenwechsel oft halb
+            // geladen), dann weiter – früher blieb der Held hier für immer stehen.
+            if (tNow - mapAt < 4000) return;
+            if (!noReachAt) { noReachAt = tNow; loadCols(true); return; }
+            if (tNow - noReachAt < 2000) return;
+            if (tNow - colAt > 30000) loadCols(true);
+            moveOn(hx, hy, exit, targets);
             return;
         }
+        noReachAt = 0;
         const t = p.order[0];
         const adj = Math.abs(t.x - hx) <= 1 && Math.abs(t.y - hy) <= 1;
         if (adj && t.ghost) { fog.mem.delete(t.id); committed = null; lastPlan = null; return; }   // dort, aber nicht mehr da
@@ -1874,8 +2004,29 @@
             log('Angriff: ' + t.nick + ' (' + t.lvl + ')' + (tr.n > 1 ? ` – Versuch ${tr.n}` : ''));
             goal = null; committed = t.id;
         } else {
+            // Die Wegsuche sagt „erreichbar“, der Held steht aber vor einer Wand (Kollisionen beim Lesen unvollständig
+            // oder das Spiel kennt mehr): erst Wände neu lesen und neu planen, dann den Mob eine Weile auslassen.
+            const wk = walkStuck, tol = +cfg.pauseMax || 0;
+            if (wk.id !== t.id || wk.pos !== hk || tNow - wk.last > 2000 + tol) Object.assign(wk, { id: t.id, pos: hk, at: tNow, reread: false });
+            wk.last = tNow;
+            if (tNow - wk.at > 3500 + tol && !wk.reread) { wk.reread = true; loadCols(true); committed = null; goal = null; lastPlan = null; return; }
+            if (tNow - wk.at > 8000 + tol) {
+                const n = walkFails[t.id] = (walkFails[t.id] || 0) + 1, ms = Math.min(15 * 60000, 120000 * Math.pow(2, n - 1));
+                skipUntil[t.id] = tNow + ms; committed = null; goal = null; lastPlan = null; wk.id = null;
+                log(`Komme nicht hin zu ${t.nick} (Wand?) – lasse ihn ${Math.round(ms / 60000)} min aus`);
+                return;
+            }
             committed = t.id;
-            walkTo(t.x, t.y, t.nick + (t.ghost ? ' (zuletzt gesehen)' : ''));
+            let wx = t.x, wy = t.y;
+            if (walls[t.y * MW + t.x]) {                              // Mob steht auf einem gesperrten Feld: aufs freie Nachbarfeld laufen
+                const f = bfs(hx, hy);
+                let bd = Infinity;
+                for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+                    const nx = t.x + dx, ny = t.y + dy, v = nx < 0 || ny < 0 || nx >= MW || ny >= MH ? -1 : f[ny * MW + nx];
+                    if (v >= 0 && v < bd) { bd = v; wx = nx; wy = ny; }
+                }
+            }
+            walkTo(wx, wy, t.nick + (t.ghost ? ' (zuletzt gesehen)' : ''));
             if (goal && still > 2500) { goal = null; }               // hängt fest → neu anstoßen
         }
     }
@@ -2631,6 +2782,7 @@
         if (cfg.back) return ['trv', 'Rückweg', cfg.back.map];
         if (inBattle()) return ['run', 'Kampf', mapName()];
         const p = lastPlan;
+        if (det) return ['trv', 'Umweg', (det.exit ? 'nach ' + wname(det.to) : 'auf die andere Seite von ' + wname(det.home)) + ' · greift unterwegs nichts an'];
         if (offRoute && cfg.routes[cfg.route]) return offRoute.way
             ? ['trv', 'Weg zur Route', (lastTravel ? `noch ${lastTravel.left} ${lastTravel.left === 1 ? 'Karte' : 'Karten'} · ` : '') + 'greift unterwegs nichts an']
             : ['dead', 'Kein Weg zur Route', mapName() + ' – bitte selbst zur Route laufen'];
@@ -2792,6 +2944,7 @@
             <div class="fld"><span>Pause (ms)</span><input class="num" data-a="pauseMin" value="${cfg.pauseMin}">–<input class="num" data-a="pauseMax" value="${cfg.pauseMax}"></div>
             <label class="chk"><input type="checkbox" data-a="closeBattle" ${cfg.closeBattle ? 'checked' : ''}>Kampffenster nach dem Kampf schließen</label>
             <label class="chk"><input type="checkbox" data-a="fogExplore" ${cfg.fogExplore !== false ? 'checked' : ''}>Nebel-Karten erkunden</label>
+            <label class="chk"><input type="checkbox" data-a="detour" ${cfg.detour !== false ? 'checked' : ''}>Umwege über Nachbarkarten (Mobs hinter Wänden)</label>
             <div class="fld"><span>Nebel: weiter nach</span><select data-a="fogPct" style="width:auto">${[100, 75, 50].map(v =>
                 `<option value="${v}" ${(+cfg.fogPct || 100) === v ? 'selected' : ''}>${v} % der Mob-Plätze</option>`).join('')}</select></div>
             ${world && !worldHasPos() ? '<div class="hint">Deine Weltkarte kennt noch keine Mob-Plätze. Unten bei Weltkarte „Von GitHub“ tippen, dann sucht der Bot im Nebel gezielt.</div>' : ''}
@@ -3234,7 +3387,7 @@
     }
     function skillSig() {
         const d = skillData(), g = skillGear();
-        return [d && d.total, d && d.rows.map(r => [r.open, r.skills.map(x => x.cLvl)]), g.w && g.w.id, g.sh && g.sh.id, skOpen, cfg.skGoal, skWindowOpen(), skRun && skRun.i, heroLvl()];
+        return [d && d.total, d && d.rows.map(r => [r.open, r.skills.map(x => x.cLvl)]), g.w && g.w.id, g.sh && g.sh.id, skOpen, cfg.skGoal, cfg.skSlots, skWindowOpen(), skRun && skRun.i, heroLvl()];
     }
     /* Vorschlag: Die Doku empfiehlt keine Builds, sie liefert nur die Mechanik. Darum eine eigene, geschätzte Bewertung:
        Gewicht je Wert [XP, PvP] mal Wert auf Stufe 10. Begründung aus „Mechanika walk“: SA verkürzt die Zugzeit (at = 1/sa),
@@ -3341,6 +3494,43 @@
         r.wait = now;
     }
     setInterval(() => { try { skTick(); } catch (e) { skStop('Fehler: ' + e.message); } }, 250);
+    // Mistrzostwo walk: Doku: „Platz 1 versuchen, sonst den nächsten, dann von vorn“. Eine Fähigkeit ohne Abklingzeit klappt
+    // fast immer, alles dahinter käme kaum noch dran. Darum zuerst die mit Abklingzeit (stärkste vorn), danach die ohne.
+    const skSlots = () => Math.max(1, Math.min(20, +cfg.skSlots || 7));   // im Spiel gesehen: ab Platz 8 gesperrt, bis man ihn kauft
+    function skillChain(goal) {
+        const d = skillData();
+        if (!d) return null;
+        const g = skillGear(), L = [];
+        d.rows.forEach(r => r.skills.forEach(x => {
+            const c = +x.cLvl || 0;
+            if (x.type !== 'active' || !c || skillFit(x, g) === 'no') return;
+            const cd = skNum(parseStat((x.allStats || [])[c - 1]).cooldown);
+            L.push({ id: +x.id, name: x.name, lvl: c, cd, v: skillValue(x, goal, c).v * (1 + cd / 6) });   // Wert je Einsatz, ohne den Abklingzeit-Abschlag
+        }));
+        return L.sort((a, b) => (b.cd > 0) - (a.cd > 0) || b.v - a.v).slice(0, skSlots());
+    }
+    function skChainSend(goal) {
+        const ch = skillChain(goal);
+        if (!ch || !ch.length) return;
+        if (!skWindowOpen()) { log('Mistrzostwo: Erst das Fähigkeiten-Fenster im Spiel öffnen'); return; }
+        if (inBattle()) { log('Mistrzostwo: Im Kampf nicht ändern'); return; }
+        const names = ch.map((x, i) => `${i + 1}. ${x.name}`).join('\n');
+        if (!W.confirm(`Mistrzostwo-Kette ersetzen?\n\n${names}\n\nDeine bisherige Kette wird überschrieben.`)) return;
+        send('skills&battleaction=set&battleskills=' + ch.map(x => x.id).join(',') + '&rpt=1');
+        log(`Mistrzostwo: ${ch.length} Plätze gesendet – bitte im Fenster prüfen (Fenster neu öffnen)`);
+    }
+    function skChainHtml(goal) {
+        const ch = skillChain(goal), slots = skSlots();
+        if (!ch) return '';
+        const list = ch.map((x, i) => `<div class="ski"><span>${i + 1}. ${esc(x.name)}</span><b>${x.cd ? 'Abklingzeit ' + x.cd : 'ohne Abklingzeit'}</b></div>`).join('');
+        const act = !ch.length ? '<div class="empty">Noch keine aktive Fähigkeit gelernt, die zur Waffe passt.</div>'
+            : !skWindowOpen() ? '<div class="empty">Zum Setzen das <b>Fähigkeiten-Fenster im Spiel öffnen</b>.</div>'
+            : `<button class="cta" data-a="skchain">${ico('check')}Reihenfolge übernehmen · ${ch.length} ${ch.length === 1 ? 'Platz' : 'Plätze'}</button>`;
+        return `<h4>Mistrzostwo walk: Reihenfolge im Kampf</h4>
+            <div class="fld"><span>Freie Plätze</span><select data-a="skslots" style="width:auto">${Array.from({ length: 20 }, (_, i) => `<option value="${i + 1}" ${slots === i + 1 ? 'selected' : ''}>${i + 1}</option>`).join('')}</select></div>
+            ${list}${act}
+            <div class="hint">Vom Bot geschätzt, ersetzt deine bisherige Kette. Gekaufte Plätze oben einstellen.</div>`;
+    }
     function skPlanHtml() {
         const goal = cfg.skGoal === 'pvp' ? 'pvp' : 'xp', plan = skillPlan(goal), open = skWindowOpen(), cost = skCost();
         const seg = `<div class="seg sks"><button class="${goal === 'xp' ? 'on' : ''}" data-a="skgoal" data-m="xp"><b>XP</b><span>Monster jagen</span></button>
@@ -3356,7 +3546,8 @@
         else act = `<button class="cta" data-a="skall">${ico('check')}${n === 1 ? '1 Punkt' : 'Alle ' + n + ' Punkte'} anwenden · ${fmtXp(cost * n)} Gold</button>
             ${n > 1 ? `<button class="sub" data-a="skone">nur den nächsten Punkt: ${esc(plan.steps[0].name)} → ${plan.steps[0].to} · ${fmtXp(cost)} Gold</button>` : ''}`;
         return `${seg}<h4>Vorschlag für ${plan.free} freie Punkte</h4>${list || ''}${act}
-            <div class="hint">Vom Bot berechnet aus den Werten der Fähigkeiten. Die Margonem-Doku empfiehlt selbst keine Builds. Aktive Fähigkeiten wirken nur, wenn sie in deiner Mistrzostwo-walk-Kette stehen.</div>`;
+            <div class="hint">Vom Bot berechnet aus den Werten der Fähigkeiten. Die Margonem-Doku empfiehlt selbst keine Builds. Aktive Fähigkeiten wirken nur, wenn sie in deiner Mistrzostwo-walk-Kette stehen.</div>
+            ${skChainHtml(goal)}`;
     }
     function skillDetail(x) {
         const c = +x.cLvl || 0, as = x.allStats || [], cur = c ? parseStat(as[c - 1]) : {}, nxt = c < as.length ? parseStat(as[c]) : null;
@@ -3539,6 +3730,7 @@
             render(); return;
         }
         if (a === 'skstop') { skStop('angehalten'); render(); return; }
+        if (a === 'skchain') { skChainSend(cfg.skGoal === 'pvp' ? 'pvp' : 'xp'); render(); return; }
         if (a === 'tab') cfg.tab = el.dataset.t;
         else if (a === 'fold') cfg.open = !cfg.open;
         else if (a === 'stopall') { if (sess.t0 && !sess.end) { sess.end = Date.now(); saveSess(); } if (cfg.chain) endChain('von Hand'); if (cfg.e2.on) e2Stop(); cfg.on = false; cfg.travel = null; lastTravel = null; goal = null; log('Gestoppt'); }
@@ -3663,9 +3855,10 @@
         }
         if (rulesChange(t)) { save(); if ((a !== 'sf' || t.tagName === 'SELECT') && a !== 'wn') { lastStatic = ''; render(); } return; }
         if (t.dataset.k && t.type === 'checkbox') cfg.picked[t.dataset.k] = t.checked;
-        else if (a === 'lvlOn' || a === 'closeBattle' || a === 'autoCaptcha' || a === 'autoCaptchaConfirm' || a === 'captchaWarn') cfg[a] = t.checked;
+        else if (a === 'lvlOn' || a === 'closeBattle' || a === 'detour' || a === 'autoCaptcha' || a === 'autoCaptchaConfirm' || a === 'captchaWarn') cfg[a] = t.checked;
         else if (a === 'fogExplore') { cfg.fogExplore = t.checked; if (!t.checked) fog.on = false; }
         else if (a === 'fogPct') cfg.fogPct = +t.value || 100;
+        else if (a === 'skslots') cfg.skSlots = +t.value || 7;
         else if (a === 'exit') cfg.exits[mapName()] = t.value || undefined;
         else if (a === 'onDeath') cfg.onDeath = t.value;
         else if (a === 'pkMode') { cfg.pk.mode = t.value; pkEsc = null; }
