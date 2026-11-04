@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      6.1
+// @version      6.2
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -39,7 +39,7 @@
                   routes: {}, route: '', routePos: 0, rec: null,
                   onDeath: 'stop', deaths: [], graph: {}, back: null, optimal: true,
                   names: {}, travel: null, blocked: [], tab: 'xp', logOpen: false, tele: {},
-                  rules: [], chain: null, autoCaptcha: false, captchaWarn: true,
+                  rules: [], chain: null, autoCaptcha: false, autoCaptchaConfirm: false, captchaWarn: true,
                   pk: { mode: 'off', maxUp: 5, near: 6, sec: 5, never: '' } };
     const cfg = Object.assign({}, DEF, GM_getValue('mbauto', {}));
     cfg.pk = Object.assign({}, DEF.pk, cfg.pk || {});
@@ -1567,7 +1567,8 @@
             !el.closest('#mba') && el.querySelector('.button') && reallyVisible(el)) || null;
     }
     function solveCaptchaIfPossible() {
-        /* Klickt alle Buttons deren Label mit * beginnt und endet (*e*, *f* …), danach „Potwierdzam“. */
+        /* Klickt alle Buttons deren Label mit * beginnt und endet (*e*, *f* …).
+           „Potwierdzam“ nur, wenn autoCaptchaConfirm an ist. */
         if (!cfg.autoCaptcha || capt.solving) return false;
         const box = captchaOpen();
         if (!box) return false;
@@ -1581,7 +1582,7 @@
             return false;
         }
         capt.solving = true;
-        log('Zagadka: ' + correct.length + ' Antwort' + (correct.length > 1 ? 'en' : '') + ' mit * gefunden – löse automatisch');
+        log('Zagadka: ' + correct.length + ' Antwort' + (correct.length > 1 ? 'en' : '') + ' mit * gefunden – klicke sie an');
         let delay = 200 + Math.random() * 300;
         correct.forEach((btn, i) => {
             const lab = ((btn.querySelector('.label') || btn).innerText || '').trim();
@@ -1591,9 +1592,13 @@
             delay += 280 + Math.random() * 320;
         });
         setTimeout(() => {
-            const confirm = document.querySelector('.captcha__confirm .button');
-            if (confirm && reallyVisible(confirm)) {
-                try { confirm.click(); log('Zagadka: Potwierdzam geklickt'); } catch (e) {}
+            if (cfg.autoCaptchaConfirm) {
+                const confirm = document.querySelector('.captcha__confirm .button');
+                if (confirm && reallyVisible(confirm)) {
+                    try { confirm.click(); log('Zagadka: Potwierdzam geklickt'); } catch (e) {}
+                }
+            } else {
+                log('Zagadka: Antworten gewählt – bitte selbst auf Potwierdzam klicken');
             }
             capt.solving = false;
             capt.solvedAt = performance.now();
@@ -2302,9 +2307,10 @@
             <div class="fld"><span>Pause (ms)</span><input class="num" data-a="pauseMin" value="${cfg.pauseMin}">–<input class="num" data-a="pauseMax" value="${cfg.pauseMax}"></div>
             <label class="chk"><input type="checkbox" data-a="closeBattle" ${cfg.closeBattle ? 'checked' : ''}>Kampffenster nach dem Kampf schließen</label>
             <label class="chk"><input type="checkbox" data-a="fogExplore" ${cfg.fogExplore !== false ? 'checked' : ''}>Nebel-Karten erkunden</label>
-            <label class="chk"><input type="checkbox" data-a="autoCaptcha" ${cfg.autoCaptcha ? 'checked' : ''}>Zagadka automatisch lösen (*…*)</label>
+            <label class="chk"><input type="checkbox" data-a="autoCaptcha" ${cfg.autoCaptcha ? 'checked' : ''}>Zagadka: Antworten mit * automatisch anklicken</label>
+            <label class="chk"><input type="checkbox" data-a="autoCaptchaConfirm" ${cfg.autoCaptchaConfirm ? 'checked' : ''}>Zagadka: danach auch „Potwierdzam“ klicken</label>
             <label class="chk"><input type="checkbox" data-a="captchaWarn" ${cfg.captchaWarn !== false ? 'checked' : ''}>Bei Zagadka Ton und Benachrichtigung</label>
-            <div class="hint">Mit Auto-Lösen werden alle Antworten mit Sternchen (*e*, *f* …) angeklickt und danach „Potwierdzam“. Ohne Auto-Lösen pausiert der Bot nur.</div>
+            <div class="hint">Vorwarnung (Zähler) → Bot jagt weiter. Sobald das Fenster da ist: Bot pausiert und klickt (wenn aktiv) alle *…*-Antworten. „Potwierdzam“ nur bei zweiter Option.</div>
             <div class="hint">Auf Karten mit Nebel sieht der Bot nur Mobs in seiner Nähe und läuft die Karte ab, um weitere zu finden.</div>
 
             <h4>Andere Spieler</h4>
@@ -2812,7 +2818,7 @@
         }
         if (rulesChange(t)) { save(); if ((a !== 'sf' || t.tagName === 'SELECT') && a !== 'wn') { lastStatic = ''; render(); } return; }
         if (t.dataset.k && t.type === 'checkbox') cfg.picked[t.dataset.k] = t.checked;
-        else if (a === 'lvlOn' || a === 'closeBattle' || a === 'autoCaptcha' || a === 'captchaWarn') cfg[a] = t.checked;
+        else if (a === 'lvlOn' || a === 'closeBattle' || a === 'autoCaptcha' || a === 'autoCaptchaConfirm' || a === 'captchaWarn') cfg[a] = t.checked;
         else if (a === 'fogExplore') { cfg.fogExplore = t.checked; if (!t.checked) fog.on = false; }
         else if (a === 'exit') cfg.exits[mapName()] = t.value || undefined;
         else if (a === 'onDeath') cfg.onDeath = t.value;
