@@ -66,8 +66,9 @@ def parse_frame(page):
         if not lv or typ not in ("2", "3"):          # 2/3 = angreifbar (wie im Spiel), Rest Deko/NPC
             continue
         key = (nick, int(lv.group(1)))
-        e = mobs.setdefault(key, {"n": nick, "l": int(lv.group(1)), "i": icon, "c": 0, "t": int(typ)})
+        e = mobs.setdefault(key, {"n": nick, "l": int(lv.group(1)), "i": icon, "c": 0, "t": int(typ), "p": []})
         e["c"] += 1
+        e["p"] += [int(x), int(y)]                   # Stellplatz – für Nebel-Karten: dort gezielt nachsehen
     return {"w": w, "h": h, "gw": gws, "mobs": list(mobs.values())}
 
 

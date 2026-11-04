@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      6.0
+// @version      6.1
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -503,7 +503,7 @@
     function fogUpdate(hx, hy) {
         const now = performance.now();
         if (fog.key !== colKey) Object.assign(fog, { key: colKey, t0: now, maxVis: 0, far: 0, on: false, seen: new Uint8Array(MW * MH),
-                                                     goal: null, doneAt: 0, pct: 0, known: new Set(), spawns: new Map(), mem: new Map() });
+                                                     goal: null, doneAt: 0, pct: 0, known: new Set(), spawns: new Map(), mem: new Map(), wspots: null });
         const visL = E().npcs.getDrawableList().filter(n => n.d && (n.d.type === 2 || n.d.type === 3)).map(n => n.d);
         fog.maxVis = Math.max(fog.maxVis, visL.length);
         // typisch für Nebel: alles Sichtbare steht nah am Helden. Ein einziger weit entfernter Mob = kein Nebel.
@@ -516,10 +516,16 @@
             log('Nebel auf ' + mapName() + ': sehe ' + fog.maxVis + ' von ~' + total + ' Mobs – erkunde die Karte');
         }
         for (const d of visL) if (wanted(d) || cfg.picked[mobKey(d.icon)]) {   // von Anfang an merken, auch vor der Nebel-Erkennung
-            fog.mem.set(d.id, { x: d.x, y: d.y, at: now });
+            fog.mem.set(d.id, { x: d.x, y: d.y, at: now, nick: d.nick, lvl: d.lvl || 0 });
             if (d.id === committed) fog.chase = d.id;
         }
         if (!fog.on) return;
+        /* Gemerkte Mobs, die nicht mehr zu sehen sind: Steht der Held so nah an der Stelle, dass er den Mob sehen
+           müsste, ist er wirklich weg (getötet, weitergelaufen). Sonst ist er nur hinter der Sichtgrenze – dann bleibt
+           er ein Ziel, z. B. nach einem Umweg um eine Mauer. */
+        const vis = new Set(visL.map(d => d.id)), R = Math.max(2, (fog.sight || 5) - 2);
+        for (const [id, m] of fog.mem) if (!vis.has(id) && (Math.max(Math.abs(m.x - hx), Math.abs(m.y - hy)) <= R || now - m.at > 120000)) fog.mem.delete(id);
+        if (!fog.wspots) fog.wspots = worldSpots();
         for (const d of visL) {                    // Sichtweite lernen + Fundstellen merken
             if (!fog.known.has(d.id)) {
                 fog.known.add(d.id);
@@ -535,6 +541,23 @@
         for (let y = Math.max(0, hy - S); y <= Math.min(MH - 1, hy + S); y++)
             for (let x = Math.max(0, hx - S); x <= Math.min(MW - 1, hx + S); x++) fog.seen[y * MW + x] = 1;
         for (const p of fog.spawns.values()) if (Math.abs(p.x - hx) <= S - 1 && Math.abs(p.y - hy) <= S - 1) p.at = now;
+        for (const p of fog.wspots) if (!p.done && Math.abs(p.x - hx) <= S - 1 && Math.abs(p.y - hy) <= S - 1) p.done = true;
+    }
+    function worldSpots() {
+        /* Stellplätze der gewünschten Mobs laut Weltkarte (margoworld). Im Nebel sieht der Held nur seine Umgebung,
+           die Plätze sind aber bekannt: gezielt dort nachsehen statt die ganze Fläche abzulaufen. */
+        const wm = world && world[mapId()], out = [], seen = new Set();
+        if (!wm) return out;
+        for (const m of wm[4]) {
+            const P = m[3];
+            if (!Array.isArray(P) || !wanted({ lvl: m[1], key: m[4] ? mobKey(m[4]) : '' })) continue;
+            for (let i = 0; i + 1 < P.length; i += 2) {
+                const x = P[i], y = P[i + 1], k = (x >> 1) + ',' + (y >> 1);
+                if (seen.has(k) || x >= MW || y >= MH) continue;
+                seen.add(k); out.push({ x, y, done: false });
+            }
+        }
+        return out;
     }
     function exploreStep(hx, hy, hasExit) {
         /* true = läuft, false = nichts zu tun (Karte abgesucht und keine Fundstelle fällig). */
@@ -559,6 +582,29 @@
             if (fog.chasePos !== hx + ',' + hy) { fog.chasePos = hx + ',' + hy; fog.chaseMoved = now; }
             if (now - fog.chaseMoved > 10000) { fog.mem.delete(fog.chase); fog.chase = null; }
             else { walkTo(m.x, m.y, 'Mob zuletzt gesehen'); return true; }
+        }
+        if (!fog.doneAt && fog.wspots && fog.wspots.length) {
+            /* Mob-Plätze der Reihe nach ansehen (immer den nächsten). Sind genug davon abgesucht – Einstellung
+               „Nebel: absuchen bis“ – und nichts mehr zu sehen, geht es weiter zur nächsten Karte. */
+            const d = bfs(hx, hy);
+            if (fog.goal != null && now - fog.goalAt >= 15000) {      // kommt nicht hin → Platz aufgeben
+                const g = fog.wspots.find(p => p.y * MW + p.x === fog.goal);
+                if (g) g.done = true;
+                fog.goal = null;
+            }
+            const reach = fog.wspots.filter(p => p.done || cost(d, p.x, p.y) < Infinity);
+            const open = reach.filter(p => !p.done);
+            fog.pct = reach.length ? Math.round((reach.length - open.length) / reach.length * 100) : 100;
+            if (!open.length || fog.pct >= (+cfg.fogPct || 100)) {
+                fog.doneAt = now; fog.goal = null;
+                for (const p of fog.wspots) { const k = (p.x >> 1) + ',' + (p.y >> 1); if (!fog.spawns.has(k)) fog.spawns.set(k, { x: p.x, y: p.y, at: now }); }
+                log(`Nebel: ${fog.pct} % der Mob-Plätze abgesucht` + (hasExit ? ' – weiter zum Ausgang' : ' – laufe ab jetzt die Plätze ab'));
+                return exploreStep(hx, hy, hasExit);
+            }
+            const g = fog.goal != null && open.find(p => p.y * MW + p.x === fog.goal);
+            if (g) { walkTo(g.x, g.y, 'Mob-Platz'); return true; }
+            const best = open.map(p => [p, cost(d, p.x, p.y)]).sort((a, b) => a[1] - b[1])[0][0];
+            return go(best.y * MW + best.x, `Mob-Platz (${fog.pct} % abgesucht)`);
         }
         if (fog.doneAt) {
             if (hasExit) return false;
@@ -1455,6 +1501,11 @@
         if (pkStep(hx, hy, exit)) return;                              // anderer Spieler: kämpfen oder weg von hier
         const targets = mobs().filter(m => wanted(m) && !(skipUntil[m.id] > performance.now()));
         fogUpdate(hx, hy);
+        if (fog.on) {                                                  // im Nebel verschwundene Mobs bleiben Ziele
+            const vis = new Set(mobRaw().map(d => d.id));
+            for (const [id, m] of fog.mem) if (!vis.has(id) && !(skipUntil[id] > performance.now()))
+                targets.push({ id, nick: m.nick || 'Mob', lvl: m.lvl, x: m.x, y: m.y, ghost: true });
+        }
         if (!targets.length) {
             lastPlan = null;
             // Nebel: das Spiel zeigt nur Mobs in Sichtweite → Karte ablaufen, bevor sie als leer gilt
@@ -1483,6 +1534,7 @@
         }
         const t = p.order[0];
         const adj = Math.abs(t.x - hx) <= 1 && Math.abs(t.y - hy) <= 1;
+        if (adj && t.ghost) { fog.mem.delete(t.id); committed = null; lastPlan = null; return; }   // dort, aber nicht mehr da
         if (adj) {
             if (still < 150) return;                                  // erst stehen bleiben
             // Angriff ohne Kampf (Mob läuft weiter, anderer Spieler …): beim selben Mob bleiben und nochmal versuchen,
@@ -1501,7 +1553,7 @@
             goal = null; committed = t.id;
         } else {
             committed = t.id;
-            walkTo(t.x, t.y, t.nick);
+            walkTo(t.x, t.y, t.nick + (t.ghost ? ' (zuletzt gesehen)' : ''));
             if (goal && still > 2500) { goal = null; }               // hängt fest → neu anstoßen
         }
     }
@@ -2054,6 +2106,7 @@
             else { sess.t0 += Date.now() - sess.end; sess.end = 0; saveSess(); }  // kurze Pause → weiterzählen
         } else if (!running && sess.t0 && !sess.end) { sess.end = Date.now(); saveSess(); }
     }
+    function worldHasPos() { for (const k in world) { if (world[k][4].length) return Array.isArray(world[k][4][0][3]); } return false; }
     function heroLvl() { return (ok() && E().hero.d.lvl) || 0; }
     function pkInfo() {                             // was der Bot gerade sieht – zum Prüfen im echten Spiel
         if (!ok()) return '';
@@ -2249,9 +2302,12 @@
             <div class="fld"><span>Pause (ms)</span><input class="num" data-a="pauseMin" value="${cfg.pauseMin}">–<input class="num" data-a="pauseMax" value="${cfg.pauseMax}"></div>
             <label class="chk"><input type="checkbox" data-a="closeBattle" ${cfg.closeBattle ? 'checked' : ''}>Kampffenster nach dem Kampf schließen</label>
             <label class="chk"><input type="checkbox" data-a="fogExplore" ${cfg.fogExplore !== false ? 'checked' : ''}>Nebel-Karten erkunden</label>
+            <div class="fld"><span>Nebel: weiter nach</span><select data-a="fogPct" style="width:auto">${[100, 75, 50].map(v =>
+                `<option value="${v}" ${(+cfg.fogPct || 100) === v ? 'selected' : ''}>${v} % der Mob-Plätze</option>`).join('')}</select></div>
+            ${world && !worldHasPos() ? '<div class="hint">Deine Weltkarte kennt noch keine Mob-Plätze. Unten bei Weltkarte „Von GitHub“ tippen, dann sucht der Bot im Nebel gezielt.</div>' : ''}
             <label class="chk"><input type="checkbox" data-a="captchaWarn" ${cfg.captchaWarn !== false ? 'checked' : ''}>Bei Zagadka Ton und Benachrichtigung</label>
             <div class="hint">Ist eine Zagadka offen, pausiert der Bot immer und jagt weiter, sobald du sie gelöst hast.</div>
-            <div class="hint">Auf Karten mit Nebel sieht der Bot nur Mobs in seiner Nähe und läuft die Karte ab, um weitere zu finden.</div>
+            <div class="hint">Im Nebel sieht der Bot nur Mobs in seiner Nähe. Er läuft die bekannten Mob-Plätze nacheinander ab und geht weiter, wenn genug davon abgesucht sind. Mobs, die hinter der Sichtgrenze verschwinden, merkt er sich.</div>
 
             <h4>Andere Spieler</h4>
             <select data-a="pkMode"><option value="off" ${cfg.pk.mode === 'off' ? 'selected' : ''}>nicht beachten</option>
@@ -2576,7 +2632,7 @@
                                      tab === 'trade' ? [!!MK.scan, !!auctionOpen(), MK.deals.map(d => d.id + d.kind), cfg.trade, market.scans] : 0, sugList && sugList.map(o => o.maps.join()), cfg.route, cfg.rec && cfg.rec.length, Object.keys(cfg.routes),
                                      cfg.routes[cfg.route] && routeMode(cfg.routes[cfg.route]), worldN(), xpList && xpList.map(o => o.id), xpSel, cfg.lvlMin, cfg.lvlMax, heroLvl(),
             tab === 'set' ? [JSON.stringify(cfg.tele || {}).length, cfg.routes[cfg.route] && routeMode(cfg.routes[cfg.route]), mobs().map(m => m.key).sort(), gateways().map(g => g.id), cfg.route, cfg.rec && cfg.rec.length, Object.keys(cfg.routes),
-                             cfg.picked, cfg.lvlOn, (cfg.deaths || []).length, cfg.onDeath, cfg.optimal, cfg.pk.mode] : 0]);
+                             cfg.picked, cfg.lvlOn, (cfg.deaths || []).length, cfg.onDeath, cfg.optimal, cfg.pk.mode, cfg.fogPct] : 0]);
         if (sKey !== lastStatic) {
             lastStatic = sKey;
             box.innerHTML = `<div class="hd"><div class="brand"><span class="dot"></span>MargoBot</div>
@@ -2761,6 +2817,7 @@
         else if (a === 'lvlOn' || a === 'closeBattle') cfg[a] = t.checked;
         else if (a === 'captchaWarn') cfg.captchaWarn = t.checked;
         else if (a === 'fogExplore') { cfg.fogExplore = t.checked; if (!t.checked) fog.on = false; }
+        else if (a === 'fogPct') cfg.fogPct = +t.value || 100;
         else if (a === 'exit') cfg.exits[mapName()] = t.value || undefined;
         else if (a === 'onDeath') cfg.onDeath = t.value;
         else if (a === 'pkMode') { cfg.pk.mode = t.value; pkFlee = null; }

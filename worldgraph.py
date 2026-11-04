@@ -153,9 +153,9 @@ class World:
 
     # ── Export fürs Userscript ──
     def export(self, path=MINI):
-        """{id: [w, h, name_pl, [[ziel, x, y], …], [[name, level, anzahl], …]]}"""
+        """{id: [w, h, name_pl, [[ziel, x, y], …], [[name, level, anzahl, [x1, y1, x2, y2, …], icon], …]]}"""
         mini = {mid: [m.get("w", 0), m.get("h", 0), m.get("pl", ""), m.get("gw", []),
-                      [[mb["n"], mb["l"], mb["c"]] for mb in m.get("mobs", [])]]
+                      [[mb["n"], mb["l"], mb["c"], mb.get("p", []), mb.get("i", "")] for mb in m.get("mobs", [])]]
                 for mid, m in self.maps.items()}
         path.write_text(json.dumps(mini, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
         return path
