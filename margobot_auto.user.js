@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      6.2
+// @version      6.3
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -1566,6 +1566,16 @@
         return [...document.querySelectorAll('.captcha__buttons')].find(el =>
             !el.closest('#mba') && el.querySelector('.button') && reallyVisible(el)) || null;
     }
+    function pressFull(el) {                       // press() plus Pointer-Ereignisse, auch an das innere .label
+        const r = el.getBoundingClientRect(), o = { bubbles: true, cancelable: true, view: W, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 0, buttons: 1 };
+        const tgt = el.querySelector('.label') || el;
+        const P = typeof PointerEvent === 'function' ? PointerEvent : MouseEvent;
+        for (const t of ['pointerover', 'pointerdown']) tgt.dispatchEvent(new P(t, o));
+        for (const t of ['mouseover', 'mousedown']) tgt.dispatchEvent(new MouseEvent(t, o));
+        tgt.dispatchEvent(new P('pointerup', o));
+        tgt.dispatchEvent(new MouseEvent('mouseup', o));
+        tgt.dispatchEvent(new MouseEvent('click', o));
+    }
     function solveCaptchaIfPossible() {
         /* Klickt alle Buttons deren Label mit * beginnt und endet (*e*, *f* …).
            „Potwierdzam“ nur, wenn autoCaptchaConfirm an ist. */
@@ -1584,10 +1594,18 @@
         capt.solving = true;
         log('Zagadka: ' + correct.length + ' Antwort' + (correct.length > 1 ? 'en' : '') + ' mit * gefunden – klicke sie an');
         let delay = 200 + Math.random() * 300;
+        const labOf = b => ((b.querySelector('.label') || b).innerText || (b.querySelector('.label') || b).textContent || '').trim();
         correct.forEach((btn, i) => {
-            const lab = ((btn.querySelector('.label') || btn).innerText || '').trim();
+            const lab = labOf(btn);
             setTimeout(() => {
-                try { btn.click(); log('Zagadka: ' + lab + ' gewählt'); } catch (e) {}
+                /* Knopf erst jetzt neu suchen: Das Spiel baut das Rätsel nach jedem Klick neu auf, ein vorher
+                   gemerktes Element hängt dann nicht mehr im Dokument und der Klick verpufft. Dazu ein voller
+                   Klick (pointer-, mouse- und click-Ereignisse) wie in press(), weil .button im Spiel nicht
+                   unbedingt auf click() allein hört. */
+                const cur = captchaOpen();
+                const b = cur && [...cur.querySelectorAll('.button')].find(x => labOf(x) === lab);
+                if (!b) { log('Zagadka: Knopf ' + lab + ' nicht mehr da'); return; }
+                try { pressFull(b); log('Zagadka: ' + lab + ' gewählt'); } catch (e) { log('Zagadka: Klick auf ' + lab + ' fehlgeschlagen: ' + e.message); }
             }, delay);
             delay += 280 + Math.random() * 320;
         });
@@ -1595,8 +1613,8 @@
             if (cfg.autoCaptchaConfirm) {
                 const confirm = document.querySelector('.captcha__confirm .button');
                 if (confirm && reallyVisible(confirm)) {
-                    try { confirm.click(); log('Zagadka: Potwierdzam geklickt'); } catch (e) {}
-                }
+                    try { pressFull(confirm); log('Zagadka: Potwierdzam geklickt'); } catch (e) {}
+                } else log('Zagadka: Potwierdzam-Knopf nicht gefunden');
             } else {
                 log('Zagadka: Antworten gewählt – bitte selbst auf Potwierdzam klicken');
             }
