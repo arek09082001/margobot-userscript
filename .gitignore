@@ -7,6 +7,8 @@
 !world_scrape.py
 !worldgraph.py
 !chrome_margonem.bat
+!docs/
+!docs/**
 !tests/
 !tests/**
 tests/preview/index.html
