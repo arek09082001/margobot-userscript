@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.2
+// @version      7.4
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -2315,8 +2315,29 @@
     #mba .capt b{font:700 14px/1.2 var(--disp)} #mba .capt span{font-size:11.5px}
     #mba .capt.open{background:rgba(236,122,106,.16);color:#ffb3a8} #mba .capt.open b{color:var(--bad)}
     #mba .capt.soon{background:rgba(232,169,60,.12);color:var(--amb2)}
+    #mba .skp{display:flex;align-items:center;gap:11px;background:var(--bg2);border-radius:10px;padding:10px 12px}
+    #mba .skp>b{font:700 28px/1 var(--disp);color:var(--amb2);font-variant-numeric:tabular-nums}
+    #mba .skp strong{display:block;font:700 15px/1.2 var(--disp)} #mba .skp span{color:var(--mut);font-size:11.5px}
+    #mba .skg{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin:10px 2px 0;font-size:12px}
+    #mba .skg span{color:var(--dim)} #mba .skg b{font-weight:500;min-width:0;overflow-wrap:anywhere}
+    #mba .sks{margin-top:14px} #mba .ski{display:flex;justify-content:space-between;gap:10px;padding:3px 2px}
+    #mba .ski b{font:700 13px/1.3 var(--disp);color:var(--amb2);white-space:nowrap;font-variant-numeric:tabular-nums}
+    #mba .skr{margin-top:16px} #mba .skr.lock .skl{opacity:.5}
+    #mba .skh{display:flex;justify-content:space-between;gap:8px;align-items:baseline;padding:0 2px 5px}
+    #mba .skh b{font:600 12px/1 var(--disp);letter-spacing:.06em;text-transform:uppercase;color:var(--mut)} #mba .skh span{color:var(--dim);font-size:11px;text-align:right}
+    #mba .skl{display:grid;grid-template-columns:1fr auto;gap:1px 8px;width:100%;text-align:left;padding:6px 8px 7px;border-radius:7px}
+    #mba .skl:hover,#mba .skl[aria-expanded=true]{background:var(--bg2)}
+    #mba .skl .nm{font-weight:500;min-width:0} #mba .skl .lv{grid-row:1/3;grid-column:2;align-self:center;font:700 14px/1 var(--disp);color:var(--dim);font-variant-numeric:tabular-nums}
+    #mba .skl.full .lv{color:var(--ok)} #mba .skl.some .lv{color:var(--amb2)}
+    #mba .skl .tg{grid-column:1;color:var(--dim);font-size:11px} #mba .skl .tg i{font-style:normal;color:var(--bad)}
+    #mba .skl .br{grid-column:1/-1;height:3px;margin-top:4px;border-radius:2px;background:var(--bg3);overflow:hidden}
+    #mba .skl .br u{display:block;height:100%;background:var(--amb);text-decoration:none} #mba .skl.full .br u{background:var(--ok)}
+    #mba .skd{padding:4px 8px 10px;font-size:11.5px;color:var(--mut)} #mba .skd .sdsc{line-height:1.45}
+    #mba .skd table{width:100%;border-collapse:collapse;margin-top:6px;font-variant-numeric:tabular-nums}
+    #mba .skd th{text-align:right;font-weight:500;color:var(--dim);padding:2px 0 2px 8px} #mba .skd th:first-child,#mba .skd td:first-child{text-align:left;padding-left:0;overflow-wrap:anywhere}
+    #mba .skd td{text-align:right;padding:2px 0 2px 8px;color:var(--tx)} #mba .skd td:first-child{color:var(--mut)}
     #mba .tabs{display:flex;gap:2px;padding:0 10px;overflow-x:auto;scrollbar-width:none;background:var(--bg2);border-bottom:1px solid var(--line)}
-    #mba .tab{white-space:nowrap;flex:none;font:600 13px/1 var(--disp);letter-spacing:.02em;color:var(--dim);padding:8px 10px 9px;border-bottom:2px solid transparent;margin-bottom:-1px}
+    #mba .tab{white-space:nowrap;flex:none;font:600 13px/1 var(--disp);letter-spacing:.02em;color:var(--dim);padding:8px 7px 9px;border-bottom:2px solid transparent;margin-bottom:-1px}
     #mba .tab:hover{color:var(--mut)} #mba .tab.on{color:var(--tx);border-bottom-color:var(--amb)}
 
     #mba .bd{padding:12px;max-height:68vh;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--line) transparent;overscroll-behavior:contain}
@@ -2463,6 +2484,8 @@
     });
     box.addEventListener('keyup', ev => ev.stopPropagation());
     box.addEventListener('wheel', ev => {
+        const bar = ev.target.closest && ev.target.closest('.tabs');          // über der Tab-Leiste: seitlich
+        if (bar) { bar.scrollLeft += ev.deltaY || ev.deltaX; ev.preventDefault(); ev.stopPropagation(); return; }
         // Das Spiel fängt das Mausrad ab (Zoom) – deshalb scrollt das Panel selbst
         const bd = box.querySelector('.bd');
         if (!bd) return;
@@ -3163,6 +3186,213 @@
     const RCOL = { common: 'var(--mut)', unique: '#e9d66b', heroic: '#7fb3ef', upgraded: '#e8a93c', legendary: '#f08a4b', artefact: '#ec7a6a' };
     const KIND = { markt: ['Unter Marktpreis', 'var(--ok)'], npc: ['Unter NPC-Wert', 'var(--amb2)'], bald: ['Endet bald', 'var(--blue)'] };
     function fmtLeft(s) { return !s ? '' : s < 60 ? s + ' s' : s < 3600 ? Math.round(s / 60) + ' min' : (s / 3600).toFixed(1).replace('.', ',') + ' h'; }
+    // ── Tab „Fähigkeiten“: nur anzeigen ──
+    /* Anzeige und Vorschlag lesen nur (Engine.skills, angelegte Gegenstände, Fensterzahlen). Ans Spiel geht erst etwas
+       nach Klick und Rückfrage auf „anwenden“ (skApply). Geprüft am Paladin, siehe docs/skills_api.md.
+       Die Daten füllt das Spiel, sobald sein Fähigkeiten-Fenster einmal offen war. */
+    const SK_ROW_PTS = [1, 10, 25, 55, 95, 145, 205];         // „Wymagania: … pkt“ aus dem Fenster, gesetzte Punkte
+    const SK_ELEM = { fire: 'Feuer', frost: 'Frost', light: 'Blitz', poison: 'Gift', wound: 'Blutung' };
+    const SK_REQW = { fire: 'Feuer', frost: 'Frost', light: 'Blitz', '1h': 'Einhand', sh: 'Schild', sw: 'Nahkampf?' };
+    let skOpen = null;
+    function skillGear() {
+        let worn = [];
+        try { worn = (E().items.fetchLocationItems('g') || []).map(x => x.d || x).filter(d => +d.st > 0); } catch (e) {}
+        const w = worn.find(d => +d.st === 5), sh = worn.find(d => +d.st === 7);
+        const st = w ? parseStat(w.stat) : {};
+        return { w, sh, cl: w ? +w.cl : 0, elems: Object.keys(SK_ELEM).filter(k => k in st), hasShield: !!(sh && +sh.cl === 14) };
+    }
+    function skillData() {
+        /* null = das Spiel hat die Fähigkeiten noch nicht geladen. Reihen: gleiche grp, aufsteigend (Paladin 9–15 → 1–7). */
+        const S = E().skills;
+        if (!S || typeof S.getSkills !== 'function') return null;
+        let all, gr;
+        try { all = S.getSkills(); gr = S.getGroupedSkills(); } catch (e) { return null; }
+        const list = Object.values(all || {}).filter(x => x && +x.id > 0 && x.grp !== undefined && x.lvl !== undefined);
+        if (!list.length) return null;
+        const learntEl = document.querySelector && document.querySelector('.skills_learnt');   // die Zahl im Fenster ist die verlässlichste
+        const hero = heroLvl(), used = (learntEl && parseInt(learntEl.textContent, 10)) || list.reduce((n, x) => n + (+x.cLvl || 0), 0);
+        const gk =Object.keys(gr || {}).sort((a, b) => a - b);
+        const rows = Array.from(new Set(list.map(x => +x.grp))).sort((a, b) => a - b).map((g, i) => {
+            const skills = list.filter(x => +x.grp === g).sort((a, b) => (+a.xy || 0) - (+b.xy || 0) || a.id - b.id);
+            const reqLvl = +(gr && gr[gk[i]] && gr[gk[i]].requiredLvl) || +parseStat(skills[0].regs).lvl || 0;
+            const need = i ? SK_ROW_PTS[i] || 0 : 0;                  // Reihe 1: der erste Punkt geht in sie selbst
+            return { n: i + 1, reqLvl, need, points: skills.reduce((t, x) => t + (+x.cLvl || 0), 0), skills,
+                     open: hero >= reqLvl && used >= need };
+        });
+        const totEl = document.querySelector && document.querySelector('.skills_total');
+        const shown = totEl ? parseInt(totEl.textContent, 10) : NaN;
+        return { rows, used, total: shown || Math.max(0, hero - 24), estimated: !shown };
+    }
+    function skillFit(x, g) {
+        /* '' passt oder ohne Vorgabe, 'no' passt sicher nicht, '?' unklar (Waffenarten sind erst teilweise geprüft). */
+        const r = parseStat(x.regs).reqw;
+        if (!r) return '';
+        if (r in SK_ELEM) return g.elems.includes(r) ? '' : 'no';
+        if (r === 'sh') return g.hasShield ? '' : 'no';
+        if (r === '1h') return !g.w ? 'no' : g.cl === 1 ? '' : '?';
+        return '?';
+    }
+    function skillSig() {
+        const d = skillData(), g = skillGear();
+        return [d && d.total, d && d.rows.map(r => [r.open, r.skills.map(x => x.cLvl)]), g.w && g.w.id, g.sh && g.sh.id, skOpen, cfg.skGoal, skWindowOpen(), skRun && skRun.i, heroLvl()];
+    }
+    /* Vorschlag: Die Doku empfiehlt keine Builds, sie liefert nur die Mechanik. Darum eine eigene, geschätzte Bewertung:
+       Gewicht je Wert [XP, PvP] mal Wert auf Stufe 10. Begründung aus „Mechanika walk“: SA verkürzt die Zugzeit (at = 1/sa),
+       Krit und Durchschlag erhöhen jeden Treffer, Schaden an bzw. von Spielern zählt nur im PvP, an bzw. von Monstern nur
+       bei XP, Betäubung/Verlangsamung/Ausweichen-Senken wirken vor allem gegen Spieler. Nicht bewertete Werte zählen 0. */
+    const SK_WEIGHT = {
+        perdmg: [3, 3], dmg_to_npc_per: [3, 0], dmg_from_npc_per: [2, 0], dmg_from_player_per: [0, 3], sa_per: [3, 3], sa1: [3, 3], 'red-sa': [2, 2],
+        crit: [3, 3], active_crit: [2, 2], critval: [1, 1], critmval_f: [1, 1], critmval_c: [1, 1], critmval_l: [1, 1], lastcrit: [0.3, 0.3], pierce: [2, 2],
+        str1h: [15, 15], str2h: [15, 15], firebon: [8, 8], frostbon: [8, 8], lightbon: [8, 8], 'adddmg_physical-perw': [0.15, 0.15], 'adddmg_fire-perw': [0.15, 0.15],
+        'dmg-target_fire-perw': [0.1, 0.1], 'aura-adddmg2_per-meele_physical': [1, 1], 'combo_dmg_hpp-target': [1, 1], rage_3turns: [0.2, 0.3],
+        hpbon: [2, 2], hp: [0.0005, 0.0005], 'hp_per-allies': [2, 3], ac2_per: [1, 1.5], 'aura-ac_per': [1, 1.5], 'aura-resall': [1, 1.5], acshield_per: [0.1, 0.2], ac: [0.002, 0.002],
+        acdmg: [0.002, 0.002], blok_per: [1, 2], parry: [1.5, 2], resdmg: [1, 2], resfire: [0.2, 1], resfrost: [0.2, 1], reslight: [0.2, 1], redacdmg_per: [0.5, 1.5], reddest_per: [0.2, 1],
+        heal1_per: [1.5, 1.5], healall_per: [0.8, 0.8], combo_heal_per: [0.5, 0.5], healpower: [0.001, 0.001], manarestore_per: [0.3, 0.3], energyrestore_per: [0.3, 0.3],
+        energygain: [1, 1], managain: [1, 1], energybon: [0.05, 0.05], manabon: [0.05, 0.05], manastr: [0.5, 0.5], 'en-regen': [0.5, 0.5],
+        redstun: [0, 2], active_redstun: [0, 1.5], redslow: [0.5, 1.5], slow: [0.5, 1], slowfreeze_per: [0.05, 0.3], freeze: [0.2, 1], shout: [0, 0.5], decevade_per: [0.5, 1.5],
+        active_decevade_per: [0.5, 1.5], active_decblock_per: [0.5, 1.5], lowdmg_enemy: [0.5, 2], disturb_crit: [0, 0.5], disturb_pierce: [0, 0.5], stealmana_per: [0, 0.5],
+        woundred: [0, 0.5], critslow_per: [0.05, 0.2], critpoison_per: [0.05, 0.2], sunshield_per: [0.3, 0.5], lightshield_per: [0.3, 0.5], active_absorbdest_per: [0, 0.5]
+    };
+    const SK_SKIP = new Set(['cooldown', 'energy', 'mana', 'combo-max', 'combo-skill', 'combo-block', 'doublecastcost_per', 'lvl', 'reqp', 'reqw']);  // keine Stärke, sondern Kosten/Regeln
+    const skNum = v => { const m = String(v ?? '').match(/-?\d+(\.\d+)?/); return m ? Math.abs(parseFloat(m[0])) : 0; };
+    const skCost = () => Math.floor(Math.pow(heroLvl(), 1.9));   // Doku: gold_cost = floor(lvl^1.9); am echten Punkt bestätigt (Lvl 232: 31.219)
+    function skillValue(x, goal, lv) {
+        /* Geschätzter Wert auf Stufe lv. Aktive Fähigkeiten wirken nicht jede Runde: Abschlag, stärker bei Abklingzeit. */
+        if (!lv) return { v: 0, unknown: [] };
+        const st = parseStat((x.allStats || [])[lv - 1]), g = goal === 'pvp' ? 1 : 0;
+        const act = x.type === 'active' ? 0.6 / (1 + skNum(st.cooldown) / 6) : 1;
+        let v = 0;
+        const unknown = [];
+        for (const k of Object.keys(st)) {
+            if (SK_SKIP.has(k)) continue;
+            if (!SK_WEIGHT[k]) { unknown.push(k); continue; }
+            v += SK_WEIGHT[k][g] * skNum(st[k]) * act;
+        }
+        return { v, unknown };
+    }
+    function skillPlan(goal) {
+        /* Verteilt nur die freien Punkte (gesetzte bleiben), Punkt für Punkt: Immer die erlaubte Fähigkeit mit dem höchsten
+           Wert pro noch fehlendem Punkt. Erlaubt = Reihe nach Level und gesetzten Punkten offen, Stufe < max, passt zur Waffe.
+           Rückgabe: steps (Reihenfolge zum Setzen) und items (zusammengefasst fürs Anzeigen). */
+        const d = skillData();
+        if (!d) return null;
+        const g = skillGear(), hero = heroLvl(), lvl = {};
+        d.rows.forEach(r => r.skills.forEach(x => { lvl[x.id] = +x.cLvl || 0; }));
+        const budget = Math.max(0, d.total - d.used), steps = [];
+        let used = d.used;
+        for (let n = 0; n < budget; n++) {
+            let best = null, bs = 0;
+            for (const r of d.rows) {
+                if (hero < r.reqLvl || used < r.need) continue;
+                for (const x of r.skills) {
+                    const c = lvl[x.id], m = +x.mLvl || 10;
+                    if (c >= m || skillFit(x, g) === 'no') continue;
+                    const sc = (skillValue(x, goal, m).v - skillValue(x, goal, c).v) / (m - c);
+                    if (sc > bs) { bs = sc; best = x; }
+                }
+            }
+            if (!best) break;
+            lvl[best.id]++; used++;
+            steps.push({ id: +best.id, to: lvl[best.id], name: best.name });
+        }
+        const map = new Map();
+        for (const st of steps) {
+            const e = map.get(st.id) || { id: st.id, name: st.name, from: st.to - 1, to: st.to };
+            e.to = st.to; map.set(st.id, e);
+        }
+        return { steps, items: Array.from(map.values()), free: budget };
+    }
+    // Anwenden: nur nach Klick und Rückfrage, ein Punkt nach dem anderen, jeder wird nachgelesen
+    let skRun = null;
+    const skWindowOpen = () => { const e = document.querySelector && document.querySelector('.skills_learnt'); return !!(e && e.offsetWidth); };
+    const skGold = () => +(E().hero.d || {}).gold || 0;
+    function skStart(steps) {
+        const cost = skCost(), n = steps.length, tot = cost * n;
+        if (!n) return;
+        if (!skWindowOpen()) { log('Fähigkeiten: Erst das Fähigkeiten-Fenster im Spiel öffnen'); return; }
+        if (skGold() < tot) { log(`Fähigkeiten: zu wenig Gold (${fmtXp(tot)} nötig, ${fmtXp(skGold())} da)`); return; }
+        const span = new Map();
+        for (const st of steps) { const e = span.get(st.id) || { name: st.name, from: st.to - 1 }; e.to = st.to; span.set(st.id, e); }
+        const names = Array.from(span.values()).map(e => `${e.name}: ${e.from} → ${e.to}`).join('\n');
+        if (!W.confirm(`${n} ${n === 1 ? 'Punkt' : 'Punkte'} setzen für ${fmtXp(tot)} Gold?\n\n${names}\n\nZurücksetzen kostet im Spiel extra.`)) return;
+        skRun = { steps: steps.slice(), i: 0, wait: 0, sentAt: 0, next: 0 };
+        log(`Fähigkeiten: setze ${n} ${n === 1 ? 'Punkt' : 'Punkte'}`);
+        lastStatic = '';
+    }
+    function skStop(msg) { if (msg) log('Fähigkeiten: ' + msg); skRun = null; lastStatic = ''; }
+    function skTick() {
+        /* Ein Schritt je Punkt: prüfen → senden → warten, bis die neue Stufe im Spiel steht. Bei jeder Abweichung Schluss. */
+        const r = skRun;
+        if (!r || !ok()) return;
+        const now = performance.now(), st = r.steps[r.i];
+        if (!st) return skStop('fertig, alle Punkte gesetzt');
+        const x = (E().skills.getSkills() || {})['skill_' + st.id];
+        if (!x) return skStop('Fähigkeit ' + st.id + ' nicht mehr gefunden – angehalten');
+        if (r.wait) {
+            if (+x.cLvl === st.to) { log(`${st.name} → ${st.to}`); r.i++; r.wait = 0; r.next = now + 700 + Math.random() * 700; lastStatic = ''; return; }
+            if (now - r.wait > 6000) return skStop(`${st.name} blieb auf Stufe ${x.cLvl} – angehalten (Gold, Reihe oder Kampf prüfen)`);
+            return;
+        }
+        if (now < r.next || inBattle() || capt.state === 'open') return;       // im Kampf oder bei offener Zagadka warten
+        if (!skWindowOpen()) return skStop('Fähigkeiten-Fenster wurde geschlossen – angehalten');
+        if (+x.cLvl !== st.to - 1) return skStop(`${st.name} steht auf Stufe ${x.cLvl} statt ${st.to - 1} – angehalten`);
+        if (skGold() < skCost()) return skStop('zu wenig Gold – angehalten');
+        send('skills&learn=' + st.id + '&lvl=' + st.to);
+        r.wait = now;
+    }
+    setInterval(() => { try { skTick(); } catch (e) { skStop('Fehler: ' + e.message); } }, 250);
+    function skPlanHtml() {
+        const goal = cfg.skGoal === 'pvp' ? 'pvp' : 'xp', plan = skillPlan(goal), open = skWindowOpen(), cost = skCost();
+        const seg = `<div class="seg sks"><button class="${goal === 'xp' ? 'on' : ''}" data-a="skgoal" data-m="xp"><b>XP</b><span>Monster jagen</span></button>
+            <button class="${goal === 'pvp' ? 'on' : ''}" data-a="skgoal" data-m="pvp"><b>PvP</b><span>gegen Spieler</span></button></div>`;
+        if (!plan) return seg;
+        const list = plan.items.map(e => `<div class="ski"><span>${esc(e.name)}</span><b>${e.from} → ${e.to}</b></div>`).join('');
+        const n = plan.steps.length;
+        let act;
+        if (skRun) act = `<div class="hint">Setze Punkt ${Math.min(skRun.i + 1, skRun.steps.length)} von ${skRun.steps.length} …</div><button class="cta stop" data-a="skstop">${ico('stop')}Anhalten</button>`;
+        else if (!plan.free) act = '<div class="empty">Keine freien Punkte. Gesetzte Punkte bleiben, der Bot setzt nichts zurück.</div>';
+        else if (!n) act = '<div class="empty">Für die freien Punkte gibt es gerade keine erlaubte Fähigkeit.</div>';
+        else if (!open) act = '<div class="empty">Zum Anwenden das <b>Fähigkeiten-Fenster im Spiel öffnen</b>, damit der Bot jeden Punkt nachprüfen kann.</div>';
+        else act = `<button class="cta" data-a="skall">${ico('check')}${n === 1 ? '1 Punkt' : 'Alle ' + n + ' Punkte'} anwenden · ${fmtXp(cost * n)} Gold</button>
+            ${n > 1 ? `<button class="sub" data-a="skone">nur den nächsten Punkt: ${esc(plan.steps[0].name)} → ${plan.steps[0].to} · ${fmtXp(cost)} Gold</button>` : ''}`;
+        return `${seg}<h4>Vorschlag für ${plan.free} freie Punkte</h4>${list || ''}${act}
+            <div class="hint">Vom Bot berechnet aus den Werten der Fähigkeiten. Die Margonem-Doku empfiehlt selbst keine Builds. Aktive Fähigkeiten wirken nur, wenn sie in deiner Mistrzostwo-walk-Kette stehen.</div>`;
+    }
+    function skillDetail(x) {
+        const c = +x.cLvl || 0, as = x.allStats || [], cur = c ? parseStat(as[c - 1]) : {}, nxt = c < as.length ? parseStat(as[c]) : null;
+        const keys = Array.from(new Set(Object.keys(cur).concat(Object.keys(nxt || {})))).filter(k => !nxt || cur[k] !== nxt[k]);
+        const rows = keys.map(k => `<tr><td>${esc(k)}</td><td>${esc(cur[k] ?? '–')}</td><td>${nxt ? esc(nxt[k] ?? '–') : ''}</td></tr>`).join('');
+        return `<div class="skd"><div class="sdsc">${esc(String(x.desc || '').replace(/<[^>]+>/g, ' ').trim())}</div>
+            ${keys.length ? `<table><tr><th>Wert im Spiel</th><th>${c ? 'Stufe ' + c : 'jetzt'}</th><th>${nxt ? 'Stufe ' + (c + 1) : ''}</th></tr>${rows}</table>` : ''}</div>`;
+    }
+    function skillsTab() {
+        const d = skillData(), g = skillGear();
+        const weapon = g.w ? `${esc(g.w.name)} · ${g.cl === 1 ? 'Einhand' : 'Waffenklasse ' + g.cl}${g.elems.length ? ' · ' + g.elems.map(k => SK_ELEM[k]).join(', ') : ''}` : 'keine Waffe angelegt';
+        const gear = `<div class="skg"><span>Waffe</span><b>${weapon}</b><span>Nebenhand</span><b>${g.sh ? esc(g.sh.name) + (g.hasShield ? ' · Schild' : '') : 'nichts'}</b></div>`;
+        if (!d) return `<div class="empty">Öffne einmal im Spiel dein <b>Fähigkeiten-Fenster</b>. Erst dann liegen die Daten vor, und sie erscheinen hier von selbst.</div>${gear}`;
+        const free = d.total - d.used;
+        const rows = d.rows.map(r => `
+            <div class="skr ${r.open ? '' : 'lock'}">
+              <div class="skh"><b>Reihe ${r.n}</b><span>${r.open ? r.points + ' Punkte gesetzt' : 'gesperrt: Lvl ' + r.reqLvl + (r.need ? ', ' + r.need + ' gesetzte Punkte' : '')}</span></div>
+              ${r.skills.map(x => {
+                  const c = +x.cLvl || 0, m = +x.mLvl || 10, fit = skillFit(x, g), rw = parseStat(x.regs).reqw, op = skOpen === +x.id;
+                  return `<button class="skl ${c >= m ? 'full' : c ? 'some' : ''}" data-a="skopen" data-i="${+x.id}" aria-expanded="${op}">
+                      <span class="nm">${esc(x.name)}</span>
+                      <span class="tg">${x.type === 'active' ? 'aktiv' : 'passiv'}${rw ? ' · ' + esc(SK_REQW[rw] || rw) : ''}${fit === 'no' ? ' · <i>passt nicht</i>' : ''}</span>
+                      <span class="lv">${c}/${m}</span>
+                      <span class="br"><u style="width:${Math.round(c / m * 100)}%"></u></span>
+                    </button>${op ? skillDetail(x) : ''}`;
+              }).join('')}
+            </div>`).join('');
+        return `
+            <div class="skp"><b>${free > 0 ? free : 0}</b><div><strong>${free > 0 ? (free === 1 ? 'Punkt frei' : 'Punkte frei') : 'Keine Punkte frei'}</strong>
+              <span>${d.used} von ${d.estimated ? '~' : ''}${d.total} gesetzt${d.estimated ? ' (geschätzt: Level − 24, genau bei offenem Fenster)' : ''}</span></div></div>
+            ${gear}
+            ${skPlanHtml()}
+            <h4>Dein Baum</h4>
+            ${rows}
+            <div class="hint">„Passt nicht“ bezieht sich auf die angelegte Waffe.</div>`;
+    }
     function tradeTab() {
         const tc = tradeCfg(), open = !!auctionOpen(), nItems = Object.keys(market.items).length;
         const ago = market.last ? Math.round((Date.now() - market.last) / 60000) : null;
@@ -3210,13 +3440,14 @@
         if (cfg.lvlMin === 1 && cfg.lvlMax === 300 && heroLvl()) {   // erster Start: Bereich um das eigene Level
             cfg.lvlMin = Math.max(1, heroLvl() - 5); cfg.lvlMax = heroLvl() + 3; save();
         }
-        const mn = mapName(), tab = ['set', 'rules', 'trade', 'e2'].includes(cfg.tab) ? cfg.tab : 'xp';
+        const mn = mapName(), tab = ['set', 'rules', 'trade', 'e2', 'skills'].includes(cfg.tab) ? cfg.tab : 'xp';
         const run = running();
         if (tab === 'xp') refreshXp();
         const rk = editId ? [editId, !!shopOpen(), (cfg.rules || []).map(r => [r.id, r.when.t, r.steps.map(x => x.t)])] : cfg.rules;
         if (tab === 'xp' && botMode() === 'route') refreshSug();
         if (botMode() === 'xp') refreshXp();
         const sKey = JSON.stringify([cfg.open, tab, run, mn, rk, cfg.chain, botMode(), capt.state,
+                                     tab === 'skills' ? skillSig() : 0,
                                      tab === 'trade' ? [!!MK.scan, !!auctionOpen(), MK.deals.map(d => d.id + d.kind), cfg.trade, market.scans] : 0, sugList && sugList.map(o => o.maps.join()), cfg.route, cfg.rec && cfg.rec.length, Object.keys(cfg.routes),
                                      cfg.routes[cfg.route] && routeMode(cfg.routes[cfg.route]), worldN(), xpList && xpList.map(o => o.id), xpSel, cfg.lvlMin, cfg.lvlMax, heroLvl(),
             tab === 'e2' ? [JSON.stringify(cfg.e2), mapId(), mobs().map(m => m.id).sort().join()] : 0,
@@ -3232,9 +3463,14 @@
                     <button class="tab ${tab === 'rules' ? 'on' : ''}" data-a="tab" data-t="rules">Abläufe${(cfg.rules || []).length ? ' · ' + cfg.rules.filter(r => r.on).length : ''}</button>
                     <button class="tab ${tab === 'trade' ? 'on' : ''}" data-a="tab" data-t="trade">Handel</button>
                     <button class="tab ${tab === 'e2' ? 'on' : ''}" data-a="tab" data-t="e2">E2</button>
+                    <button class="tab ${tab === 'skills' ? 'on' : ''}" data-a="tab" data-t="skills">Fähigkeiten</button>
                     <button class="tab ${tab === 'set' ? 'on' : ''}" data-a="tab" data-t="set">Einstellungen</button></div>
-                    <div class="bd">${tab === 'xp' ? xpTab() : tab === 'rules' ? rulesTab() : tab === 'trade' ? tradeTab() : tab === 'e2' ? e2Tab() : setTab()}</div>` : '');
+                    <div class="bd">${tab === 'xp' ? xpTab() : tab === 'rules' ? rulesTab() : tab === 'trade' ? tradeTab() : tab === 'e2' ? e2Tab() : tab === 'skills' ? skillsTab() : setTab()}</div>` : '');
         }
+        // aktiven Tab sichtbar halten (die Leiste scrollt seitlich)
+        const onTab = box.querySelector('.tab.on'), tabBar = box.querySelector('.tabs');
+        if (onTab && tabBar && tabBar.scrollWidth > tabBar.clientWidth && (onTab.offsetLeft < tabBar.scrollLeft || onTab.offsetLeft + onTab.offsetWidth > tabBar.scrollLeft + tabBar.clientWidth))
+            tabBar.scrollLeft = onTab.offsetLeft - 10;
         // Live-Werte
         sessTick(); countXp();
         const [cls, title, detail] = state();
@@ -3295,6 +3531,14 @@
             tc[f] = Math.max(+el.dataset.lo, Math.min(+el.dataset.hi, (+tc[f] || 0) + +el.dataset.d));
             cfg.trade = tc; save(); if (MK.deals.length) MK.deals = findDeals(dealPool()); lastStatic = ''; render(); return;
         }
+        if (a === 'skopen') { const i = +el.dataset.i; skOpen = skOpen === i ? null : i; lastStatic = ''; render(); return; }
+        if (a === 'skgoal') { cfg.skGoal = el.dataset.m; save(); lastStatic = ''; render(); return; }
+        if (a === 'skall' || a === 'skone') {
+            const pl = skillPlan(cfg.skGoal === 'pvp' ? 'pvp' : 'xp');
+            if (pl) skStart(a === 'skone' ? pl.steps.slice(0, 1) : pl.steps);
+            render(); return;
+        }
+        if (a === 'skstop') { skStop('angehalten'); render(); return; }
         if (a === 'tab') cfg.tab = el.dataset.t;
         else if (a === 'fold') cfg.open = !cfg.open;
         else if (a === 'stopall') { if (sess.t0 && !sess.end) { sess.end = Date.now(); saveSess(); } if (cfg.chain) endChain('von Hand'); if (cfg.e2.on) e2Stop(); cfg.on = false; cfg.travel = null; lastTravel = null; goal = null; log('Gestoppt'); }

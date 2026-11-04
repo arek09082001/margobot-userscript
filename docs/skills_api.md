@@ -81,7 +81,7 @@ _g('skills&learn=201&lvl=4')
 - `lvl` ist die **neue Stufe**, nicht die Anzahl der Punkte.
 - Es gibt **keinen** Bestätigungsschritt.
 - Danach: `.skills_learnt` 191 → 192, `cLvl` 3 → 4, Reihe 6 von 13 auf 14 Punkte.
-- Das Lernen kostet Gold. Die nächste Stufe (5/10) zeigte `31k`. Das Gold fiel in dieser Zeit um 31.219.
+- Das Lernen kostet pro Punkt `floor(Level^1,9)` Gold (Doku, „Mechanika walk“). Bei Level 232 sind das 31.219, genau so viel fiel das Gold beim echten Punkt. Der Preis hängt nicht von der Fähigkeit ab.
 
 ### Mistrzostwo walk (Kampfkette)
 
@@ -152,13 +152,23 @@ _g('skills&battleaction=set&battleskills=92,38,112,197,112,38,249,108&rpt=1')
 | 7 | 269 | Płatnerstwo | | 0 |
 | 7 | 268 | Końskie zdrowie | | 0 |
 
+## Aus der Doku (pomoc.margonem.pl, „Mechanika walk“)
+
+- **Die Doku empfiehlt keine Fähigkeiten oder Builds.** Sie beschreibt nur die Mechanik.
+- Reihen: Reihe 1 braucht 0 ausgegebene Punkte, die übrigen wie in der Tabelle oben.
+- Punkte wachsen nicht über Level 300 hinaus, höchstens 276.
+- Mistrzostwo walk: 20 Plätze. Reihenfolge: Platz 1 versuchen, sonst den nächsten, dann von vorn, zuletzt Angriff oder Schritt nach vorn.
+
+## Vorschlag im Tab „Fähigkeiten“
+
+Geschätzt, nicht aus der Doku: `SK_WEIGHT` im Skript gewichtet jeden Wert für XP und PvP. Aktive Fähigkeiten bekommen einen Abschlag, weil sie nicht jede Runde wirken. Verteilt werden nur freie Punkte, immer die erlaubte Fähigkeit mit dem höchsten Wert pro fehlendem Punkt. Gewichte nur mit Begründung aus der Mechanik ändern.
+
 ## Vermutet (nicht bestätigt)
 
 - **Punkte gesamt = Level − 24.** Passt zu Level 232 und 208 Punkten, ist aber nur ein Datenpunkt.
 - **Waffenarten:** `cl = 1` ist Einhand. Zweihand, Bogen, Orb usw. wurden nicht gesehen. `reqw=sw` heißt vermutlich Nahkampfwaffe, `1h` Einhand, `sh` Schild.
 - **Element der Waffe:** steht vermutlich im gleichnamigen Stat. `light` ist gesehen, `fire` und `frost` nicht. Gift und Blutung sind nicht geprüft.
-- **Kosten:** Das Lernen kostet je Stufe Gold, der genaue Verlauf ist unbekannt. Den Preis liefert nur das Fenster, und nur für die gewählte Fähigkeit.
-- **„Reset punktów: 50“:** Die Währung ist unbekannt, vermutlich nicht Gold.
+- **„Reset punktów: 50“:** Die Doku nennt 75 Drachenschuppen für das Zurücksetzen eines Sets, das Fenster zeigte 50. Warum, ist nicht geklärt.
 - **„Wykup: 5m / 150“:** vermutlich 5 Mio Gold oder 150 Drachenschuppen.
 - **Doppelte Protokollzeilen:** Jeder Befehl stand zweimal im Mitschnitt, der Punkt zählte aber nur einmal. Vermutlich ruft das Spiel `_g` intern doppelt auf, tatsächlich gesendet wird einmal.
 - **`.save-btn` speichert:** Der zweite Kettenbefehl stammt vermutlich vom Schließen.

@@ -34,6 +34,19 @@ if (params.has('e2') || params.has('away')) store.mbauto.e2 = { on: params.has('
   leaveMin: 10, remindMin: 2, remindMax: 4, offline: params.has('away'), wakeAt: Date.now() + 7 * 60000,
   list: { 'Mushita|580': { nick: 'Mushita', lvl: 23, map: 580, x: 23, y: 11, respMin: 15, respMax: 30, lastKill: Date.now() - 6 * 60000, by: 'bot', kills: 3, meas: [17.4, 21.2] } } };
 if (params.has('away')) delete window.Engine;
+let lastSkillsReady = 0;
+// SKILLSDEMO: Fähigkeiten wie beim Paladin (gekürzt), ?noskills = Daten noch nicht geladen
+if (params.has('skills')) {
+  const mk = (id, name, grp, xy, c, type, reqw, lvl) => ({ id, name, grp, xy, cLvl: c, mLvl: 10, lvl: c + '/10', type, kind: 'x', desc: 'Beschreibung von ' + name + ' aus dem Spiel.',
+    regs: 'reqp=p;' + (reqw ? 'reqw=' + reqw + ';' : '') + 'lvl=' + lvl, allStats: Array.from({ length: 10 }, (_, k) => 'sa_per=' + (2 * (k + 1)) + ';energy=' + (18 + k) + ';cooldown=2') });
+  const list = [mk(99, 'Gorące uderzenie', 9, 1, 0, 'active', 'fire', 25), mk(112, 'Porażający cios', 9, 3, 10, 'active', 'light', 25), mk(38, 'Szybki atak', 9, 4, 10, 'active', 'sw', 25),
+    mk(185, 'Moc sprawiedliwych', 9, 5, 10, 'passive', '', 25), mk(186, 'Skupienie na celu', 10, 1, 2, 'passive', '1h', 35), mk(25, 'Prowokujący okrzyk', 10, 5, 0, 'active', 'sh', 35),
+    mk(201, 'Niebiańska ochrona', 14, 2, 4, 'passive', '', 170), mk(301, 'Napięcie bojowe', 15, 3, 0, 'passive', 'light', 230)];
+  const all = Object.fromEntries(list.map(x => ['skill_' + x.id, x])); all['skill_-1'] = { id: -1, name: 'Zwykły atak', lvl: '1/1' };
+  Engine.skills = { getSkills: () => all, getGroupedSkills: () => ({ 1: { requiredLvl: '25' }, 2: { requiredLvl: '35' }, 3: { requiredLvl: '170' }, 4: { requiredLvl: '230' } }) };
+  Engine.hero.d.lvl = +(params.get('lvl') || 232); Engine.hero.d.gold = 52000000; items.push({ id: 900, name: 'Zainfekowana kość anuraka', loc: 'g', st: 5, cl: 1, stat: 'dmg=3427,4188;light=1692,2538;lvl=226' }, { id: 901, name: 'Płyta ośmiu odnóży', loc: 'g', st: 7, cl: 14, stat: 'ac=1132' });
+  store.mbauto.tab = 'skills'; lastSkillsReady = 1;
+}
 window.GM_getValue = (k,d) => store[k] ?? d; window.GM_setValue = (k,v) => { store[k] = v; };
 window.unsafeWindow = window;
 </script>
@@ -100,6 +113,8 @@ if (params.has('ah')) {
   w.querySelector('.one-category-auction').onclick = () => { setTimeout(() => { page = 1; draw(); }, 250); };
   for (let k = 0; k < 30; k++) mk('Füller ' + k, 'common', 50, 1000, 90000, 0, '2h');
 }
+// FAKEWND: Punktezahlen wie im offenen Fähigkeiten-Fenster
+if (params.has('skills')) { const f = document.createElement('div'); f.style.cssText = 'position:fixed;right:8px;bottom:8px;background:#222;color:#fff;padding:6px'; f.innerHTML = 'Punkte: <span class="skills_learnt">49</span>/<span class="skills_total">52</span>'; document.body.appendChild(f); }
 if (params.has('edit')) setTimeout(()=>clk('[data-a=redit][data-r=b]'), 200);
 if (params.has('runb')) setTimeout(()=>clk('[data-a=rrun][data-r=c]'), 200);
 </script></body></html>'''
