@@ -29,6 +29,11 @@ const MKT = { items: {}, scans: 2, last: Date.now() - 12 * 60000 };
 for (let k = 0; k < 120; k++) MKT.items['Item ' + k + '|unique'] = { n: 'Item ' + k, r: 'unique', l: 100, npc: 1000, p: [[500000, Date.now(), 'x' + k]] };
 const store = { mbmarket: params.has('mkt') ? MKT : null, mbworld: WORLD, mbauto: { x: 40, y: 20, tab: params.get('tab') || 'xp', logOpen: params.has('log'),
   rules: params.has('norules') ? [] : RULES, routes: {Ghule: {maps:['Defiled Tomb - 1st Level',null,'Defiled Tomb - 2nd Level','Defiled Tomb - 3rd Level','Defiled Tomb - 4th Level','Defiled Tomb - 5th Level'], lvlOn:true, lvlMin:40, lvlMax:42}}, route: params.has('route') ? 'Ghule' : '', names: {2:'Torneg',12:'Old Ruins',2029:'Grain Fields'}, npcs: {2:['Lidia','Den','Uzdrowicielka Elena']}, dlg: {'Uzdrowicielka Elena':['Chcę coś kupić','Opowiedz mi o okolicy','Do widzenia']}, shops: {'Uzdrowicielka Elena':['Mała mikstura','Średnia mikstura','Antidotum']} } };
+// ?e2: eine E2 gewählt, vor 6 min getötet · ?away: Startseite nach „Spiel verlassen“ (ohne Engine)
+if (params.has('e2') || params.has('away')) store.mbauto.e2 = { on: params.has('away') || params.has('e2on'), sel: 'Mushita|580', away: params.has('away') || params.has('leave') ? 'leave' : 'stay',
+  leaveMin: 10, remindMin: 2, remindMax: 4, offline: params.has('away'), wakeAt: Date.now() + 7 * 60000,
+  list: { 'Mushita|580': { nick: 'Mushita', lvl: 23, map: 580, x: 23, y: 11, respMin: 15, respMax: 30, lastKill: Date.now() - 6 * 60000, by: 'bot', kills: 3, meas: [17.4, 21.2] } } };
+if (params.has('away')) delete window.Engine;
 window.GM_getValue = (k,d) => store[k] ?? d; window.GM_setValue = (k,v) => { store[k] = v; };
 window.unsafeWindow = window;
 </script>
