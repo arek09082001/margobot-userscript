@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.1
+// @version      7.2
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -46,7 +46,7 @@
     /* E2-Jagd: list = gemerkte Bosse (Schlüssel „Name|Karte“), sel = aktiver. away: 'stay' = am Spawnpunkt
        warten, 'leave' = bei langer Wartezeit das Spiel verlassen und rechtzeitig erinnern. back = Adresse der
        Spielseite ([server].margonem.pl), autoBack = zur Erinnerungszeit diese Seite wieder öffnen. */
-    const E2DEF = { on: false, sel: '', list: {}, away: 'stay', leaveMin: 10, remindMin: 2, remindMax: 4, wakeAt: 0, offline: false, autoBack: true, back: '', returned: false, speed: 1 };
+    const E2DEF = { on: false, sel: '', list: {}, away: 'stay', leaveMin: 10, remindMin: 2, remindMax: 4, wakeAt: 0, offline: false, autoBack: true, back: '', returned: false, speed: 1, reactMin: 2, reactMax: 6 };
     cfg.e2 = Object.assign({}, E2DEF, cfg.e2 || {});
     const running = () => !!(cfg.on || cfg.travel || cfg.chain || cfg.e2.on);
     // Routen bereinigen: leere Einträge (Kartenwechsel beim Aufnehmen) raus, doppelte direkt hintereinander zusammenfassen
@@ -1585,6 +1585,10 @@
             e2rt.patrol = null;
             if (!e2rt.alive) {
                 e2rt.alive = true; e2rt.tries = 0;
+                // Reaktionszeit: nicht im selben Augenblick losrennen, in dem sie erscheint – ein Mensch braucht ein paar Sekunden
+                const ra = Number.isFinite(+E2.reactMin) ? +E2.reactMin : 2, rb = Number.isFinite(+E2.reactMax) ? +E2.reactMax : 6;
+                const lo = Math.min(ra, rb), hi = Math.max(ra, rb);
+                e2rt.reactAt = now + rnd(lo, hi) * 1000;
                 // Respawn messen – nur, wenn der Bot schon vorher hier gewartet hat (sonst ist es nur der Zeitpunkt der Ankunft)
                 if (t.lastKill && now - e2rt.since > 60000) {
                     const min = Math.round((now - t.lastKill) / 6000) / 10;
@@ -1596,6 +1600,7 @@
                 save(); lastStatic = '';
             }
             e2rt.id = m.id; e2rt.x = m.x; e2rt.y = m.y; e2rt.lastSeen = now;
+            if (now < (e2rt.reactAt || 0)) return;            // noch in der Reaktionszeit
             if (Math.abs(m.x - hx) <= 1 && Math.abs(m.y - hy) <= 1) {
                 if (now - e2rt.atk < 2500) return;               // letzter Versuch läuft noch
                 if (++e2rt.tries > 5 && e2rt.tries % 10) return;   // klappt nicht (anderer kämpft?) → seltener versuchen
@@ -3101,6 +3106,8 @@
             <div class="hint">„Gerade getötet“ startet den Timer von Hand, z. B. wenn du sie selbst erlegt hast.</div>` : ''}
 
             <div class="fld"><span>Respawn-Tempo der Welt</span><select data-a="e2speed" style="width:auto">${[1, 2, 3, 4, 5].map(v => `<option value="${v}" ${+E2.speed === v ? 'selected' : ''}>×${v}${v === 1 ? ' (normal)' : ''}</option>`).join('')}</select></div>
+            <div class="hint" style="margin-top:10px">Reaktionszeit, wenn sie erscheint (Sekunden, zufällig dazwischen)</div>
+            <div class="rg">${stp('reactMin', E2.reactMin, 0, 60)}<span class="to">bis</span>${stp('reactMax', E2.reactMax, 0, 60)}</div>
             <h4>Wartezeit</h4>
             <select data-a="e2away"><option value="stay" ${E2.away === 'stay' ? 'selected' : ''}>am Spawnpunkt online bleiben</option>
               <option value="leave" ${E2.away === 'leave' ? 'selected' : ''}>Spiel verlassen und vor dem Respawn erinnern</option></select>
@@ -3133,8 +3140,8 @@
         } else if (a === 'e2pick') {
             const m = mobs().find(x => String(x.id) === el.dataset.id);
             if (m) e2Add({ nick: m.nick, lvl: m.lvl, map: mapId(), x: m.x, y: m.y });
-        } else if (a === 'e2num' && t || a === 'e2num' && /^(leaveMin|remind)/.test(el.dataset.f)) {
-            const f = el.dataset.f, obj = /^(leaveMin|remindMin|remindMax)$/.test(f) ? E2 : t;
+        } else if (a === 'e2num' && t || a === 'e2num' && /^(leaveMin|remind|react)/.test(el.dataset.f)) {
+            const f = el.dataset.f, obj = /^(leaveMin|remindMin|remindMax|reactMin|reactMax)$/.test(f) ? E2 : t;
             obj[f] = Math.max(+el.dataset.lo, Math.min(+el.dataset.hi, (+obj[f] || 0) + +el.dataset.d));
             if (/^resp/.test(f)) t.respAuto = false;     // von Hand eingestellt → Richtwert nicht mehr überschreiben
             if (f === 'respMin' && t.respMax < t.respMin) t.respMax = t.respMin;
@@ -3406,7 +3413,7 @@
         }
         if (a === 'e2back') { cfg.e2.autoBack = t.checked; save(); lastStatic = ''; render(); return; }
         if (a === 'e2set') {
-            const f = t.dataset.f, obj = /^(leaveMin|remindMin|remindMax)$/.test(f) ? cfg.e2 : e2Cur();
+            const f = t.dataset.f, obj = /^(leaveMin|remindMin|remindMax|reactMin|reactMax)$/.test(f) ? cfg.e2 : e2Cur();
             if (obj) { obj[f] = Math.max(0, parseInt(t.value, 10) || 0); const c = e2Cur(); if (c && /^resp/.test(f)) c.respAuto = false; if (c && c.respMax < c.respMin) c.respMax = c.respMin; }
             save(); lastStatic = ''; render(); return;
         }
