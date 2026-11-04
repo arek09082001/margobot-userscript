@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      6.7
+// @version      6.8
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -43,6 +43,11 @@
                   pk: { mode: 'off', maxUp: 5, near: 6, sec: 5, never: '' } };
     const cfg = Object.assign({}, DEF, GM_getValue('mbauto', {}));
     cfg.pk = Object.assign({}, DEF.pk, cfg.pk || {});
+    /* E2-Jagd: list = gemerkte Bosse (Schlüssel „Name|Karte“), sel = aktiver. away: 'stay' = am Spawnpunkt
+       warten, 'leave' = bei langer Wartezeit das Spiel verlassen und rechtzeitig erinnern. */
+    const E2DEF = { on: false, sel: '', list: {}, away: 'stay', leaveMin: 10, remindMin: 2, remindMax: 4, wakeAt: 0, offline: false };
+    cfg.e2 = Object.assign({}, E2DEF, cfg.e2 || {});
+    const running = () => !!(cfg.on || cfg.travel || cfg.chain || cfg.e2.on);
     // Routen bereinigen: leere Einträge (Kartenwechsel beim Aufnehmen) raus, doppelte direkt hintereinander zusammenfassen
     const cleanMaps = m => (m || []).filter(x => x && x !== 'null' && x !== 'undefined')
         .filter((x, i, a) => !i || String(x).trim().toLowerCase() !== String(a[i - 1]).trim().toLowerCase());
@@ -946,6 +951,7 @@
                 cfg.on = false;
                 log('Bot gestoppt (Tod)');
             }
+            if (cfg.e2.on && cfg.onDeath !== 'back') { cfg.e2.on = false; log('E2-Jagd gestoppt (Tod)'); }
             save(); lastStatic = '';
         }
         if (!dead && deadNow) revived = true;
@@ -1461,13 +1467,184 @@
         return false;
     }
 
+    // ── E2-Jagd: einen Elite-II-Boss abpassen ───────────────────
+    /* Ablauf: zur Karte reisen → neben den Spawnpunkt stellen → warten → angreifen, sobald die E2 da ist.
+       Verschwindet sie (Kampf ohne Fenster, wie bei allen Mobs), gilt sie als tot und der Respawn-Timer läuft
+       ab diesem Moment – auch wenn ein anderer Spieler sie erlegt hat. Wann sie wieder erscheint, ist pro E2
+       einstellbar (von–bis); gemessene Zeiten werden angezeigt, damit man den Bereich nachstellen kann.
+       Spiel verlassen: der Bot geht vom Spawnpunkt offline (Seite wechselt zur Startseite) und erinnert
+       vor dem Respawn. Wieder einloggen tut er NICHT selbst (feste Regel: nie für den Nutzer einloggen). */
+    let e2rt = null, e2Leaving = false, e2NoWay = 0, e2Remind = 0;
+    const e2Key = (nick, map) => nick + '|' + map;
+    const e2Cur = () => cfg.e2.list[cfg.e2.sel] || null;
+    let e2WorldCache = null;
+    function e2World() {
+        /* Alle E2 der Weltkarte: Icon-Ordner „e2/“ (margoworld), mit Spawnpunkt. */
+        if (!world) return [];
+        if (e2WorldCache && e2WorldCache.n === worldN()) return e2WorldCache.l;
+        const l = [];
+        for (const id in world) for (const m of world[id][4]) {
+            if (!m[4] || !String(m[4]).startsWith('e2/')) continue;
+            const p = Array.isArray(m[3]) && m[3].length >= 2 ? m[3] : null;
+            l.push({ nick: m[0], lvl: m[1], map: +id, x: p ? p[0] : null, y: p ? p[1] : null });
+        }
+        l.sort((a, b) => a.lvl - b.lvl);
+        e2WorldCache = { n: worldN(), l };
+        return l;
+    }
+    function e2Add(o) {
+        const k = e2Key(o.nick, o.map);
+        if (!cfg.e2.list[k]) cfg.e2.list[k] = { nick: o.nick, lvl: o.lvl || 0, map: +o.map, x: o.x ?? null, y: o.y ?? null,
+                                                respMin: 15, respMax: 30, lastKill: 0, by: '', kills: 0, meas: [] };
+        cfg.e2.sel = k;
+        log(`E2 gemerkt: ${o.nick} (${o.lvl || '?'}) auf ${wname(+o.map)}`);
+    }
+    function e2Window(t) {
+        if (!t || !t.lastKill) return null;
+        return { start: t.lastKill + t.respMin * 60000, end: t.lastKill + t.respMax * 60000 };
+    }
+    const mmss = ms => { const s = Math.max(0, Math.round(ms / 1000)); return s >= 3600 ? Math.floor(s / 3600) + ' h ' + String(Math.floor(s % 3600 / 60)).padStart(2, '0') + ' min'
+                                                                       : Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+    const clock = t => new Date(t).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    function e2Spot(t) {
+        /* Warteplatz: ein begehbares Feld direkt neben dem Spawnpunkt (nicht darauf – dort erscheint die E2). */
+        for (const [dx, dy] of [[0, 1], [1, 0], [-1, 0], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+            const x = t.x + dx, y = t.y + dy;
+            if (x >= 0 && y >= 0 && x < MW && y < MH && !(walls && walls[y * MW + x])) return [x, y];
+        }
+        return [t.x, t.y];
+    }
+    function e2Text() {
+        /* Statuszeile für Panel und Kopfbereich. */
+        const t = e2Cur();
+        if (!t) return 'keine E2 gewählt';
+        const w = e2Window(t), now = Date.now();
+        if (e2rt && e2rt.alive) return `${t.nick} ist da – greife an`;
+        if (mapId() !== t.map) return `Reise nach ${wname(t.map)}` + (lastTravel ? ` · noch ${lastTravel.left} ${lastTravel.left === 1 ? 'Karte' : 'Karten'}` : '');
+        if (!w) return `warte am Spawnpunkt · Respawn unbekannt`;
+        if (now < w.start) return `Respawn in ${mmss(w.start - now)} (bis ${clock(w.end)})`;
+        if (now < w.end) return `Respawn jederzeit · Fenster bis ${clock(w.end)}`;
+        return `überfällig seit ${mmss(now - w.end)} – warte weiter`;
+    }
+    function e2Stop(why) { cfg.e2.on = false; cfg.e2.offline = false; cfg.e2.wakeAt = 0; e2rt = null; goal = null; log('E2-Jagd gestoppt' + (why ? ' (' + why + ')' : '')); save(); lastStatic = ''; }
+    function e2Step() {
+        const E2 = cfg.e2, t = e2Cur(), now = Date.now();
+        if (!t) return e2Stop('keine E2 gewählt');
+        if (e2Leaving) return;                            // Seite wechselt gleich – Offline-Merker nicht anrühren
+        if (E2.offline) { E2.offline = false; E2.wakeAt = 0; save(); log('E2: wieder im Spiel – weiter mit ' + t.nick); }
+        if (mapId() !== t.map) {
+            e2rt = null;
+            const r = world ? travelStep([t.map], wname(t.map)) : 'kein Weg';
+            if (r === 'kein Weg' && performance.now() - mapAt > 5000 && now - e2NoWay > 60000) {
+                e2NoWay = now;
+                log(`E2: kein Weg nach ${wname(t.map)} bekannt – bitte selbst hinlaufen, der Bot wartet dann dort` + (world ? '' : ' (Weltkarte fehlt)'));
+            }
+            return;
+        }
+        lastTravel = null;
+        if (!e2rt || e2rt.mapAt !== mapAt) e2rt = { mapAt, since: now, alive: false, atk: 0, tries: 0 };
+        const [hx, hy] = heroXY();
+        const m = mobs().find(x => fold(x.nick) === fold(t.nick));
+        if (m) {
+            if (!e2rt.alive) {
+                e2rt.alive = true; e2rt.tries = 0;
+                // Respawn messen – nur, wenn der Bot schon vorher hier gewartet hat (sonst ist es nur der Zeitpunkt der Ankunft)
+                if (t.lastKill && now - e2rt.since > 60000) {
+                    const min = Math.round((now - t.lastKill) / 6000) / 10;
+                    t.meas = (t.meas || []).concat([min]).slice(-6);
+                    log(`E2: ${t.nick} ist da – Respawn nach ${String(min).replace('.', ',')} min gemessen`);
+                } else log(`E2: ${t.nick} ist da`);
+                e2Notify(`E2 ${t.nick} ist da`);
+                if (t.x == null) { t.x = m.x; t.y = m.y; }
+                save(); lastStatic = '';
+            }
+            e2rt.id = m.id; e2rt.x = m.x; e2rt.y = m.y;
+            if (Math.abs(m.x - hx) <= 1 && Math.abs(m.y - hy) <= 1) {
+                if (now - e2rt.atk < 2500) return;               // letzter Versuch läuft noch
+                if (++e2rt.tries > 5 && e2rt.tries % 10) return;   // klappt nicht (anderer kämpft?) → seltener versuchen
+                e2rt.atk = now;
+                act(() => E().hero.heroAtackRequest(m.id, true), 'Angriff');
+                noteAttack(m.id);
+                log(`E2: Angriff auf ${t.nick} (${m.lvl})` + (e2rt.tries > 1 ? ' – Versuch ' + e2rt.tries : ''));
+                goal = null;
+            } else walkTo(m.x, m.y, t.nick);
+            return;
+        }
+        if (e2rt.alive) {
+            e2rt.alive = false;
+            // Nur als Tod zählen, wenn der Held nah dran war – sonst ist sie bloß außer Sicht (Nebel)
+            if (Math.max(Math.abs(hx - e2rt.x), Math.abs(hy - e2rt.y)) <= 12) {
+                const mine = now - e2rt.atk < 30000;
+                t.lastKill = now; t.by = mine ? 'bot' : 'other';
+                if (mine) t.kills = (t.kills || 0) + 1;
+                const w = e2Window(t);
+                log(`E2: ${t.nick} ${mine ? 'besiegt' : 'von jemand anderem erlegt'} – Respawn ${clock(w.start)}–${clock(w.end)}`);
+                save(); lastStatic = '';
+            }
+        }
+        // Warteplatz neben dem Spawnpunkt
+        if (t.x != null) {
+            const [sx, sy] = e2Spot(t);
+            if (hx !== sx || hy !== sy) { walkTo(sx, sy, 'Warteplatz ' + t.nick); return; }
+        }
+        // Lange Wartezeit → Spiel verlassen, Erinnerung vor dem Respawn
+        const w = e2Window(t);
+        if (E2.away === 'leave' && w && !inBattle()) {
+            const lead = rnd(Math.min(E2.remindMin, E2.remindMax), Math.max(E2.remindMin, E2.remindMax)) * 60000;
+            const wake = w.start - lead;
+            if (wake - now > E2.leaveMin * 60000) {
+                e2Leaving = true;
+                E2.wakeAt = wake; E2.offline = true; save();
+                log(`E2: Respawn frühestens ${clock(w.start)} – verlasse das Spiel, Erinnerung um ${clock(wake)}`);
+                const home = /margonem\.com$/.test(location.hostname) ? 'https://www.margonem.com/' : 'https://www.margonem.pl/';
+                setTimeout(() => { location.href = home; }, 1500);
+            }
+        }
+    }
+    function e2Away() {
+        /* Läuft auf Seiten ohne Spiel (Startseite nach dem Verlassen): Erinnerung zur gemerkten Zeit,
+           danach jede Minute erneut, bis man wieder im Spiel ist. */
+        const E2 = cfg.e2;
+        if (!E2.offline || !E2.wakeAt || ok()) return;
+        const now = Date.now();
+        if (now >= E2.wakeAt && now - e2Remind > 60000) {
+            e2Remind = now;
+            const t = e2Cur(), w = e2Window(t);
+            e2Notify(`E2 ${t ? t.nick : ''}: jetzt einloggen – Respawn ${w && w.start > now ? 'in ca. ' + Math.ceil((w.start - now) / 60000) + ' min' : 'jederzeit'}`);
+        }
+    }
+    function e2Notify(msg) {                       // Benachrichtigung, kurzer Ton, am Handy Vibration
+        try { GM_notification({ title: 'MargoBot', text: msg, onclick: () => W.focus() }); } catch (e) {}
+        {
+            try {
+                const ac = new (W.AudioContext || W.webkitAudioContext)(), o = ac.createOscillator(), g = ac.createGain();
+                o.frequency.value = 880; o.connect(g); g.connect(ac.destination); g.gain.value = 0.2;
+                o.start(); o.stop(ac.currentTime + 0.5); setTimeout(() => ac.close(), 1500);
+            } catch (e) {}
+            try { if (navigator.vibrate) navigator.vibrate([300, 150, 300]); } catch (e) {}
+        }
+    }
+    function renderAway() {
+        /* Kleines Panel auf der Startseite: Countdown bis zur Erinnerung. */
+        const t = e2Cur(), w = e2Window(t), now = Date.now(), left = cfg.e2.wakeAt - now;
+        const html = `<div class="hd"><div class="brand"><span class="dot trv"></span>MargoBot · E2</div>
+            <button class="mini stop" data-a="e2stop">${ico('stop')}Abbrechen</button></div>
+            <div class="bd"><div class="now"><div class="st">${left > 0 ? 'Offline bis ' + clock(cfg.e2.wakeAt) : 'Jetzt einloggen!'}</div>
+              <div class="dt">${t ? esc(t.nick) + ' · ' + esc(wname(t.map)) : ''}</div>
+              <div class="dt">${left > 0 ? 'Erinnerung in ' + mmss(left) : ''}${w ? ' · Respawn ' + clock(w.start) + '–' + clock(w.end) : ''}</div></div>
+              <div class="hint">Diese Seite offen lassen, sonst kommt keine Erinnerung. Einloggen tust du selbst – danach läuft der Bot
+              zum Spawnpunkt und wartet weiter.</div></div>`;
+        if (box.dataset.away !== html) { box.dataset.away = html; box.innerHTML = html; }
+    }
+
     function tick() {
+        e2Away();
         if (ok()) { trackMaps(); recordFights(); learnGraph(); learnNames(); learnWorldBits(); }
         if (!ok() || checkDeath()) return;
         watchBattle();
         watchPlayers();
         if (watchCaptcha()) return;                                // Rätsel offen → nichts tun, bis es gelöst ist
-        if (!(cfg.on || cfg.travel || cfg.chain) || performance.now() < busyUntil) return;
+        if (!running() || performance.now() < busyUntil) return;
         const e = E();
         if (!loadCols()) return;                                       // Karte lädt noch
         // Kampf (auch unterwegs, falls ein Mob angreift)
@@ -1486,6 +1663,8 @@
             const rev = revived; revived = false;
             if (checkRules(rev)) { if (rev) cfg.back = null; return; }
         }
+        // E2-Jagd hat Vorrang vor Reise und normaler Jagd
+        if (cfg.e2.on) { e2Step(); if (performance.now() - renderAt > 500) { renderAt = performance.now(); render(); } return; }
         // Reise zu einer Karte (Weltkarte)
         if (cfg.travel) {
             const s = travelStep(cfg.travel.to, cfg.travel.label);
@@ -1836,7 +2015,7 @@
         return st === 'open';
     }
     function alarm(msg, loud) {
-        if (cfg.captchaWarn === false || !(cfg.on || cfg.travel || cfg.chain)) return;
+        if (cfg.captchaWarn === false || !running()) return;
         try {                                       // kurzer Ton (dreimal bei offenem Rätsel)
             const ac = new (W.AudioContext || W.webkitAudioContext)();
             const beep = (t, f) => { const o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = f; o.connect(g); g.connect(ac.destination);
@@ -2052,8 +2231,8 @@
     #mba .capt b{font:700 14px/1.2 var(--disp)} #mba .capt span{font-size:11.5px}
     #mba .capt.open{background:rgba(236,122,106,.16);color:#ffb3a8} #mba .capt.open b{color:var(--bad)}
     #mba .capt.soon{background:rgba(232,169,60,.12);color:var(--amb2)}
-    #mba .tabs{display:flex;gap:2px;padding:0 10px;background:var(--bg2);border-bottom:1px solid var(--line)}
-    #mba .tab{font:600 13px/1 var(--disp);letter-spacing:.02em;color:var(--dim);padding:8px 10px 9px;border-bottom:2px solid transparent;margin-bottom:-1px}
+    #mba .tabs{display:flex;gap:2px;padding:0 10px;overflow-x:auto;scrollbar-width:none;background:var(--bg2);border-bottom:1px solid var(--line)}
+    #mba .tab{white-space:nowrap;flex:none;font:600 13px/1 var(--disp);letter-spacing:.02em;color:var(--dim);padding:8px 10px 9px;border-bottom:2px solid transparent;margin-bottom:-1px}
     #mba .tab:hover{color:var(--mut)} #mba .tab.on{color:var(--tx);border-bottom-color:var(--amb)}
 
     #mba .bd{padding:12px;max-height:68vh;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--line) transparent;overscroll-behavior:contain}
@@ -2295,17 +2474,17 @@
         if (!e) return;
         if (!sess.lastExp) { sess.lastExp = e; return; }
         const d = e - sess.lastExp;
-        if (d > 0 && d < lvlXp(Math.max(1, heroLvl())) && (cfg.on || cfg.travel || cfg.chain) && !sess.end) sess.xp = (sess.xp || 0) + d;
+        if (d > 0 && d < lvlXp(Math.max(1, heroLvl())) && running() && !sess.end) sess.xp = (sess.xp || 0) + d;
         sess.lastExp = e;
     }
     function saveSess() { cfg.sess = Object.assign({}, sess); save(); }
     function sessTick() {
         /* Läuft der Bot ohne Sitzung (nach Neuladen, Start durch Ablauf …) → jetzt starten; gestoppt → Zeit anhalten. */
-        const running = cfg.on || cfg.travel || cfg.chain;
-        if (running && (!sess.t0 || sess.end)) {
+        const run = running();
+        if (run && (!sess.t0 || sess.end)) {
             if (!sess.t0 || Date.now() - sess.end > 30 * 60000) startSession();   // lange Pause → neue Sitzung
             else { sess.t0 += Date.now() - sess.end; sess.end = 0; saveSess(); }  // kurze Pause → weiterzählen
-        } else if (!running && sess.t0 && !sess.end) { sess.end = Date.now(); saveSess(); }
+        } else if (!run && sess.t0 && !sess.end) { sess.end = Date.now(); saveSess(); }
     }
     function worldHasPos() { for (const k in world) { if (world[k][4].length) return Array.isArray(world[k][4][0][3]); } return false; }
     function heroLvl() { return (ok() && E().hero.d.lvl) || 0; }
@@ -2332,12 +2511,15 @@
 
     function state() {
         if (deadNow) return ['dead', 'Tot', 'Warte auf Wiederbelebung'];
-        if (capt.state === 'open' && (cfg.on || cfg.travel || cfg.chain)) return ['dead', 'Pause: Zagadka', cfg.autoCaptcha ? (capt.solving ? 'Klicke *…*-Antworten…' : (cfg.autoCaptchaConfirm ? 'Auto-Lösen aktiv' : 'Antworten gewählt – bitte Potwierdzam')) : 'Bitte das Rätsel selbst lösen – danach geht es weiter'];
+        if (capt.state === 'open' && running()) return ['dead', 'Pause: Zagadka', cfg.autoCaptcha ? (capt.solving ? 'Klicke *…*-Antworten…' : (cfg.autoCaptchaConfirm ? 'Auto-Lösen aktiv' : 'Antworten gewählt – bitte Potwierdzam')) : 'Bitte das Rätsel selbst lösen – danach geht es weiter'];
         if (cfg.chain) {
             const r = ruleById(cfg.chain.rid), st = r && r.steps[cfg.chain.i];
             return ['trv', 'Ablauf', `Schritt ${cfg.chain.i + 1}/${r ? r.steps.length : '?'}: ${st ? stepText(st) : ''}`];
         }
         if (cfg.travel) return ['trv', 'Unterwegs', cfg.travel.label + (lastTravel ? ` · noch ${lastTravel.left} ${lastTravel.left === 1 ? 'Karte' : 'Karten'}` + (lastTravel.tele ? ` (${lastTravel.tele}× Teleport)` : '') : '')];
+        if (cfg.e2.on) { const t = e2Cur(); return [e2rt && e2rt.alive ? 'run' : 'trv', 'E2' + (t ? ' · ' + t.nick : ''), e2Text()]; }
+        if (!cfg.on && cfg.tab === 'e2') { const t = e2Cur(), w = e2Window(t), n = Date.now();
+            return ['', 'Bereit', !t ? 'E2 unten suchen und antippen' : t.nick + ' · ' + (!w ? 'Respawn unbekannt' : n < w.start ? 'Respawn in ' + mmss(w.start - n) : n < w.end ? 'Respawn jederzeit' : 'Respawn überfällig')]; }
         if (!cfg.on) return ['', 'Bereit', botMode() === 'route' ? (cfg.route ? 'Route „' + cfg.route + '“ gewählt · ' + mapName() : 'Route wählen oder aufnehmen') : 'XP-Ort wählen · ' + mapName()];
         if (cfg.back) return ['trv', 'Rückweg', cfg.back.map];
         if (inBattle()) return ['run', 'Kampf', mapName()];
@@ -2388,7 +2570,7 @@
 
     function xpTab() {
         refreshXp();
-        const running = cfg.on || cfg.travel || cfg.chain, here = mapId(), l = heroLvl(), mode = botMode();
+        const run = running(), here = mapId(), l = heroLvl(), mode = botMode();
         const ro = cfg.routes[cfg.route], names = Object.keys(cfg.routes);
         let body, cta;
         if (mode === 'xp') {
@@ -2403,7 +2585,7 @@
                   <span class="mt">Lvl ${o.lv[0] === o.lv[1] ? o.lv[0] : o.lv[0] + '–' + o.lv[1]} · ${o.n} Mobs · ${esc(o.mobs.join(', '))}</span>
                   <span class="mt xpl">${xpLine(o.r)}</span>
                 </button>`).join('')}</div>`;
-            if (running) cta = `<button class="cta stop" data-a="stopall">${ico('stop')}Stopp</button>`;
+            if (run) cta = `<button class="cta stop" data-a="stopall">${ico('stop')}Stopp</button>`;
             else if (!world) cta = `<button class="cta" data-a="loadworldgh">${ico('map')}${worldDl ? 'Lädt …' : 'Weltkarte von GitHub laden'}</button>
                                     <button class="sub" data-a="loadworld">oder Datei wählen</button>`;
             else if (sel && sel.id === here) cta = `<button class="cta" data-a="huntxp">${ico('play')}Hier jagen</button>`;
@@ -2440,7 +2622,7 @@
                     <span class="mt xpl">${xpLine(o.r)}</span>
                   </button>`).join('')}</div><div class="hint">Antippen übernimmt die Route. Gelaufen wird hin und zurück.</div>`
                 : '<div class="hint">Keine zusammenhängenden Karten für diesen Bereich – Level-Bereich größer machen oder XP-Ort nutzen.</div>');
-            if (running) cta = `<button class="cta stop" data-a="stopall">${ico('stop')}Stopp</button>`;
+            if (run) cta = `<button class="cta stop" data-a="stopall">${ico('stop')}Stopp</button>`;
             else if (ro) cta = `<button class="cta" data-a="runroute">${ico('play')}Route „${esc(cfg.route)}“ starten</button>`;
             else cta = '';
         }
@@ -2792,6 +2974,97 @@
         return true;
     }
 
+    // ── Tab „E2“ ──
+    let e2Q = '';
+    function e2Hits(q) {
+        /* Suche in den E2 der Weltkarte: Name oder Karte; ohne Suchtext die E2 um das eigene Level. */
+        const all = e2World(), f = fold(q), l = heroLvl();
+        const hit = f ? all.filter(o => fold(o.nick).includes(f) || fold(wname(o.map)).includes(f))
+                      : all.filter(o => Math.abs(o.lvl - l) <= 25).sort((a, b) => Math.abs(a.lvl - l) - Math.abs(b.lvl - l));
+        return hit.slice(0, 8);
+    }
+    function e2HitsHtml() {
+        const h = e2Hits(e2Q);
+        if (!world) return '<div class="hint">Erst die Weltkarte laden (Einstellungen → Weltkarte) – dann gibt es hier alle E2 mit Spawnpunkt.</div>';
+        return h.length ? `<div class="spots">${h.map((o, i) => `
+            <button class="spot ${cfg.e2.list[e2Key(o.nick, o.map)] ? 'sel' : ''}" data-a="e2add" data-n="${esc(o.nick)}" data-m="${o.map}">
+              <span class="nm">${esc(o.nick)}</span><span class="ds">Lvl ${o.lvl}</span>
+              <span class="mt">${esc(wname(o.map))}${o.x != null ? ' · ' + o.x + ',' + o.y : ''}</span></button>`).join('')}</div>`
+            : `<div class="hint">Keine E2 zu „${esc(e2Q)}“ in der Weltkarte. Steht sie gerade vor dir, unten „Auf dieser Karte“ nutzen.</div>`;
+    }
+    function e2Tab() {
+        const E2 = cfg.e2, t = e2Cur(), keys = Object.keys(E2.list), run = running();
+        const stp = (f, v, lo, hi) => `<div class="stp sm"><button data-a="e2num" data-f="${f}" data-d="-1" data-lo="${lo}" data-hi="${hi}">−</button>` +
+            `<input class="nb" data-a="e2set" data-f="${f}" inputmode="numeric" value="${v}"><button data-a="e2num" data-f="${f}" data-d="1" data-lo="${lo}" data-hi="${hi}">+</button></div>`;
+        const w = t && e2Window(t);
+        // Mobs auf dieser Karte (falls eine E2 fehlt oder kein e2/-Icon hat): einzelne Namen, höchstes Level zuerst
+        const here = Array.from(new Map(mobs().sort((a, b) => b.lvl - a.lvl).map(m => [m.nick, m])).values()).slice(0, 6);
+        return `
+            <div class="now"><div class="st"><span class="dot"></span><span class="stl"></span></div><div class="dt"></div></div>
+            <h4>Boss</h4>
+            ${keys.length ? `<select data-a="e2sel">${keys.map(k => `<option value="${esc(k)}" ${k === E2.sel ? 'selected' : ''}>${esc(E2.list[k].nick)} (${E2.list[k].lvl || '?'}) · ${esc(wname(E2.list[k].map))}</option>`).join('')}</select>` :
+              '<div class="empty">Noch keine E2 gewählt. Unten suchen und antippen.</div>'}
+            ${t ? `
+            <div class="spot sel route">
+              <span class="nm">${esc(t.nick)}</span><span class="ds">${t.kills || 0} Kills</span>
+              <span class="mt">${esc(wname(t.map))} · Spawn ${t.x != null ? t.x + ',' + t.y : 'unbekannt – wird gemerkt, sobald sie einmal da war'}</span>
+              <span class="mt xpl">${t.lastKill ? `Zuletzt tot ${clock(t.lastKill)}${t.by === 'other' ? ' (anderer Spieler)' : ''} · Respawn ${clock(w.start)}–${clock(w.end)}` : 'Noch kein Tod gesehen – Timer startet beim ersten Kill'}</span>
+              ${(t.meas || []).length ? `<span class="mt">Gemessen: ${t.meas.map(x => String(x).replace('.', ',')).join(' · ')} min</span>` : ''}
+            </div>
+            <div class="hint" style="margin-top:10px">Respawn nach (Minuten)</div>
+            <div class="rg">${stp('respMin', t.respMin, 1, 600)}<span class="to">bis</span>${stp('respMax', t.respMax, 1, 600)}</div>
+            <div class="fld"><button class="btn" data-a="e2kill">${ico('check')}Gerade getötet</button>
+              ${mapId() === t.map ? `<button class="btn" data-a="e2here">${ico('pin')}Spawn = hier</button>` : ''}
+              <span></span><button class="btn bad" data-a="e2del" title="E2 entfernen">${ico('trash')}</button></div>
+            <div class="hint">„Gerade getötet“ startet den Timer von Hand, z. B. wenn du sie selbst erlegt hast.</div>` : ''}
+
+            <h4>Wartezeit</h4>
+            <select data-a="e2away"><option value="stay" ${E2.away === 'stay' ? 'selected' : ''}>am Spawnpunkt online bleiben</option>
+              <option value="leave" ${E2.away === 'leave' ? 'selected' : ''}>Spiel verlassen und vor dem Respawn erinnern</option></select>
+            ${E2.away === 'leave' ? `
+            <div class="fld"><span>Nur wenn länger als (min)</span>${stp('leaveMin', E2.leaveMin, 3, 600)}</div>
+            <div class="hint" style="margin-top:8px">Erinnern vor dem Respawn (Minuten, zufällig dazwischen)</div>
+            <div class="rg">${stp('remindMin', E2.remindMin, 0, 60)}<span class="to">bis</span>${stp('remindMax', E2.remindMax, 0, 60)}</div>
+            <div class="hint">Der Bot geht vom Spawnpunkt offline und wechselt zur Startseite. Dort zählt er herunter und meldet sich
+              (Benachrichtigung, Ton, Vibration) zufällig im eingestellten Abstand vor dem Respawn. <b>Einloggen tust du selbst</b> –
+              danach wartet der Bot weiter. Die Startseite muss dafür offen bleiben.</div>` : ''}
+
+            ${t ? (run ? `<button class="cta stop" data-a="stopall">${ico('stop')}Stopp</button>`
+                       : `<button class="cta" data-a="e2go">${ico('play')}${mapId() === t.map ? 'Hier auf ' : 'Hin & auf '}${esc(t.nick)} warten</button>`) : ''}
+
+            <h4>E2 suchen</h4>
+            <input type="text" data-a="e2q" placeholder="Name oder Karte, z. B. Mushita" value="${esc(e2Q)}" style="width:100%">
+            <div class="e2hits" style="margin-top:6px">${e2HitsHtml()}</div>
+            ${here.length ? `<h4>Auf dieser Karte</h4><div class="spots">${here.map(m => `
+              <button class="spot" data-a="e2pick" data-id="${m.id}"><span class="nm">${esc(m.nick)}</span><span class="ds">Lvl ${m.lvl}</span>
+              <span class="mt">${m.x},${m.y} · als E2 merken</span></button>`).join('')}</div>` : ''}
+            <details ${cfg.logOpen ? 'open' : ''}><summary>${ico('chev')}Verlauf</summary><div class="log"></div></details>`;
+    }
+    function e2Click(a, el) {
+        const E2 = cfg.e2, t = e2Cur();
+        if (a === 'e2add') {
+            const o = e2World().find(x => x.nick === el.dataset.n && x.map === +el.dataset.m);
+            if (o) e2Add(o);
+        } else if (a === 'e2pick') {
+            const m = mobs().find(x => String(x.id) === el.dataset.id);
+            if (m) e2Add({ nick: m.nick, lvl: m.lvl, map: mapId(), x: m.x, y: m.y });
+        } else if (a === 'e2num' && t || a === 'e2num' && /^(leaveMin|remind)/.test(el.dataset.f)) {
+            const f = el.dataset.f, obj = /^(leaveMin|remindMin|remindMax)$/.test(f) ? E2 : t;
+            obj[f] = Math.max(+el.dataset.lo, Math.min(+el.dataset.hi, (+obj[f] || 0) + +el.dataset.d));
+            if (f === 'respMin' && t.respMax < t.respMin) t.respMax = t.respMin;
+            if (f === 'respMax' && t.respMin > t.respMax) t.respMin = t.respMax;
+        } else if (a === 'e2kill' && t) { t.lastKill = Date.now(); t.by = 'hand'; log(`E2: ${t.nick} als getötet markiert – Respawn ${clock(e2Window(t).start)}–${clock(e2Window(t).end)}`); }
+        else if (a === 'e2here' && t) { const [hx, hy] = heroXY(); t.x = hx; t.y = hy; log(`E2: Spawnpunkt von ${t.nick} = ${hx},${hy}`); }
+        else if (a === 'e2del' && t) { if (W.confirm(`E2 „${t.nick}“ entfernen?`)) { delete E2.list[E2.sel]; E2.sel = Object.keys(E2.list)[0] || ''; if (E2.on) e2Stop(); } }
+        else if (a === 'e2go' && t) {
+            if (cfg.chain) endChain('E2-Jagd');
+            cfg.on = false; cfg.travel = null; E2.on = true; E2.offline = false; E2.wakeAt = 0; e2rt = null; e2Leaving = false; goal = null;
+            startSession(); log(`E2-Jagd: ${t.nick} auf ${wname(t.map)}`);
+        } else if (a === 'e2stop') { e2Stop('von Hand'); box.dataset.away = ''; }
+        else return false;
+        return true;
+    }
+
     // ── Tab „Handel“ ──
     const RCOL = { common: 'var(--mut)', unique: '#e9d66b', heroic: '#7fb3ef', upgraded: '#e8a93c', legendary: '#f08a4b', artefact: '#ec7a6a' };
     const KIND = { markt: ['Unter Marktpreis', 'var(--ok)'], npc: ['Unter NPC-Wert', 'var(--amb2)'], bald: ['Endet bald', 'var(--blue)'] };
@@ -2830,6 +3103,7 @@
     }
     function render() {
         if (!ok()) {
+            if (cfg.e2.offline && cfg.e2.wakeAt && !W.Engine) { renderAway(); return; }
             // Altes Interface (Polen: „stary interfejs“) hat keine Engine → Bot kann dort nichts lesen
             if (!W.Engine && performance.now() > 15000 && !box.dataset.si && document.querySelector('#base, #panel, #centerbox')) {
                 box.dataset.si = '1';
@@ -2842,28 +3116,30 @@
         if (cfg.lvlMin === 1 && cfg.lvlMax === 300 && heroLvl()) {   // erster Start: Bereich um das eigene Level
             cfg.lvlMin = Math.max(1, heroLvl() - 5); cfg.lvlMax = heroLvl() + 3; save();
         }
-        const mn = mapName(), tab = ['set', 'rules', 'trade'].includes(cfg.tab) ? cfg.tab : 'xp';
-        const running = !!(cfg.on || cfg.travel || cfg.chain);
+        const mn = mapName(), tab = ['set', 'rules', 'trade', 'e2'].includes(cfg.tab) ? cfg.tab : 'xp';
+        const run = running();
         if (tab === 'xp') refreshXp();
         const rk = editId ? [editId, !!shopOpen(), (cfg.rules || []).map(r => [r.id, r.when.t, r.steps.map(x => x.t)])] : cfg.rules;
         if (tab === 'xp' && botMode() === 'route') refreshSug();
         if (botMode() === 'xp') refreshXp();
-        const sKey = JSON.stringify([cfg.open, tab, running, mn, rk, cfg.chain, botMode(), capt.state,
+        const sKey = JSON.stringify([cfg.open, tab, run, mn, rk, cfg.chain, botMode(), capt.state,
                                      tab === 'trade' ? [!!MK.scan, !!auctionOpen(), MK.deals.map(d => d.id + d.kind), cfg.trade, market.scans] : 0, sugList && sugList.map(o => o.maps.join()), cfg.route, cfg.rec && cfg.rec.length, Object.keys(cfg.routes),
                                      cfg.routes[cfg.route] && routeMode(cfg.routes[cfg.route]), worldN(), xpList && xpList.map(o => o.id), xpSel, cfg.lvlMin, cfg.lvlMax, heroLvl(),
+            tab === 'e2' ? [JSON.stringify(cfg.e2), mapId(), mobs().map(m => m.id).sort().join()] : 0,
             tab === 'set' ? [JSON.stringify(cfg.tele || {}).length, cfg.routes[cfg.route] && routeMode(cfg.routes[cfg.route]), mobs().map(m => m.key).sort(), gateways().map(g => g.id), cfg.route, cfg.rec && cfg.rec.length, Object.keys(cfg.routes),
                              cfg.picked, cfg.lvlOn, (cfg.deaths || []).length, cfg.onDeath, cfg.optimal, cfg.pk.mode, cfg.fogPct] : 0]);
         if (sKey !== lastStatic) {
             lastStatic = sKey;
             box.innerHTML = `<div class="hd"><div class="brand"><span class="dot"></span>MargoBot</div>
-                ${headButton(running)}
+                ${headButton(run)}
                 <button class="ib" data-a="fold" title="${cfg.open ? 'Einklappen' : 'Ausklappen'}">${ico(cfg.open ? 'min' : 'max')}</button></div>` +
                 (capt.state ? `<div class="capt ${capt.state}"><b>${capt.state === 'open' ? (cfg.autoCaptcha ? (capt.solving ? 'Zagadka – klicke *…*-Antworten…' : (cfg.autoCaptchaConfirm ? 'Zagadka – Auto-Lösen aktiv' : 'Zagadka – bitte Potwierdzam tippen')) : 'Zagadka – bitte selbst lösen') : 'Zagadka kommt bald'}</b><span class="ct"></span></div>` : '') +
                 (cfg.open ? `<div class="tabs"><button class="tab ${tab === 'xp' ? 'on' : ''}" data-a="tab" data-t="xp">XP</button>
                     <button class="tab ${tab === 'rules' ? 'on' : ''}" data-a="tab" data-t="rules">Abläufe${(cfg.rules || []).length ? ' · ' + cfg.rules.filter(r => r.on).length : ''}</button>
                     <button class="tab ${tab === 'trade' ? 'on' : ''}" data-a="tab" data-t="trade">Handel</button>
+                    <button class="tab ${tab === 'e2' ? 'on' : ''}" data-a="tab" data-t="e2">E2</button>
                     <button class="tab ${tab === 'set' ? 'on' : ''}" data-a="tab" data-t="set">Einstellungen</button></div>
-                    <div class="bd">${tab === 'xp' ? xpTab() : tab === 'rules' ? rulesTab() : tab === 'trade' ? tradeTab() : setTab()}</div>` : '');
+                    <div class="bd">${tab === 'xp' ? xpTab() : tab === 'rules' ? rulesTab() : tab === 'trade' ? tradeTab() : tab === 'e2' ? e2Tab() : setTab()}</div>` : '');
         }
         // Live-Werte
         sessTick(); countXp();
@@ -2907,6 +3183,7 @@
         return `<button class="mini" data-a="huntxp">${ico('play')}Hier jagen</button>`;
     }
     function huntHere() {
+        cfg.e2.on = false;
         cfg.lvlOn = true; cfg.route = ''; cfg.mode = 'xp'; cfg.travel = null; cfg.on = true; goal = null;
         startSession(); log('Jage Level ' + cfg.lvlMin + '–' + cfg.lvlMax + ' auf ' + mapName());
     }
@@ -2914,7 +3191,7 @@
         const el = ev.target.closest('[data-a]');
         if (!el || el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'LABEL') return;
         const a = el.dataset.a;
-        if (rulesClick(a, el)) { save(); lastStatic = ''; render(); return; }
+        if (rulesClick(a, el) || e2Click(a, el)) { save(); lastStatic = ''; render(); return; }
         if (a === 'tscan') { startScan(); render(); return; }
         if (a === 'tstop') { stopScan('Scan gestoppt'); render(); return; }
         if (a === 'tshow') { const d = MK.deals[+el.dataset.i]; if (d) showOffer(d); return; }
@@ -2926,7 +3203,7 @@
         }
         if (a === 'tab') cfg.tab = el.dataset.t;
         else if (a === 'fold') cfg.open = !cfg.open;
-        else if (a === 'stopall') { if (sess.t0 && !sess.end) { sess.end = Date.now(); saveSess(); } if (cfg.chain) endChain('von Hand'); cfg.on = false; cfg.travel = null; lastTravel = null; goal = null; log('Gestoppt'); }
+        else if (a === 'stopall') { if (sess.t0 && !sess.end) { sess.end = Date.now(); saveSess(); } if (cfg.chain) endChain('von Hand'); if (cfg.e2.on) e2Stop(); cfg.on = false; cfg.travel = null; lastTravel = null; goal = null; log('Gestoppt'); }
         else if (a === 'quick') { cfg.on = true; goal = null; startSession(); log('Gestartet'); }
         else if (a === 'huntxp') huntHere();
         else if (a === 'sugtake') {
@@ -2937,7 +3214,7 @@
             cfg.routes[name] = { maps: o.maps, mode: 'back', picked: {}, lvlOn: true, lvlMin: cfg.lvlMin, lvlMax: cfg.lvlMax, gen: true };
             selectRoute(name);
         }
-        else if (a === 'runroute') { cfg.travel = null; cfg.on = true; goal = null; startSession(); log('Route „' + cfg.route + '“ gestartet'); }
+        else if (a === 'runroute') { cfg.e2.on = false; cfg.travel = null; cfg.on = true; goal = null; startSession(); log('Route „' + cfg.route + '“ gestartet'); }
         else if (a === 'mode') {
             if (el.dataset.m === 'xp') { if (cfg.route) cfg.lastRoute = cfg.route; cfg.route = ''; cfg.mode = 'xp'; xpKey = ''; }
             else { cfg.mode = 'route'; if (!cfg.route && cfg.routes[cfg.lastRoute]) selectRoute(cfg.lastRoute); else if (!cfg.route && Object.keys(cfg.routes).length === 1) selectRoute(Object.keys(cfg.routes)[0]); }
@@ -3017,6 +3294,7 @@
     }
     box.addEventListener('input', ev => {
         const t = ev.target;
+        if (t.dataset.a === 'e2q') { e2Q = t.value.trim(); const h = box.querySelector('.e2hits'); if (h) h.innerHTML = e2HitsHtml(); return; }
         if (t.dataset.a !== 'mapq') return;
         const r = ruleById(t.dataset.r), i = +t.dataset.i;
         if (!r) return;
@@ -3031,6 +3309,13 @@
             const tc = tradeCfg();
             if (a === 'tall') tc.allCats = t.checked; else if (a === 'ttempo') tc.tempo = t.value; else tc[t.dataset.f] = Math.max(0, parseInt(t.value, 10) || 0);
             cfg.trade = tc; save(); lastStatic = ''; render(); return;
+        }
+        if (a === 'e2sel') { cfg.e2.sel = t.value; if (cfg.e2.on) { e2rt = null; goal = null; } save(); lastStatic = ''; render(); return; }
+        if (a === 'e2away') { cfg.e2.away = t.value; save(); lastStatic = ''; render(); return; }
+        if (a === 'e2set') {
+            const f = t.dataset.f, obj = /^(leaveMin|remindMin|remindMax)$/.test(f) ? cfg.e2 : e2Cur();
+            if (obj) { obj[f] = Math.max(0, parseInt(t.value, 10) || 0); const c = e2Cur(); if (c && c.respMax < c.respMin) c.respMax = c.respMin; }
+            save(); lastStatic = ''; render(); return;
         }
         if (rulesChange(t)) { save(); if ((a !== 'sf' || t.tagName === 'SELECT') && a !== 'wn') { lastStatic = ''; render(); } return; }
         if (t.dataset.k && t.type === 'checkbox') cfg.picked[t.dataset.k] = t.checked;
