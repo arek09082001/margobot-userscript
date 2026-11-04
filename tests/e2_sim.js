@@ -61,7 +61,11 @@ ok(cur === 2 && spot === 1, 'Reise nach B, wartet neben dem Spawnpunkt', `Karte 
 
 // 2) E2 erscheint → Angriff → verschwindet → Timer läuft
 npcs = [boss()];
+T(7); const early = hits.length;               // 1,4 s nach dem Erscheinen: noch in der Reaktionszeit (2–6 s)
+ok(early === 0, 'Reaktionszeit: greift nicht sofort an', `nach 1,4 s: ${early} Angriffe`);
 min(0.2);
+const reactS = (hits[0] - (now - 0.2 * 60000 - 1400)) / 1000;
+ok(reactS >= 2 && reactS <= 6.6, 'Angriff nach 2–6 s Reaktionszeit', `nach ${reactS.toFixed(1)} s`);
 ok(hits.length === 1 && t().kills === 1 && Math.abs(t().lastKill - (BASE + hits[0])) < 2000, 'angegriffen, Tod erkannt, Timer gestartet',
    `Angriffe ${hits.length}, Kills ${t().kills}, Respawn ${new FakeDate(t().lastKill + 15 * 60000).toISOString().slice(11, 16)}–${new FakeDate(t().lastKill + 30 * 60000).toISOString().slice(11, 16)} UTC`);
 
