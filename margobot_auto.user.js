@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      6.0
+// @version      6.1
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -39,7 +39,7 @@
                   routes: {}, route: '', routePos: 0, rec: null,
                   onDeath: 'stop', deaths: [], graph: {}, back: null, optimal: true,
                   names: {}, travel: null, blocked: [], tab: 'xp', logOpen: false, tele: {},
-                  rules: [], chain: null,
+                  rules: [], chain: null, autoCaptcha: false, captchaWarn: true,
                   pk: { mode: 'off', maxUp: 5, near: 6, sec: 5, never: '' } };
     const cfg = Object.assign({}, DEF, GM_getValue('mbauto', {}));
     cfg.pk = Object.assign({}, DEF.pk, cfg.pk || {});
@@ -1531,10 +1531,11 @@
         kw.ids = t && t.grp ? raw.filter(d => d.grp === t.grp).map(d => d.id) : [id];
     }
     function watchBattle() { settleKills(false); }
-    /* Zagadka (Captcha des Spiels): NICHT automatisch lösen – nur erkennen, Bot pausieren, Bescheid geben.
+    /* Zagadka (Captcha des Spiels):
        'soon' = Hinweis „Zagadka pojawi się za …s“ oben im Spiel (Bot jagt weiter, Vorwarnung),
-       'open' = Rätsel ist offen (Antwort-Knöpfe sichtbar) → Bot pausiert, bis es gelöst ist. */
-    const capt = { state: '', text: '', at: 0, warnedSoon: false, warnedOpen: false, checkAt: 0 };
+       'open' = Rätsel ist offen (Antwort-Knöpfe sichtbar).
+       Mit autoCaptcha=true: alle Antworten mit *…* anklicken und danach „Potwierdzam“. */
+    const capt = { state: '', text: '', at: 0, warnedSoon: false, warnedOpen: false, checkAt: 0, solving: false, solvedAt: 0 };
     function captchaText() {
         if (!document.evaluate) return '';
         const r = document.evaluate("//*[not(self::script) and not(self::style) and not(self::textarea) and (contains(text(),'Zagadka') or contains(text(),'zagadk') or contains(text(),'Riddle') or contains(text(),'riddle'))]",
@@ -1565,6 +1566,40 @@
         return [...document.querySelectorAll('.captcha__buttons')].find(el =>
             !el.closest('#mba') && el.querySelector('.button') && reallyVisible(el)) || null;
     }
+    function solveCaptchaIfPossible() {
+        /* Klickt alle Buttons deren Label mit * beginnt und endet (*e*, *f* …), danach „Potwierdzam“. */
+        if (!cfg.autoCaptcha || capt.solving) return false;
+        const box = captchaOpen();
+        if (!box) return false;
+        const buttons = [...box.querySelectorAll('.button')];
+        const correct = buttons.filter(btn => {
+            const label = ((btn.querySelector('.label') || btn).innerText || '').trim();
+            return /^\*[^*]+\*$/.test(label);
+        });
+        if (!correct.length) {
+            log('Zagadka: keine *…*-Antworten gefunden – bitte manuell lösen');
+            return false;
+        }
+        capt.solving = true;
+        log('Zagadka: ' + correct.length + ' Antwort' + (correct.length > 1 ? 'en' : '') + ' mit * gefunden – löse automatisch');
+        let delay = 200 + Math.random() * 300;
+        correct.forEach((btn, i) => {
+            const lab = ((btn.querySelector('.label') || btn).innerText || '').trim();
+            setTimeout(() => {
+                try { btn.click(); log('Zagadka: ' + lab + ' gewählt'); } catch (e) {}
+            }, delay);
+            delay += 280 + Math.random() * 320;
+        });
+        setTimeout(() => {
+            const confirm = document.querySelector('.captcha__confirm .button');
+            if (confirm && reallyVisible(confirm)) {
+                try { confirm.click(); log('Zagadka: Potwierdzam geklickt'); } catch (e) {}
+            }
+            capt.solving = false;
+            capt.solvedAt = performance.now();
+        }, delay + 350 + Math.random() * 250);
+        return true;
+    }
     function watchCaptcha() {
         const now = performance.now();
         if (now < capt.checkAt) return capt.state === 'open';
@@ -1573,11 +1608,29 @@
         const txt = box2 ? '' : captchaText();
         const st = box2 ? 'open' : txt ? 'soon' : '';
         if (st !== capt.state) {
-            if (st === 'open') { log('Zagadka offen – Bot pausiert, bitte selbst lösen'); if (!capt.warnedOpen) alarm('Zagadka ist offen – bitte jetzt lösen. Der Bot wartet.', true); capt.warnedOpen = true; }
-            else if (st === 'soon') { log('Zagadka kommt bald: ' + txt); if (!capt.warnedSoon) alarm('Zagadka kommt bald (' + txt.replace(/^.*?(\d+\s*s).*$/, '$1') + ')', false); capt.warnedSoon = true; }
-            else if (capt.state === 'open') { log('Zagadka gelöst – weiter'); capt.warnedOpen = false; capt.warnedSoon = false; busyUntil = now + pause(); }
+            if (st === 'open') {
+                log(cfg.autoCaptcha ? 'Zagadka offen – versuche automatisch zu lösen' : 'Zagadka offen – Bot pausiert, bitte selbst lösen');
+                if (!capt.warnedOpen) alarm(cfg.autoCaptcha ? 'Zagadka wird gelöst…' : 'Zagadka ist offen – bitte jetzt lösen. Der Bot wartet.', true);
+                capt.warnedOpen = true;
+                if (cfg.autoCaptcha) solveCaptchaIfPossible();
+            }
+            else if (st === 'soon') {
+                log('Zagadka kommt bald: ' + txt);
+                if (!capt.warnedSoon) alarm('Zagadka kommt bald (' + txt.replace(/^.*?(\d+\s*s).*$/, '$1') + ')', false);
+                capt.warnedSoon = true;
+            }
+            else if (capt.state === 'open') {
+                log('Zagadka gelöst – weiter');
+                capt.warnedOpen = false;
+                capt.warnedSoon = false;
+                capt.solving = false;
+                busyUntil = now + pause();
+            }
             else { capt.warnedSoon = false; }
             capt.state = st; capt.at = now; lastStatic = '';
+        } else if (st === 'open' && cfg.autoCaptcha && !capt.solving && now - capt.solvedAt > 2500) {
+            // Fenster hängt noch → erneut versuchen (z. B. nach Fehlversuch)
+            solveCaptchaIfPossible();
         }
         capt.text = txt;
         return st === 'open';
@@ -2078,7 +2131,7 @@
 
     function state() {
         if (deadNow) return ['dead', 'Tot', 'Warte auf Wiederbelebung'];
-        if (capt.state === 'open' && (cfg.on || cfg.travel || cfg.chain)) return ['dead', 'Pause: Zagadka', 'Bitte das Rätsel selbst lösen – danach geht es weiter'];
+        if (capt.state === 'open' && (cfg.on || cfg.travel || cfg.chain)) return ['dead', 'Pause: Zagadka', cfg.autoCaptcha ? (capt.solving ? 'Wird automatisch gelöst…' : 'Auto-Lösen aktiv – warte auf Abschluss') : 'Bitte das Rätsel selbst lösen – danach geht es weiter'];
         if (cfg.chain) {
             const r = ruleById(cfg.chain.rid), st = r && r.steps[cfg.chain.i];
             return ['trv', 'Ablauf', `Schritt ${cfg.chain.i + 1}/${r ? r.steps.length : '?'}: ${st ? stepText(st) : ''}`];
@@ -2249,8 +2302,9 @@
             <div class="fld"><span>Pause (ms)</span><input class="num" data-a="pauseMin" value="${cfg.pauseMin}">–<input class="num" data-a="pauseMax" value="${cfg.pauseMax}"></div>
             <label class="chk"><input type="checkbox" data-a="closeBattle" ${cfg.closeBattle ? 'checked' : ''}>Kampffenster nach dem Kampf schließen</label>
             <label class="chk"><input type="checkbox" data-a="fogExplore" ${cfg.fogExplore !== false ? 'checked' : ''}>Nebel-Karten erkunden</label>
+            <label class="chk"><input type="checkbox" data-a="autoCaptcha" ${cfg.autoCaptcha ? 'checked' : ''}>Zagadka automatisch lösen (*…*)</label>
             <label class="chk"><input type="checkbox" data-a="captchaWarn" ${cfg.captchaWarn !== false ? 'checked' : ''}>Bei Zagadka Ton und Benachrichtigung</label>
-            <div class="hint">Ist eine Zagadka offen, pausiert der Bot immer und jagt weiter, sobald du sie gelöst hast.</div>
+            <div class="hint">Mit Auto-Lösen werden alle Antworten mit Sternchen (*e*, *f* …) angeklickt und danach „Potwierdzam“. Ohne Auto-Lösen pausiert der Bot nur.</div>
             <div class="hint">Auf Karten mit Nebel sieht der Bot nur Mobs in seiner Nähe und läuft die Karte ab, um weitere zu finden.</div>
 
             <h4>Andere Spieler</h4>
@@ -2582,7 +2636,7 @@
             box.innerHTML = `<div class="hd"><div class="brand"><span class="dot"></span>MargoBot</div>
                 ${headButton(running)}
                 <button class="ib" data-a="fold" title="${cfg.open ? 'Einklappen' : 'Ausklappen'}">${ico(cfg.open ? 'min' : 'max')}</button></div>` +
-                (capt.state ? `<div class="capt ${capt.state}"><b>${capt.state === 'open' ? 'Zagadka – bitte selbst lösen' : 'Zagadka kommt bald'}</b><span class="ct"></span></div>` : '') +
+                (capt.state ? `<div class="capt ${capt.state}"><b>${capt.state === 'open' ? (cfg.autoCaptcha ? (capt.solving ? 'Zagadka – löse automatisch…' : 'Zagadka – Auto-Lösen aktiv') : 'Zagadka – bitte selbst lösen') : 'Zagadka kommt bald'}</b><span class="ct"></span></div>` : '') +
                 (cfg.open ? `<div class="tabs"><button class="tab ${tab === 'xp' ? 'on' : ''}" data-a="tab" data-t="xp">XP</button>
                     <button class="tab ${tab === 'rules' ? 'on' : ''}" data-a="tab" data-t="rules">Abläufe${(cfg.rules || []).length ? ' · ' + cfg.rules.filter(r => r.on).length : ''}</button>
                     <button class="tab ${tab === 'trade' ? 'on' : ''}" data-a="tab" data-t="trade">Handel</button>
@@ -2758,8 +2812,7 @@
         }
         if (rulesChange(t)) { save(); if ((a !== 'sf' || t.tagName === 'SELECT') && a !== 'wn') { lastStatic = ''; render(); } return; }
         if (t.dataset.k && t.type === 'checkbox') cfg.picked[t.dataset.k] = t.checked;
-        else if (a === 'lvlOn' || a === 'closeBattle') cfg[a] = t.checked;
-        else if (a === 'captchaWarn') cfg.captchaWarn = t.checked;
+        else if (a === 'lvlOn' || a === 'closeBattle' || a === 'autoCaptcha' || a === 'captchaWarn') cfg[a] = t.checked;
         else if (a === 'fogExplore') { cfg.fogExplore = t.checked; if (!t.checked) fog.on = false; }
         else if (a === 'exit') cfg.exits[mapName()] = t.value || undefined;
         else if (a === 'onDeath') cfg.onDeath = t.value;
