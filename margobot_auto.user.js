@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      6.4
+// @version      6.5
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -1568,37 +1568,90 @@
             !el.closest('#mba') && el.querySelector('.button') && reallyVisible(el)) || null;
     }
     const touchDev = () => { try { return 'ontouchstart' in W || (W.matchMedia && W.matchMedia('(pointer:coarse)').matches); } catch (e) { return false; } };
-    function pressFull(el) {
-        /* Klick wie ein Mensch – am PC mit Maus, am Handy mit dem Finger. Ziel ist das innere .label (dort landet
-           ein echter Klick). Handy: erst touchstart/touchend; verhindert das Spiel bei touchend den Standard
-           (preventDefault), schickt auch der echte Browser keine Maus-Ereignisse und keinen click hinterher –
-           sonst würde die Antwort doppelt umgeschaltet. Pointer-Ereignisse kommen auf beiden Geräten. */
+    /* Klick-Arten für die Zagadka. Welche das Spiel annimmt, ist nicht bekannt (am Handy kam der Klick mit der
+       ersten Fassung nicht an: das Spiel fängt Touch-Gesten auf der ganzen Seite ab und ruft preventDefault –
+       der Bot hat daraufhin keinen click mehr geschickt). Darum probiert der Bot sie der Reihe nach und prüft
+       nach jeder, ob sich der Knopf sichtbar geändert hat (Klasse, Stil). Die erste, die wirkt, merkt er sich. */
+    function evAt(el) {
         const tgt = el.querySelector('.label') || el, r = tgt.getBoundingClientRect();
-        const x = r.left + r.width / 2, y = r.top + r.height / 2, touch = touchDev();
-        const o = { bubbles: true, cancelable: true, view: W, clientX: x, clientY: y, button: 0, buttons: 1 };
-        const P = typeof PointerEvent === 'function' ? PointerEvent : MouseEvent;
-        const po = Object.assign({ pointerId: 1, isPrimary: true, pointerType: touch ? 'touch' : 'mouse' }, o);
-        tgt.dispatchEvent(new P('pointerover', po)); tgt.dispatchEvent(new P('pointerdown', po));
-        let mouse = true;
-        if (touch && typeof TouchEvent === 'function') {
-            try {
+        const x = r.left + r.width / 2, y = r.top + r.height / 2;
+        return { tgt, x, y, o: { bubbles: true, cancelable: true, view: W, clientX: x, clientY: y, screenX: x, screenY: y, button: 0, buttons: 1 } };
+    }
+    const P = () => typeof PointerEvent === 'function' ? PointerEvent : MouseEvent;
+    const up = o => Object.assign({}, o, { buttons: 0 });
+    const CLICKS = {
+        click: el => { const { tgt, o } = evAt(el); tgt.dispatchEvent(new MouseEvent('click', up(o))); },
+        maus: el => {
+            const { tgt, o } = evAt(el), po = Object.assign({ pointerId: 1, isPrimary: true, pointerType: 'mouse' }, o);
+            tgt.dispatchEvent(new (P())('pointerover', po)); tgt.dispatchEvent(new (P())('pointerdown', po));
+            tgt.dispatchEvent(new MouseEvent('mouseover', o)); tgt.dispatchEvent(new MouseEvent('mousedown', o));
+            tgt.dispatchEvent(new (P())('pointerup', up(po))); tgt.dispatchEvent(new MouseEvent('mouseup', up(o)));
+            tgt.dispatchEvent(new MouseEvent('click', up(o)));
+        },
+        touch: el => {
+            // Finger-Tipp, danach IMMER click – auch wenn das Spiel touchend abfängt
+            const { tgt, x, y, o } = evAt(el), po = Object.assign({ pointerId: 2, isPrimary: true, pointerType: 'touch' }, o);
+            tgt.dispatchEvent(new (P())('pointerdown', po));
+            if (typeof TouchEvent === 'function' && typeof Touch === 'function') {
                 const t = new Touch({ identifier: Date.now(), target: tgt, clientX: x, clientY: y, pageX: x + scrollX, pageY: y + scrollY });
                 tgt.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true, touches: [t], targetTouches: [t], changedTouches: [t] }));
-                mouse = tgt.dispatchEvent(new TouchEvent('touchend', { bubbles: true, cancelable: true, touches: [], targetTouches: [], changedTouches: [t] }));
-            } catch (e) { mouse = true; }                  // Touch-Konstruktor fehlt (ältere Browser) → wie am PC
-        }
-        tgt.dispatchEvent(new P('pointerup', Object.assign({}, po, { buttons: 0 })));
-        if (!mouse) return;
-        for (const t of ['mouseover', 'mousedown']) tgt.dispatchEvent(new MouseEvent(t, o));
-        tgt.dispatchEvent(new MouseEvent('mouseup', Object.assign({}, o, { buttons: 0 })));
-        tgt.dispatchEvent(new MouseEvent('click', Object.assign({}, o, { buttons: 0 })));
-    }
+                tgt.dispatchEvent(new TouchEvent('touchend', { bubbles: true, cancelable: true, touches: [], targetTouches: [], changedTouches: [t] }));
+            }
+            tgt.dispatchEvent(new (P())('pointerup', up(po)));
+            tgt.dispatchEvent(new MouseEvent('mousedown', o)); tgt.dispatchEvent(new MouseEvent('mouseup', up(o)));
+            tgt.dispatchEvent(new MouseEvent('click', up(o)));
+        },
+        jquery: el => {
+            // Spiel-Knöpfe hängen oft an jQuery: trigger ruft deren Handler direkt auf
+            const $ = W.jQuery || W.$;
+            if (typeof $ !== 'function' || !$.fn || !$.fn.trigger) throw new Error('kein jQuery');
+            $(el).trigger('mousedown').trigger('mouseup').trigger('click');
+        },
+        nativ: el => { (el.querySelector('.label') || el).click(); el.click(); }
+    };
     const capLabel = b => { const l = b.querySelector('.label') || b; return (l.innerText || l.textContent || '').trim(); };
     const isStar = l => /^\*[^*]+\*$/.test(l);
+    const capBtn = lab => { const c = captchaOpen(); return c && [...c.querySelectorAll('.button')].find(x => capLabel(x) === lab) || null; };
+    const btnLook = b => {
+        if (!b) return '';
+        let st = ''; try { const cs = getComputedStyle(b), cb = getComputedStyle(b.querySelector('.background') || b);
+            st = [cs.backgroundColor, cs.backgroundImage, cs.filter, cs.opacity, cs.boxShadow, cs.borderColor, cb.backgroundColor, cb.backgroundImage, cb.opacity].join('|'); } catch (e) {}
+        // Hover-/Fokus-Klassen zählen nicht – die setzt schon mouseover, ohne dass etwas gewählt ist
+        const cls = el => String(el.className || '').split(/\s+/).filter(c => c && !/hover|focus/i.test(c)).sort().join('.');
+        return [b, ...b.querySelectorAll('*')].map(el => cls(el) + '{' + (el.getAttribute('style') || '') + '}').join('') + '#' + st;
+    };
+    function clickOrder() {
+        const all = Object.keys(CLICKS), first = touchDev() ? ['touch', 'click', 'jquery', 'maus', 'nativ'] : ['maus', 'click', 'jquery', 'nativ', 'touch'];
+        const o = first.filter(k => all.includes(k));
+        return cfg.captchaClick && CLICKS[cfg.captchaClick] ? [cfg.captchaClick].concat(o.filter(k => k !== cfg.captchaClick)) : o;
+    }
+    function pressFull(el) { (CLICKS[cfg.captchaClick] || CLICKS[clickOrder()[0]])(el); }
+    function clickStar(lab, done) {
+        /* Einen Knopf wählen: Klick-Arten der Reihe nach, nach jeder 350 ms warten und vergleichen. */
+        const order = clickOrder(), tried = [];
+        const step = i => {
+            const b = capBtn(lab);
+            if (!b) { log('Zagadka: Knopf ' + lab + ' nicht mehr da'); return done(false); }
+            if (i >= order.length) { log('Zagadka: ' + lab + ' – keine Klick-Art wirkt (' + tried.join(', ') + ')'); return done(false); }
+            const before = btnLook(b), k = order[i];
+            try { CLICKS[k](b); tried.push(k); } catch (e) { tried.push(k + ' ✕'); return step(i + 1); }
+            setTimeout(() => {
+                const now = capBtn(lab);
+                if (!captchaOpen()) { log('Zagadka: ' + lab + ' per ' + k + ' – Fenster zu'); cfg.captchaClick = k; save(); return done(true); }
+                if (now && btnLook(now) !== before) {
+                    log('Zagadka: ' + lab + ' gewählt (per ' + k + ')');
+                    if (cfg.captchaClick !== k) { cfg.captchaClick = k; save(); }
+                    return done(true);
+                }
+                step(i + 1);
+            }, 350 + Math.random() * 150);
+        };
+        step(0);
+    }
     function solveCaptchaIfPossible() {
-        /* Klickt alle Knöpfe, deren Label mit * beginnt und endet (*e*, *f* …).
-           „Potwierdzam“ nur, wenn autoCaptchaConfirm an ist. Höchstens 3 Versuche pro Rätsel: ein erneuter
-           Klick auf eine schon gewählte Antwort könnte sie wieder abwählen. */
+        /* Wählt alle Knöpfe, deren Label mit * beginnt und endet (*e*, *f* …), prüft nach jedem Klick, ob er
+           ankam, und klickt „Potwierdzam“ nur, wenn autoCaptchaConfirm an ist und alle Antworten gewählt sind.
+           Höchstens 2 Durchgänge pro Rätsel. */
         if (!cfg.autoCaptcha || capt.solving) return false;
         const box = captchaOpen();
         if (!box) return false;
@@ -1608,34 +1661,31 @@
             capt.solvedAt = performance.now(); capt.tries = 99;
             return false;
         }
-        if ((capt.tries = (capt.tries || 0) + 1) > 3) {
-            if (capt.tries === 4) log('Zagadka: 3 Versuche ohne Erfolg – bitte selbst lösen');
-            return false;
-        }
+        if ((capt.tries = (capt.tries || 0) + 1) > 2) return false;
         capt.solving = true;
-        log('Zagadka: ' + star.join(', ') + ' gefunden – klicke' + (touchDev() ? ' (Touch)' : '') + (capt.tries > 1 ? ' · Versuch ' + capt.tries : ''));
-        let delay = 150 + Math.random() * 200;
-        for (const lab of star) {
+        log('Zagadka: ' + star.join(', ') + ' gefunden – klicke (' + (touchDev() ? 'Handy' : 'PC') + (cfg.captchaClick ? ', zuletzt ' + cfg.captchaClick : '') + ')');
+        let okN = 0;
+        const next = i => {
+            if (i >= star.length) return finish();
+            setTimeout(() => clickStar(star[i], ok => { if (ok) okN++; next(i + 1); }), 150 + Math.random() * 250);
+        };
+        const finish = () => {
+            capt.solving = false; capt.solvedAt = performance.now();
+            if (okN < star.length) {
+                capt.tries = 99;                            // nicht weiter herumklicken – sonst wird Gewähltes wieder abgewählt
+                log('Zagadka: Das Spiel nimmt die Klicks des Bots nicht an – bitte selbst lösen. „Spieldaten prüfen“ zeigt Details.');
+                return;
+            }
+            if (!cfg.autoCaptchaConfirm) return log('Zagadka: Antworten gewählt – bitte selbst Potwierdzam');
             setTimeout(() => {
-                // Knopf erst jetzt suchen: Baut das Spiel das Rätsel nach einem Klick neu auf, hängt ein vorher
-                // gemerktes Element nicht mehr im Dokument und der Klick verpufft.
-                const cur = captchaOpen();
-                const b = cur && [...cur.querySelectorAll('.button')].find(x => capLabel(x) === lab);
-                if (!b) { log('Zagadka: Knopf ' + lab + ' nicht mehr da'); return; }
-                try { pressFull(b); log('Zagadka: ' + lab + ' gewählt'); } catch (e) { log('Zagadka: Klick auf ' + lab + ' fehlgeschlagen: ' + e.message); }
-            }, delay);
-            delay += 250 + Math.random() * 300;
-        }
-        setTimeout(() => {
-            if (cfg.autoCaptchaConfirm) {
                 const confirm = document.querySelector('.captcha__confirm .button');
                 if (confirm && reallyVisible(confirm)) {
-                    try { pressFull(confirm); log('Zagadka: Potwierdzam geklickt'); } catch (e) {}
+                    try { pressFull(confirm); log('Zagadka: Potwierdzam geklickt (per ' + (cfg.captchaClick || clickOrder()[0]) + ')'); } catch (e) {}
                 } else log('Zagadka: Potwierdzam-Knopf nicht gefunden');
-            } else log('Zagadka: Antworten gewählt – bitte selbst Potwierdzam');
-            capt.solving = false;
-            capt.solvedAt = performance.now();
-        }, delay + 300 + Math.random() * 200);
+                capt.solvedAt = performance.now();
+            }, 300 + Math.random() * 300);
+        };
+        next(0);
         return true;
     }
     function watchCaptcha() {
@@ -1667,7 +1717,7 @@
             }
             else { capt.warnedSoon = false; }
             capt.state = st; capt.at = now; lastStatic = '';
-        } else if (st === 'open' && cfg.autoCaptcha && !capt.solving && now - capt.solvedAt > 2500 && (capt.tries || 0) < 3) {
+        } else if (st === 'open' && cfg.autoCaptcha && !capt.solving && now - capt.solvedAt > 4000 && (capt.tries || 0) < 2) {
             // Fenster hängt noch (Klick kam nicht an) oder Einstellung erst später eingeschaltet → nochmal
             solveCaptchaIfPossible();
         }
@@ -2544,13 +2594,30 @@
             <div class="hint">Läuft nur, solange der Bot jagt. Mit ${ico('play')} startest du einen Ablauf sofort.</div>
             <details><summary>${ico('chev')}Spieldaten prüfen</summary><div class="log diag"></div></details>`;
     }
+    function captchaDiag() {
+        /* Was hängt am Antwort-Knopf? Zum Nachsehen bei offenem Rätsel (jQuery-Handler, Klassen, Engine-Teile). */
+        const out = [];
+        try { out.push('Engine-Teile mit „captcha“: ' + (Object.keys(E() || {}).filter(k => /captcha|zagad|riddle/i.test(k)).join(', ') || 'keine')); } catch (e) {}
+        const c = captchaOpen(), b = c && c.querySelector('.button');
+        if (!b) return out.join('\n');
+        out.push('Knopf-Klassen: ' + b.className);
+        const $ = W.jQuery || W.$;
+        try {
+            const evs = $ && $._data ? ($._data(b, 'events') || {}) : {}, evp = $ && $._data ? ($._data(c, 'events') || {}) : {};
+            out.push('jQuery am Knopf: ' + (Object.keys(evs).join(', ') || '–') + ' · am Rahmen: ' + (Object.keys(evp).join(', ') || '–'));
+        } catch (e) {}
+        const on = ['onclick', 'onmousedown', 'ontouchstart', 'ontouchend', 'onpointerdown'].filter(k => b[k] || (b.querySelector('.label') || {})[k]);
+        out.push('Inline-Handler: ' + (on.join(', ') || '–'));
+        return out.join('\n');
+    }
     function diagText() {
         const it = allItems();
         return [
             'Spielbefehl _g: ' + (typeof W._g === 'function' ? 'da' : 'FEHLT'),
             'Gegenstände gefunden: ' + it.length + ' (Tasche ' + bag().length + ', angelegt ' + worn().length + ')',
             'Heiltränke: ' + potionCount(),
-            'Zagadka: ' + (captchaOpen() ? 'offen' : capt.state === 'soon' ? 'kommt bald' : 'keine') +
+            'Zagadka: ' + (captchaOpen() ? 'offen' : capt.state === 'soon' ? 'kommt bald' : 'keine') + ' · Gerät: ' + (touchDev() ? 'Handy/Touch' : 'PC') +
+                ' · Klick-Art: ' + (cfg.captchaClick || 'noch keine') + ' · jQuery: ' + (typeof (W.jQuery || W.$) === 'function' ? 'da' : 'fehlt') + '\n' + captchaDiag() + '\n' +
                 ' · Elemente „captcha“ im Spiel: ' + (document.querySelectorAll('[class*="captcha"]').length),
             'Verkaufbar (normale Ausrüstung): ' + sellList('gear').length,
             'Leben: ' + Math.round(hpPct()) + ' %',
