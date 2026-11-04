@@ -14,13 +14,14 @@ const go = m => {
     const c0 = cur; cur = m; changedAt = now; Engine.map.d.name = NAMES[m]; Engine.map.d.id = m;
     const back = G[m].find(g => g[0] === c0); hero.d.x = back ? back[1] : 10; hero.d.y = back ? back[2] : 10;
 };
-const boss = () => ({ d: { id: 777 + hits.length, nick: 'Mushita', lvl: 23, x: 15, y: 15, type: 2, icon: 'e2/st-puma.gif' } });
+const boss = (nick, x, y) => ({ d: { id: 777 + hits.length, nick: nick || 'Mushita', lvl: 23, x: x ?? 15, y: y ?? 15, type: 2, icon: 'e2/st-puma.gif' } });
+let fogR = 0;                                   // Nebel: das Spiel liefert nur Mobs bis fogR Felder um den Helden
 const hero = { d: { id: 1, x: 5, y: 5, lvl: 25 }, autoGoTo(p) {
     hero.d.x = p.x; hero.d.y = p.y;
     const g = G[cur].find(g => g[1] === p.x && g[2] === p.y);
     if (g) go(g[0]);
 }, heroAtackRequest(id) { hits.push(now); npcs = npcs.filter(n => n.d.id !== id); } };   // Kampf ohne Fenster: Gruppe verschwindet
-const Engine = { hero, battle: { show: false }, npcs: { getDrawableList: () => cur === 2 ? npcs : [] }, deadController: { isDead: () => false },
+const Engine = { hero, battle: { show: false }, npcs: { getDrawableList: () => cur !== 2 ? [] : fogR ? npcs.filter(n => Math.max(Math.abs(n.d.x - hero.d.x), Math.abs(n.d.y - hero.d.y)) <= fogR) : npcs }, deadController: { isDead: () => false },
   map: { d: { id: 1, name: 'A' }, size: { x: 20, y: 20 }, col: { check: () => (now - changedAt < 600 ? 1 : 0) },
     getGateways: () => ({ townnames: Object.fromEntries(G[cur].map(g => [g[0], NAMES[g[0]]])), getList: () => G[cur].map(g => ({ d: { id: g[0], x: g[1], y: g[2] } })) }) } };
 const W = { Engine, _g: () => {} };
@@ -67,6 +68,15 @@ ok(hits.length === 1 && t().kills === 1 && Math.abs(t().lastKill - (BASE + hits[
 // 3) Respawn nach 20 min → gemessen, wieder angegriffen
 min(20); npcs = [boss()]; min(0.2);
 ok(hits.length === 2 && t().kills === 2 && t().meas.length === 1 && Math.abs(t().meas[0] - 20) < 0.3, 'Respawn gemessen und wieder angegriffen', `gemessen ${t().meas.join(', ')} min, Kills ${t().kills}`);
+
+// 3b) Name im Spiel weicht ab (anderer Name, gleiches Level, nah am Spawn) → am Level erkannt und angegriffen
+npcs = [boss('Dzika Mushita', 14, 13)]; min(0.3);
+ok(hits.length === 3 && t().gameNick === 'Dzika Mushita' && logs.some(l => /erkannt am Level/.test(l)), 'anderer Name im Spiel: am Level erkannt, angegriffen', 'Name gemerkt: ' + t().gameNick);
+
+// 3c) Nebel: E2 erscheint 10 Felder vom Spawn, der Bot sieht nur 8 Felder weit → Runde um den Spawnpunkt, findet sie
+fogR = 8; min(15.5); npcs = [boss('Mushita', 5, 15)]; min(2);
+ok(hits.length === 4 && logs.some(l => /Runde um den Spawnpunkt/.test(l)), 'Nebel: Runde um den Spawnpunkt, gefunden und angegriffen', `Angriffe ${hits.length}`);
+fogR = 0; min(0.3);
 
 // Neue Seite = Skript frisch geladen; game = ob dort das Spiel läuft (sonst Startseite oder Anmeldung)
 const newPage = game => { W.Engine = game ? Engine : undefined; left = false; tickIdx = timers.length; new Function(...Object.keys(sb), src)(...Object.values(sb)); };
