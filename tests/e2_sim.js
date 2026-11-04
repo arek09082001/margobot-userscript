@@ -102,4 +102,11 @@ newPage(true); min(0.2); e2().autoBack = false;
 c = leaveCycle(); newPage(false);
 min((c.wake - (BASE + now)) / 60000 + 0.1);
 ok(loc.href === 'https://www.margonem.pl/' && /jetzt einloggen/.test(notes.slice(-1)[0]), 'ohne Rückkehr: Erinnerung auf der Hauptseite', notes.slice(-1)[0]);
+
+// 9) Richtwert für den Respawn gegen die Messungen auf margoatlas.pl („ok. X min“, Welt mit normalem Tempo)
+const fsrc = src.match(/const e2Resp = [^\n]*\n/)[0];
+const e2Resp = new Function('cfg', fsrc + 'return e2Resp;')({ e2: { speed: 1 } });
+const ATLAS = [[23, 4.5], [37, 7], [57, 9.5], [75, 12], [105, 15], [131, 17], [160, 18], [183, 19], [237, 19], [300, 19]];
+const bad = ATLAS.filter(([l, m]) => Math.abs(e2Resp(l) - m) > 0.6);
+ok(!bad.length, 'Respawn-Richtwert passt zu margoatlas', ATLAS.map(([l, m]) => `${l}: ${e2Resp(l).toFixed(1)}/${m}`).join(' · '));
 if (fail) process.exit(1);

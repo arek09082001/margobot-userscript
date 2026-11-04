@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      6.9
+// @version      7.0
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -46,7 +46,7 @@
     /* E2-Jagd: list = gemerkte Bosse (Schlüssel „Name|Karte“), sel = aktiver. away: 'stay' = am Spawnpunkt
        warten, 'leave' = bei langer Wartezeit das Spiel verlassen und rechtzeitig erinnern. back = Adresse der
        Spielseite ([server].margonem.pl), autoBack = zur Erinnerungszeit diese Seite wieder öffnen. */
-    const E2DEF = { on: false, sel: '', list: {}, away: 'stay', leaveMin: 10, remindMin: 2, remindMax: 4, wakeAt: 0, offline: false, autoBack: true, back: '', returned: false };
+    const E2DEF = { on: false, sel: '', list: {}, away: 'stay', leaveMin: 10, remindMin: 2, remindMax: 4, wakeAt: 0, offline: false, autoBack: true, back: '', returned: false, speed: 1 };
     cfg.e2 = Object.assign({}, E2DEF, cfg.e2 || {});
     const running = () => !!(cfg.on || cfg.travel || cfg.chain || cfg.e2.on);
     // Routen bereinigen: leere Einträge (Kartenwechsel beim Aufnehmen) raus, doppelte direkt hintereinander zusammenfassen
@@ -1493,10 +1493,20 @@
         e2WorldCache = { n: worldN(), l };
         return l;
     }
+    /* Richtwert für den Respawn (Minuten): t = 0,7 + 0,18·lvl − 0,00045·lvl², gilt laut Spieler-Wiki für Mobs und
+       Elity; deckt sich mit den Messungen auf margoatlas.pl für E2 (Lvl 23 ≈ 4,5 min, 57 ≈ 9,5, 105 ≈ 15, 160 ≈ 18).
+       Ab Lvl 200 bleibt es beim Höchstwert (~18,7 min, margoatlas: ab Lvl 183 „ok. 19 min“). Werte gelten für
+       Welten mit normalem Tempo – auf schnelleren Welten (z. B. Respawn ×3) durch das Tempo teilen. */
+    const e2Resp = lvl => { const l = Math.min(Math.max(1, +lvl || 1), 200); return (0.7 + 0.18 * l - 0.00045 * l * l) / Math.max(1, +cfg.e2.speed || 1); };
+    function e2AutoResp(t) {                       // Fenster ±1 min um den Richtwert („ok. X min“ ist gerundet und streut)
+        const r = e2Resp(t.lvl);
+        t.respMin = Math.max(1, Math.floor(r - 1)); t.respMax = Math.max(t.respMin + 1, Math.ceil(r + 1)); t.respAuto = true;
+    }
     function e2Add(o) {
         const k = e2Key(o.nick, o.map);
         if (!cfg.e2.list[k]) cfg.e2.list[k] = { nick: o.nick, lvl: o.lvl || 0, map: +o.map, x: o.x ?? null, y: o.y ?? null,
                                                 respMin: 15, respMax: 30, lastKill: 0, by: '', kills: 0, meas: [] };
+        if (!cfg.e2.list[k].lastKill && cfg.e2.list[k].respAuto !== false) e2AutoResp(cfg.e2.list[k]);
         cfg.e2.sel = k;
         log(`E2 gemerkt: ${o.nick} (${o.lvl || '?'}) auf ${wname(+o.map)}`);
     }
@@ -3025,11 +3035,14 @@
             </div>
             <div class="hint" style="margin-top:10px">Respawn nach (Minuten)</div>
             <div class="rg">${stp('respMin', t.respMin, 1, 600)}<span class="to">bis</span>${stp('respMax', t.respMax, 1, 600)}</div>
+            <div class="hint">Richtwert für Lvl ${t.lvl || '?'}: ~${e2Resp(t.lvl).toFixed(1).replace('.', ',')} min${+E2.speed > 1 ? ' (Welt ×' + E2.speed + ')' : ''}
+              ${t.respAuto ? '· eingestellt' : `· <button class="chip" data-a="e2auto" style="margin:0;padding:2px 6px">übernehmen</button>`}</div>
             <div class="fld"><button class="btn" data-a="e2kill">${ico('check')}Gerade getötet</button>
               ${mapId() === t.map ? `<button class="btn" data-a="e2here">${ico('pin')}Spawn = hier</button>` : ''}
               <span></span><button class="btn bad" data-a="e2del" title="E2 entfernen">${ico('trash')}</button></div>
             <div class="hint">„Gerade getötet“ startet den Timer von Hand, z. B. wenn du sie selbst erlegt hast.</div>` : ''}
 
+            <div class="fld"><span>Respawn-Tempo der Welt</span><select data-a="e2speed" style="width:auto">${[1, 2, 3, 4, 5].map(v => `<option value="${v}" ${+E2.speed === v ? 'selected' : ''}>×${v}${v === 1 ? ' (normal)' : ''}</option>`).join('')}</select></div>
             <h4>Wartezeit</h4>
             <select data-a="e2away"><option value="stay" ${E2.away === 'stay' ? 'selected' : ''}>am Spawnpunkt online bleiben</option>
               <option value="leave" ${E2.away === 'leave' ? 'selected' : ''}>Spiel verlassen und vor dem Respawn erinnern</option></select>
@@ -3065,9 +3078,11 @@
         } else if (a === 'e2num' && t || a === 'e2num' && /^(leaveMin|remind)/.test(el.dataset.f)) {
             const f = el.dataset.f, obj = /^(leaveMin|remindMin|remindMax)$/.test(f) ? E2 : t;
             obj[f] = Math.max(+el.dataset.lo, Math.min(+el.dataset.hi, (+obj[f] || 0) + +el.dataset.d));
+            if (/^resp/.test(f)) t.respAuto = false;     // von Hand eingestellt → Richtwert nicht mehr überschreiben
             if (f === 'respMin' && t.respMax < t.respMin) t.respMax = t.respMin;
             if (f === 'respMax' && t.respMin > t.respMax) t.respMin = t.respMax;
-        } else if (a === 'e2kill' && t) { t.lastKill = Date.now(); t.by = 'hand'; log(`E2: ${t.nick} als getötet markiert – Respawn ${clock(e2Window(t).start)}–${clock(e2Window(t).end)}`); }
+        } else if (a === 'e2auto' && t) { e2AutoResp(t); log(`E2: Respawn von ${t.nick} = Richtwert ${t.respMin}–${t.respMax} min`); }
+        else if (a === 'e2kill' && t) { t.lastKill = Date.now(); t.by = 'hand'; log(`E2: ${t.nick} als getötet markiert – Respawn ${clock(e2Window(t).start)}–${clock(e2Window(t).end)}`); }
         else if (a === 'e2here' && t) { const [hx, hy] = heroXY(); t.x = hx; t.y = hy; log(`E2: Spawnpunkt von ${t.nick} = ${hx},${hy}`); }
         else if (a === 'e2del' && t) { if (W.confirm(`E2 „${t.nick}“ entfernen?`)) { delete E2.list[E2.sel]; E2.sel = Object.keys(E2.list)[0] || ''; if (E2.on) e2Stop(); } }
         else if (a === 'e2go' && t) {
@@ -3326,10 +3341,15 @@
         }
         if (a === 'e2sel') { cfg.e2.sel = t.value; if (cfg.e2.on) { e2rt = null; goal = null; } save(); lastStatic = ''; render(); return; }
         if (a === 'e2away') { cfg.e2.away = t.value; save(); lastStatic = ''; render(); return; }
+        if (a === 'e2speed') {                     // Tempo geändert → alle Richtwert-Fenster neu rechnen
+            cfg.e2.speed = +t.value || 1;
+            for (const k in cfg.e2.list) if (cfg.e2.list[k].respAuto) e2AutoResp(cfg.e2.list[k]);
+            save(); lastStatic = ''; render(); return;
+        }
         if (a === 'e2back') { cfg.e2.autoBack = t.checked; save(); lastStatic = ''; render(); return; }
         if (a === 'e2set') {
             const f = t.dataset.f, obj = /^(leaveMin|remindMin|remindMax)$/.test(f) ? cfg.e2 : e2Cur();
-            if (obj) { obj[f] = Math.max(0, parseInt(t.value, 10) || 0); const c = e2Cur(); if (c && c.respMax < c.respMin) c.respMax = c.respMin; }
+            if (obj) { obj[f] = Math.max(0, parseInt(t.value, 10) || 0); const c = e2Cur(); if (c && /^resp/.test(f)) c.respAuto = false; if (c && c.respMax < c.respMin) c.respMax = c.respMin; }
             save(); lastStatic = ''; render(); return;
         }
         if (rulesChange(t)) { save(); if ((a !== 'sf' || t.tagName === 'SELECT') && a !== 'wn') { lastStatic = ''; render(); } return; }
