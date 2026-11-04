@@ -46,7 +46,7 @@ Eine bestandene Simulation beweist nur die Logik. Verhalten im echten Spiel imme
 - Auktionshaus: `.one-category-auction`, `.all-auction-section`, Spalten `.item-time-td`, `.item-bid-td`, `.item-buy-now-td`, Gegenstände in `Engine.items.fetchLocationItems('a')`, Seiten über `Engine.auctions.getAuctionPages()` (`getNextPageAction()` hängt an).
 - Das Spiel fängt das Mausrad ab, das Panel scrollt deshalb selbst.
 
-Noch nicht bestätigt: Accept beim Kaufen, echter Verkauf, Teleporter-Dialoge, Ankaufsquote der Händler und Auktionsgebühren. Für „Andere Spieler“: Spielerliste `Engine.others.getDrawableList()` (bzw. `check()`), PvP-Stufe `Engine.map.d.pvp` (2 = rot) und Spieler-Angriff `_g('fight&a=attack&id=…')`. Das Panel zeigt unter Einstellungen → Andere Spieler, was der Bot davon sieht.
+Noch nicht bestätigt: Zagadka automatisch lösen (Antworten mit `*…*` anklicken; `.captcha__confirm .button` nur mit eigener Option; beides standardmäßig aus), Accept beim Kaufen, echter Verkauf, Teleporter-Dialoge, Ankaufsquote der Händler und Auktionsgebühren. Für „Andere Spieler“: Spielerliste `Engine.others.getDrawableList()` (bzw. `check()`), PvP-Stufe `Engine.map.d.pvp` (2 = rot) und Spieler-Angriff `_g('fight&a=attack&id=…')`. Das Panel zeigt unter Einstellungen → Andere Spieler, was der Bot davon sieht.
 
 ## Feste Regeln
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      6.1
+// @version      6.6
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -39,7 +39,7 @@
                   routes: {}, route: '', routePos: 0, rec: null,
                   onDeath: 'stop', deaths: [], graph: {}, back: null, optimal: true,
                   names: {}, travel: null, blocked: [], tab: 'xp', logOpen: false, tele: {},
-                  rules: [], chain: null,
+                  rules: [], chain: null, autoCaptcha: false, autoCaptchaConfirm: false, captchaWarn: true,
                   pk: { mode: 'off', maxUp: 5, near: 6, sec: 5, never: '' } };
     const cfg = Object.assign({}, DEF, GM_getValue('mbauto', {}));
     cfg.pk = Object.assign({}, DEF.pk, cfg.pk || {});
@@ -1583,10 +1583,12 @@
         kw.ids = t && t.grp ? raw.filter(d => d.grp === t.grp).map(d => d.id) : [id];
     }
     function watchBattle() { settleKills(false); }
-    /* Zagadka (Captcha des Spiels): NICHT automatisch lösen – nur erkennen, Bot pausieren, Bescheid geben.
+    /* Zagadka (Captcha des Spiels):
        'soon' = Hinweis „Zagadka pojawi się za …s“ oben im Spiel (Bot jagt weiter, Vorwarnung),
-       'open' = Rätsel ist offen (Antwort-Knöpfe sichtbar) → Bot pausiert, bis es gelöst ist. */
-    const capt = { state: '', text: '', at: 0, warnedSoon: false, warnedOpen: false, checkAt: 0 };
+       'open' = Rätsel ist offen (Antwort-Knöpfe sichtbar) → Bot pausiert.
+       autoCaptcha: klickt alle Antworten mit *…* (*e*, *f* …), am Handy per Touch.
+       autoCaptchaConfirm: klickt danach auch „Potwierdzam“ (sonst selbst). */
+    const capt = { state: '', text: '', at: 0, warnedSoon: false, warnedOpen: false, checkAt: 0, solving: false, solvedAt: 0 };
     function captchaText() {
         if (!document.evaluate) return '';
         const r = document.evaluate("//*[not(self::script) and not(self::style) and not(self::textarea) and (contains(text(),'Zagadka') or contains(text(),'zagadk') or contains(text(),'Riddle') or contains(text(),'riddle'))]",
@@ -1617,6 +1619,127 @@
         return [...document.querySelectorAll('.captcha__buttons')].find(el =>
             !el.closest('#mba') && el.querySelector('.button') && reallyVisible(el)) || null;
     }
+    const touchDev = () => { try { return 'ontouchstart' in W || (W.matchMedia && W.matchMedia('(pointer:coarse)').matches); } catch (e) { return false; } };
+    /* Klick-Arten für die Zagadka. Welche das Spiel annimmt, ist nicht bekannt (am Handy kam der Klick mit der
+       ersten Fassung nicht an: das Spiel fängt Touch-Gesten auf der ganzen Seite ab und ruft preventDefault –
+       der Bot hat daraufhin keinen click mehr geschickt). Darum probiert der Bot sie der Reihe nach und prüft
+       nach jeder, ob sich der Knopf sichtbar geändert hat (Klasse, Stil). Die erste, die wirkt, merkt er sich. */
+    function evAt(el) {
+        const tgt = el.querySelector('.label') || el, r = tgt.getBoundingClientRect();
+        const x = r.left + r.width / 2, y = r.top + r.height / 2;
+        return { tgt, x, y, o: { bubbles: true, cancelable: true, view: W, clientX: x, clientY: y, screenX: x, screenY: y, button: 0, buttons: 1 } };
+    }
+    const P = () => typeof PointerEvent === 'function' ? PointerEvent : MouseEvent;
+    const up = o => Object.assign({}, o, { buttons: 0 });
+    const CLICKS = {
+        click: el => { const { tgt, o } = evAt(el); tgt.dispatchEvent(new MouseEvent('click', up(o))); },
+        maus: el => {
+            const { tgt, o } = evAt(el), po = Object.assign({ pointerId: 1, isPrimary: true, pointerType: 'mouse' }, o);
+            tgt.dispatchEvent(new (P())('pointerover', po)); tgt.dispatchEvent(new (P())('pointerdown', po));
+            tgt.dispatchEvent(new MouseEvent('mouseover', o)); tgt.dispatchEvent(new MouseEvent('mousedown', o));
+            tgt.dispatchEvent(new (P())('pointerup', up(po))); tgt.dispatchEvent(new MouseEvent('mouseup', up(o)));
+            tgt.dispatchEvent(new MouseEvent('click', up(o)));
+        },
+        touch: el => {
+            // Finger-Tipp, danach IMMER click – auch wenn das Spiel touchend abfängt
+            const { tgt, x, y, o } = evAt(el), po = Object.assign({ pointerId: 2, isPrimary: true, pointerType: 'touch' }, o);
+            tgt.dispatchEvent(new (P())('pointerdown', po));
+            if (typeof TouchEvent === 'function' && typeof Touch === 'function') {
+                const t = new Touch({ identifier: Date.now(), target: tgt, clientX: x, clientY: y, pageX: x + scrollX, pageY: y + scrollY });
+                tgt.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true, touches: [t], targetTouches: [t], changedTouches: [t] }));
+                tgt.dispatchEvent(new TouchEvent('touchend', { bubbles: true, cancelable: true, touches: [], targetTouches: [], changedTouches: [t] }));
+            }
+            tgt.dispatchEvent(new (P())('pointerup', up(po)));
+            tgt.dispatchEvent(new MouseEvent('mousedown', o)); tgt.dispatchEvent(new MouseEvent('mouseup', up(o)));
+            tgt.dispatchEvent(new MouseEvent('click', up(o)));
+        },
+        jquery: el => {
+            // Spiel-Knöpfe hängen oft an jQuery: trigger ruft deren Handler direkt auf
+            const $ = W.jQuery || W.$;
+            if (typeof $ !== 'function' || !$.fn || !$.fn.trigger) throw new Error('kein jQuery');
+            $(el).trigger('mousedown').trigger('mouseup').trigger('click');
+        },
+        nativ: el => { (el.querySelector('.label') || el).click(); el.click(); }
+    };
+    const capLabel = b => { const l = b.querySelector('.label') || b; return (l.innerText || l.textContent || '').trim(); };
+    const isStar = l => /^\*[^*]+\*$/.test(l);
+    const capBtn = lab => { const c = captchaOpen(); return c && [...c.querySelectorAll('.button')].find(x => capLabel(x) === lab) || null; };
+    const btnLook = b => {
+        if (!b) return '';
+        let st = ''; try { const cs = getComputedStyle(b), cb = getComputedStyle(b.querySelector('.background') || b);
+            st = [cs.backgroundColor, cs.backgroundImage, cs.filter, cs.opacity, cs.boxShadow, cs.borderColor, cb.backgroundColor, cb.backgroundImage, cb.opacity].join('|'); } catch (e) {}
+        // Hover-/Fokus-Klassen zählen nicht – die setzt schon mouseover, ohne dass etwas gewählt ist
+        const cls = el => String(el.className || '').split(/\s+/).filter(c => c && !/hover|focus/i.test(c)).sort().join('.');
+        return [b, ...b.querySelectorAll('*')].map(el => cls(el) + '{' + (el.getAttribute('style') || '') + '}').join('') + '#' + st;
+    };
+    function clickOrder() {
+        const all = Object.keys(CLICKS), first = touchDev() ? ['touch', 'click', 'jquery', 'maus', 'nativ'] : ['maus', 'click', 'jquery', 'nativ', 'touch'];
+        const o = first.filter(k => all.includes(k));
+        return cfg.captchaClick && CLICKS[cfg.captchaClick] ? [cfg.captchaClick].concat(o.filter(k => k !== cfg.captchaClick)) : o;
+    }
+    function pressFull(el) { (CLICKS[cfg.captchaClick] || CLICKS[clickOrder()[0]])(el); }
+    function clickStar(lab, done) {
+        /* Einen Knopf wählen: Klick-Arten der Reihe nach, nach jeder 350 ms warten und vergleichen. */
+        const order = clickOrder(), tried = [];
+        const step = i => {
+            const b = capBtn(lab);
+            if (!b) { log('Zagadka: Knopf ' + lab + ' nicht mehr da'); return done(false); }
+            if (i >= order.length) { log('Zagadka: ' + lab + ' – keine Klick-Art wirkt (' + tried.join(', ') + ')'); return done(false); }
+            const before = btnLook(b), k = order[i];
+            try { CLICKS[k](b); tried.push(k); } catch (e) { tried.push(k + ' ✕'); return step(i + 1); }
+            setTimeout(() => {
+                const now = capBtn(lab);
+                if (!captchaOpen()) { log('Zagadka: ' + lab + ' per ' + k + ' – Fenster zu'); cfg.captchaClick = k; save(); return done(true); }
+                if (now && btnLook(now) !== before) {
+                    log('Zagadka: ' + lab + ' gewählt (per ' + k + ')');
+                    if (cfg.captchaClick !== k) { cfg.captchaClick = k; save(); }
+                    return done(true);
+                }
+                step(i + 1);
+            }, 350 + Math.random() * 150);
+        };
+        step(0);
+    }
+    function solveCaptchaIfPossible() {
+        /* Wählt alle Knöpfe, deren Label mit * beginnt und endet (*e*, *f* …), prüft nach jedem Klick, ob er
+           ankam, und klickt „Potwierdzam“ nur, wenn autoCaptchaConfirm an ist und alle Antworten gewählt sind.
+           Höchstens 2 Durchgänge pro Rätsel. */
+        if (!cfg.autoCaptcha || capt.solving) return false;
+        const box = captchaOpen();
+        if (!box) return false;
+        const labels = [...box.querySelectorAll('.button')].map(capLabel), star = labels.filter(isStar);
+        if (!star.length) {
+            log('Zagadka: keine *…* in [' + labels.join(', ') + '] – bitte selbst lösen');
+            capt.solvedAt = performance.now(); capt.tries = 99;
+            return false;
+        }
+        if ((capt.tries = (capt.tries || 0) + 1) > 2) return false;
+        capt.solving = true;
+        log('Zagadka: ' + star.join(', ') + ' gefunden – klicke (' + (touchDev() ? 'Handy' : 'PC') + (cfg.captchaClick ? ', zuletzt ' + cfg.captchaClick : '') + ')');
+        let okN = 0;
+        const next = i => {
+            if (i >= star.length) return finish();
+            setTimeout(() => clickStar(star[i], ok => { if (ok) okN++; next(i + 1); }), 150 + Math.random() * 250);
+        };
+        const finish = () => {
+            capt.solving = false; capt.solvedAt = performance.now();
+            if (okN < star.length) {
+                capt.tries = 99;                            // nicht weiter herumklicken – sonst wird Gewähltes wieder abgewählt
+                log('Zagadka: Das Spiel nimmt die Klicks des Bots nicht an – bitte selbst lösen. „Spieldaten prüfen“ zeigt Details.');
+                return;
+            }
+            if (!cfg.autoCaptchaConfirm) return log('Zagadka: Antworten gewählt – bitte selbst Potwierdzam');
+            setTimeout(() => {
+                const confirm = document.querySelector('.captcha__confirm .button');
+                if (confirm && reallyVisible(confirm)) {
+                    try { pressFull(confirm); log('Zagadka: Potwierdzam geklickt (per ' + (cfg.captchaClick || clickOrder()[0]) + ')'); } catch (e) {}
+                } else log('Zagadka: Potwierdzam-Knopf nicht gefunden');
+                capt.solvedAt = performance.now();
+            }, 300 + Math.random() * 300);
+        };
+        next(0);
+        return true;
+    }
     function watchCaptcha() {
         const now = performance.now();
         if (now < capt.checkAt) return capt.state === 'open';
@@ -1625,11 +1748,30 @@
         const txt = box2 ? '' : captchaText();
         const st = box2 ? 'open' : txt ? 'soon' : '';
         if (st !== capt.state) {
-            if (st === 'open') { log('Zagadka offen – Bot pausiert, bitte selbst lösen'); if (!capt.warnedOpen) alarm('Zagadka ist offen – bitte jetzt lösen. Der Bot wartet.', true); capt.warnedOpen = true; }
-            else if (st === 'soon') { log('Zagadka kommt bald: ' + txt); if (!capt.warnedSoon) alarm('Zagadka kommt bald (' + txt.replace(/^.*?(\d+\s*s).*$/, '$1') + ')', false); capt.warnedSoon = true; }
-            else if (capt.state === 'open') { log('Zagadka gelöst – weiter'); capt.warnedOpen = false; capt.warnedSoon = false; busyUntil = now + pause(); }
+            if (st === 'open') {
+                log(cfg.autoCaptcha ? 'Zagadka offen – versuche *…* zu klicken' : 'Zagadka offen – Bot pausiert, bitte selbst lösen');
+                if (!capt.warnedOpen) alarm(cfg.autoCaptcha ? 'Zagadka – klicke Antworten…' : 'Zagadka ist offen – bitte jetzt lösen. Der Bot wartet.', true);
+                capt.warnedOpen = true; capt.tries = 0; capt.solvedAt = now;
+                // kurz warten: das Fenster baut sich gerade erst auf
+                if (cfg.autoCaptcha) setTimeout(solveCaptchaIfPossible, 300 + Math.random() * 400);
+            }
+            else if (st === 'soon') {
+                log('Zagadka kommt bald: ' + txt);
+                if (!capt.warnedSoon) alarm('Zagadka kommt bald (' + txt.replace(/^.*?(\d+\s*s).*$/, '$1') + ')', false);
+                capt.warnedSoon = true;
+            }
+            else if (capt.state === 'open') {
+                log('Zagadka gelöst – weiter');
+                capt.warnedOpen = false;
+                capt.warnedSoon = false;
+                capt.solving = false;
+                busyUntil = now + pause();
+            }
             else { capt.warnedSoon = false; }
             capt.state = st; capt.at = now; lastStatic = '';
+        } else if (st === 'open' && cfg.autoCaptcha && !capt.solving && now - capt.solvedAt > 4000 && (capt.tries || 0) < 2) {
+            // Fenster hängt noch (Klick kam nicht an) oder Einstellung erst später eingeschaltet → nochmal
+            solveCaptchaIfPossible();
         }
         capt.text = txt;
         return st === 'open';
@@ -2131,7 +2273,7 @@
 
     function state() {
         if (deadNow) return ['dead', 'Tot', 'Warte auf Wiederbelebung'];
-        if (capt.state === 'open' && (cfg.on || cfg.travel || cfg.chain)) return ['dead', 'Pause: Zagadka', 'Bitte das Rätsel selbst lösen – danach geht es weiter'];
+        if (capt.state === 'open' && (cfg.on || cfg.travel || cfg.chain)) return ['dead', 'Pause: Zagadka', cfg.autoCaptcha ? (capt.solving ? 'Klicke *…*-Antworten…' : (cfg.autoCaptchaConfirm ? 'Auto-Lösen aktiv' : 'Antworten gewählt – bitte Potwierdzam')) : 'Bitte das Rätsel selbst lösen – danach geht es weiter'];
         if (cfg.chain) {
             const r = ruleById(cfg.chain.rid), st = r && r.steps[cfg.chain.i];
             return ['trv', 'Ablauf', `Schritt ${cfg.chain.i + 1}/${r ? r.steps.length : '?'}: ${st ? stepText(st) : ''}`];
@@ -2305,8 +2447,10 @@
             <div class="fld"><span>Nebel: weiter nach</span><select data-a="fogPct" style="width:auto">${[100, 75, 50].map(v =>
                 `<option value="${v}" ${(+cfg.fogPct || 100) === v ? 'selected' : ''}>${v} % der Mob-Plätze</option>`).join('')}</select></div>
             ${world && !worldHasPos() ? '<div class="hint">Deine Weltkarte kennt noch keine Mob-Plätze. Unten bei Weltkarte „Von GitHub“ tippen, dann sucht der Bot im Nebel gezielt.</div>' : ''}
+            <label class="chk"><input type="checkbox" data-a="autoCaptcha" ${cfg.autoCaptcha ? 'checked' : ''}>Zagadka: Antworten mit * automatisch anklicken</label>
+            <label class="chk"><input type="checkbox" data-a="autoCaptchaConfirm" ${cfg.autoCaptchaConfirm ? 'checked' : ''}>Zagadka: danach auch „Potwierdzam“ klicken</label>
             <label class="chk"><input type="checkbox" data-a="captchaWarn" ${cfg.captchaWarn !== false ? 'checked' : ''}>Bei Zagadka Ton und Benachrichtigung</label>
-            <div class="hint">Ist eine Zagadka offen, pausiert der Bot immer und jagt weiter, sobald du sie gelöst hast.</div>
+            <div class="hint">Vorwarnung (Zähler) → Bot jagt weiter. Sobald das Fenster da ist: Bot pausiert und klickt (wenn aktiv) alle *…*-Antworten. „Potwierdzam“ nur bei zweiter Option.</div>
             <div class="hint">Im Nebel sieht der Bot nur Mobs in seiner Nähe. Er läuft die bekannten Mob-Plätze nacheinander ab und geht weiter, wenn genug davon abgesucht sind. Mobs, die hinter der Sichtgrenze verschwinden, merkt er sich.</div>
 
             <h4>Andere Spieler</h4>
@@ -2506,13 +2650,30 @@
             <div class="hint">Läuft nur, solange der Bot jagt. Mit ${ico('play')} startest du einen Ablauf sofort.</div>
             <details><summary>${ico('chev')}Spieldaten prüfen</summary><div class="log diag"></div></details>`;
     }
+    function captchaDiag() {
+        /* Was hängt am Antwort-Knopf? Zum Nachsehen bei offenem Rätsel (jQuery-Handler, Klassen, Engine-Teile). */
+        const out = [];
+        try { out.push('Engine-Teile mit „captcha“: ' + (Object.keys(E() || {}).filter(k => /captcha|zagad|riddle/i.test(k)).join(', ') || 'keine')); } catch (e) {}
+        const c = captchaOpen(), b = c && c.querySelector('.button');
+        if (!b) return out.join('\n');
+        out.push('Knopf-Klassen: ' + b.className);
+        const $ = W.jQuery || W.$;
+        try {
+            const evs = $ && $._data ? ($._data(b, 'events') || {}) : {}, evp = $ && $._data ? ($._data(c, 'events') || {}) : {};
+            out.push('jQuery am Knopf: ' + (Object.keys(evs).join(', ') || '–') + ' · am Rahmen: ' + (Object.keys(evp).join(', ') || '–'));
+        } catch (e) {}
+        const on = ['onclick', 'onmousedown', 'ontouchstart', 'ontouchend', 'onpointerdown'].filter(k => b[k] || (b.querySelector('.label') || {})[k]);
+        out.push('Inline-Handler: ' + (on.join(', ') || '–'));
+        return out.join('\n');
+    }
     function diagText() {
         const it = allItems();
         return [
             'Spielbefehl _g: ' + (typeof W._g === 'function' ? 'da' : 'FEHLT'),
             'Gegenstände gefunden: ' + it.length + ' (Tasche ' + bag().length + ', angelegt ' + worn().length + ')',
             'Heiltränke: ' + potionCount(),
-            'Zagadka: ' + (captchaOpen() ? 'offen' : capt.state === 'soon' ? 'kommt bald' : 'keine') +
+            'Zagadka: ' + (captchaOpen() ? 'offen' : capt.state === 'soon' ? 'kommt bald' : 'keine') + ' · Gerät: ' + (touchDev() ? 'Handy/Touch' : 'PC') +
+                ' · Klick-Art: ' + (cfg.captchaClick || 'noch keine') + ' · jQuery: ' + (typeof (W.jQuery || W.$) === 'function' ? 'da' : 'fehlt') + '\n' + captchaDiag() + '\n' +
                 ' · Elemente „captcha“ im Spiel: ' + (document.querySelectorAll('[class*="captcha"]').length),
             'Verkaufbar (normale Ausrüstung): ' + sellList('gear').length,
             'Leben: ' + Math.round(hpPct()) + ' %',
@@ -2638,7 +2799,7 @@
             box.innerHTML = `<div class="hd"><div class="brand"><span class="dot"></span>MargoBot</div>
                 ${headButton(running)}
                 <button class="ib" data-a="fold" title="${cfg.open ? 'Einklappen' : 'Ausklappen'}">${ico(cfg.open ? 'min' : 'max')}</button></div>` +
-                (capt.state ? `<div class="capt ${capt.state}"><b>${capt.state === 'open' ? 'Zagadka – bitte selbst lösen' : 'Zagadka kommt bald'}</b><span class="ct"></span></div>` : '') +
+                (capt.state ? `<div class="capt ${capt.state}"><b>${capt.state === 'open' ? (cfg.autoCaptcha ? (capt.solving ? 'Zagadka – klicke *…*-Antworten…' : (cfg.autoCaptchaConfirm ? 'Zagadka – Auto-Lösen aktiv' : 'Zagadka – bitte Potwierdzam tippen')) : 'Zagadka – bitte selbst lösen') : 'Zagadka kommt bald'}</b><span class="ct"></span></div>` : '') +
                 (cfg.open ? `<div class="tabs"><button class="tab ${tab === 'xp' ? 'on' : ''}" data-a="tab" data-t="xp">XP</button>
                     <button class="tab ${tab === 'rules' ? 'on' : ''}" data-a="tab" data-t="rules">Abläufe${(cfg.rules || []).length ? ' · ' + cfg.rules.filter(r => r.on).length : ''}</button>
                     <button class="tab ${tab === 'trade' ? 'on' : ''}" data-a="tab" data-t="trade">Handel</button>
@@ -2814,8 +2975,7 @@
         }
         if (rulesChange(t)) { save(); if ((a !== 'sf' || t.tagName === 'SELECT') && a !== 'wn') { lastStatic = ''; render(); } return; }
         if (t.dataset.k && t.type === 'checkbox') cfg.picked[t.dataset.k] = t.checked;
-        else if (a === 'lvlOn' || a === 'closeBattle') cfg[a] = t.checked;
-        else if (a === 'captchaWarn') cfg.captchaWarn = t.checked;
+        else if (a === 'lvlOn' || a === 'closeBattle' || a === 'autoCaptcha' || a === 'autoCaptchaConfirm' || a === 'captchaWarn') cfg[a] = t.checked;
         else if (a === 'fogExplore') { cfg.fogExplore = t.checked; if (!t.checked) fog.on = false; }
         else if (a === 'fogPct') cfg.fogPct = +t.value || 100;
         else if (a === 'exit') cfg.exits[mapName()] = t.value || undefined;
