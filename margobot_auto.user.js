@@ -1585,12 +1585,20 @@
                                                                        : Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
     const clock = t => new Date(t).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
     function e2Spot(t) {
-        /* Warteplatz: ein begehbares Feld direkt neben dem Spawnpunkt (nicht darauf – dort erscheint die E2). */
-        for (const [dx, dy] of [[0, 1], [1, 0], [-1, 0], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+        /* Warteplatz: zufälliges begehbares, erreichbares Feld höchstens 2 Felder vom Spawnpunkt (nicht darauf – dort
+           erscheint die E2). Nicht immer dasselbe Feld: Der Platz wird nach jedem Kampf neu ausgelost und bis dahin
+           behalten (sonst würde der Held hin und her laufen). */
+        if (e2rt && e2rt.spot && e2rt.spotFor === t.x + ',' + t.y) return e2rt.spot;
+        const [hx, hy] = heroXY(), d = walls ? bfs(hx, hy) : null, opts = [];
+        for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
             const x = t.x + dx, y = t.y + dy;
-            if (x >= 0 && y >= 0 && x < MW && y < MH && !(walls && walls[y * MW + x])) return [x, y];
+            if ((!dx && !dy) || x < 0 || y < 0 || x >= MW || y >= MH) continue;
+            if (walls && (walls[y * MW + x] || d[y * MW + x] < 0)) continue;
+            opts.push([x, y]);
         }
-        return [t.x, t.y];
+        const spot = opts.length ? opts[Math.floor(Math.random() * opts.length)] : [t.x, t.y];
+        if (e2rt) { e2rt.spot = spot; e2rt.spotFor = t.x + ',' + t.y; }
+        return spot;
     }
     function e2Text() {
         /* Statuszeile für Panel und Kopfbereich. */
@@ -1694,6 +1702,7 @@
             if (Math.max(Math.abs(hx - e2rt.x), Math.abs(hy - e2rt.y)) <= 12) {
                 const mine = now - e2rt.atk < 30000;
                 t.lastKill = now; t.by = mine ? 'bot' : 'other';
+                e2rt.spot = null;                              // nach dem Kampf neuen Warteplatz auslosen
                 if (mine) t.kills = (t.kills || 0) + 1;
                 const w = e2Window(t);
                 log(`E2: ${t.nick} ${mine ? 'besiegt' : 'von jemand anderem erlegt'} – Respawn ${clock(w.start)}–${clock(w.end)}`);

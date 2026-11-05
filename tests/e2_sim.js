@@ -57,8 +57,9 @@ T(10);                                 // nach der ersten Speicherung ist store.
 
 // 1) Anreise und Warten neben dem Spawnpunkt (E2 noch nicht da)
 min(0.5);
-const spot = Math.abs(hero.d.x - 15) + Math.abs(hero.d.y - 15);
-ok(cur === 2 && spot === 1, 'Reise nach B, wartet neben dem Spawnpunkt', `Karte ${NAMES[cur]}, Held ${hero.d.x},${hero.d.y}`);
+const cheb = () => Math.max(Math.abs(hero.d.x - 15), Math.abs(hero.d.y - 15)), nearSpawn = () => cheb() >= 1 && cheb() <= 2;
+const spot = nearSpawn() ? 1 : 0;
+ok(cur === 2 && spot === 1, 'Reise nach B, wartet 1–2 Felder neben dem Spawnpunkt', `Karte ${NAMES[cur]}, Held ${hero.d.x},${hero.d.y}`);
 
 // 2) E2 erscheint → Angriff → verschwindet → Timer läuft
 npcs = [boss()];
@@ -74,13 +75,18 @@ ok(hits.length === 1 && t().kills === 1 && Math.abs(t().lastKill - (BASE + hits[
 min(20); npcs = [boss()]; min(0.2);
 ok(hits.length === 2 && t().kills === 2 && t().meas.length === 1 && Math.abs(t().meas[0] - 20) < 0.3, 'Respawn gemessen und wieder angegriffen', `gemessen ${t().meas.join(', ')} min, Kills ${t().kills}`);
 
+// 3a) Warteplatz nach jedem Kampf neu ausgelost: zufällig, 1–2 Felder vom Spawn, nicht immer dasselbe Feld
+const spots = new Set(); let allNear = true;
+for (let i = 0; i < 6; i++) { npcs = [boss()]; min(0.2); min(0.3); spots.add(hero.d.x + ',' + hero.d.y); if (!nearSpawn()) allNear = false; }
+ok(allNear && spots.size >= 3, 'Warteplatz nach dem Kampf zufällig, 1–2 Felder vom Spawn', [...spots].join(' '));
+
 // 3b) Name im Spiel weicht ab (anderer Name, gleiches Level, nah am Spawn) → am Level erkannt und angegriffen
 npcs = [boss('Dzika Mushita', 14, 13)]; min(0.3);
-ok(hits.length === 3 && t().gameNick === 'Dzika Mushita' && logs.some(l => /erkannt am Level/.test(l)), 'anderer Name im Spiel: am Level erkannt, angegriffen', 'Name gemerkt: ' + t().gameNick);
+ok(hits.length === 9 && t().gameNick === 'Dzika Mushita' && logs.some(l => /erkannt am Level/.test(l)), 'anderer Name im Spiel: am Level erkannt, angegriffen', 'Name gemerkt: ' + t().gameNick);
 
 // 3c) Nebel: E2 erscheint 10 Felder vom Spawn, der Bot sieht nur 8 Felder weit → Runde um den Spawnpunkt, findet sie
 fogR = 8; min(15.5); npcs = [boss('Mushita', 5, 15)]; min(2);
-ok(hits.length === 4 && logs.some(l => /Runde um den Spawnpunkt/.test(l)), 'Nebel: Runde um den Spawnpunkt, gefunden und angegriffen', `Angriffe ${hits.length}`);
+ok(hits.length === 10 && logs.some(l => /Runde um den Spawnpunkt/.test(l)), 'Nebel: Runde um den Spawnpunkt, gefunden und angegriffen', `Angriffe ${hits.length}`);
 fogR = 0; min(0.3);
 
 // Neue Seite = Skript frisch geladen; game = ob dort das Spiel läuft (sonst Startseite oder Anmeldung)
@@ -104,7 +110,7 @@ ok(loc.href === SERVER && notes.some(n => /zurück ins Spiel/.test(n)), 'öffnet
 
 // 6) Spielseite lädt mit bestehender Sitzung → Bot macht am Spawnpunkt weiter
 newPage(true); min(0.2);
-ok(!e2().offline && e2().on && Math.abs(hero.d.x - 15) + Math.abs(hero.d.y - 15) === 1, 'zurück im Spiel, weiter am Spawnpunkt', 'offline=' + e2().offline + ', Held ' + hero.d.x + ',' + hero.d.y);
+ok(!e2().offline && e2().on && nearSpawn(), 'zurück im Spiel, weiter am Spawnpunkt', 'offline=' + e2().offline + ', Held ' + hero.d.x + ',' + hero.d.y);
 
 // 7) Sitzung abgelaufen: Spielseite zeigt eine Anmeldung → kein zweiter Seitenwechsel, nur Erinnerung
 c = leaveCycle(); newPage(false);
