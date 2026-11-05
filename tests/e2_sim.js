@@ -117,6 +117,18 @@ c = leaveCycle(); newPage(false);
 min((c.wake - (BASE + now)) / 60000 + 0.1);
 ok(loc.href === 'https://www.margonem.pl/' && /jetzt einloggen/.test(notes.slice(-1)[0]), 'ohne Rückkehr: Erinnerung auf der Hauptseite', notes.slice(-1)[0]);
 
+// 10) margonem.com-Fall: Startseite leitet eingeloggte Spieler sofort zurück ins Spiel → nicht wieder verlassen (kein Neulade-Kreis)
+newPage(true); min(0.2); e2().autoBack = true;
+c = leaveCycle();
+loc._h = SERVER; newPage(true); min(0.1);          // Weiterleitung: nach wenigen Sekunden wieder auf der Spielseite
+const lg0 = logs.length; min(3);
+ok(!left && loc.href === SERVER && !e2().offline && e2().noLeaveUntil > BASE + now && logs.some(l => /zurück ins Spiel geleitet/.test(l)),
+   'Startseite leitet zurück: bleibt online statt Neulade-Kreis', 'Seite ' + loc.href + ', online bis ' + new FakeDate(e2().noLeaveUntil).toISOString().slice(11, 16));
+// nächster Kill nach dieser Wartezeit: wieder normal verlassen, jetzt über eine eigene Adresse
+min((e2().noLeaveUntil - (BASE + now)) / 60000 + 0.5); e2().leaveUrl = 'https://www.margonem.pl/news';
+c = leaveCycle();
+ok(left && loc.href === 'https://www.margonem.pl/news', 'eigene Adresse zum Verlassen', 'Seite ' + loc.href);
+
 // 9) Richtwert für den Respawn gegen die Messungen auf margoatlas.pl („ok. X min“, Welt mit normalem Tempo)
 const fsrc = src.match(/const e2Resp = [^\n]*\n/)[0];
 const e2Resp = new Function('cfg', fsrc + 'return e2Resp;')({ e2: { speed: 1 } });
