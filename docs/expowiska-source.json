@@ -1,0 +1,1561 @@
+{
+  "source": "https://forum.margonem.pl/?task=forum&show=posts&id=514156",
+  "updated": "2026-06-23",
+  "entries": [
+    {
+      "name": "Mrówki",
+      "level": 20,
+      "places": "Kopiec Mrówek w Łanach Zboża",
+      "recommended": true,
+      "icons": [
+        "zwi/mrowka03a.gif",
+        "zwi/mrowka15a.gif",
+        "zwi/mrowka05a.gif"
+      ]
+    },
+    {
+      "name": "Pumy",
+      "level": 21,
+      "places": "Leśna Przełęcz, Kryjówka Dzikich Kotów",
+      "recommended": false,
+      "icons": [
+        "zwi/pantera_czarna2.gif"
+      ]
+    },
+    {
+      "name": "Tygrysy",
+      "level": 22,
+      "places": "Leśna Przełęcz, Tygrysia Polana",
+      "recommended": false,
+      "icons": [
+        "zwi/tygrys2.gif"
+      ]
+    },
+    {
+      "name": "Niedźwiedzie",
+      "level": 23,
+      "places": "Dziewicza Knieja",
+      "recommended": false,
+      "icons": [
+        "zwi/mis_maly1.gif",
+        "zwi/mis_brunatny1.gif",
+        "zwi/mis_czarny1.gif",
+        "zwi/mis_szary1.gif"
+      ]
+    },
+    {
+      "name": "Nietoperze",
+      "level": 25,
+      "places": "Siedlisko Nietoperzy w Dziewiczej Kniei",
+      "recommended": false,
+      "icons": [
+        "zwi/gacek_szary1.gif"
+      ]
+    },
+    {
+      "name": "Bazyliszki",
+      "level": 26,
+      "places": "Las Tropicieli",
+      "recommended": false,
+      "icons": [
+        "pot/bazyl_2p.gif",
+        "pot/bazyl_7l.gif",
+        "pot/bazyl_6.gif"
+      ]
+    },
+    {
+      "name": "Mulusy",
+      "level": 28,
+      "places": "Dzikie Pagórki, Pradawne Wzgórze Przodków, Osada Mulusów",
+      "recommended": true,
+      "icons": [
+        "hum/dzikus5.gif",
+        "hum/dzikus4.gif",
+        "hum/dzikus6.gif",
+        "hum/dzikus1-b.gif",
+        "hum/dzikus7-b.gif",
+        "hum/dzikus3-b.gif",
+        "e1/dzikus9.gif",
+        "e1/dzikus8.gif",
+        "e1/dzikus10.gif"
+      ]
+    },
+    {
+      "name": "Demony",
+      "level": 29,
+      "places": "Przeklęta Strażnica w Orlej Grani",
+      "recommended": true,
+      "icons": [
+        "pot/demon1.gif",
+        "pot/demon4b.gif",
+        "pot/demon3b.gif",
+        "pot/demon1b2.gif",
+        "pot/demon2.gif",
+        "pot/demon1a.gif"
+      ]
+    },
+    {
+      "name": "Rozbójnicy",
+      "level": 32,
+      "places": "Przełęcz Łotrzyków, Pagórki Łupieżców, Dolina Rozbójników",
+      "recommended": true,
+      "icons": [
+        "woj/zbir22a.gif",
+        "woj/zbir25b.gif",
+        "woj/zbir2b.gif",
+        "woj/zbir15b.gif",
+        "woj/zbir-k1a.gif",
+        "woj/zbir7a.gif",
+        "woj/zbir14a.gif",
+        "e1/zbir-herszt.gif"
+      ]
+    },
+    {
+      "name": "Gobliny",
+      "level": 34,
+      "places": "Las Goblinów, Podmokła Dolina, Morwowe Przejście",
+      "recommended": true,
+      "icons": [
+        "hum/gobfechmistrz.gif",
+        "hum/gobkadet1b.gif",
+        "hum/gobtraper1b.gif",
+        "hum/gobrekrut1b.gif",
+        "hum/gobmag1b.gif",
+        "hum/gobrekrut.gif",
+        "e1/gobbloker.gif"
+      ]
+    },
+    {
+      "name": "Puffy, Onyksowe Skorpiony",
+      "level": 37,
+      "places": "Pieczara Niepogody w Forcie Eder",
+      "recommended": false,
+      "icons": [
+        "pot/puff-1b.gif",
+        "pot/puff-2b.gif",
+        "pot/skorpion-1a.gif",
+        "pot/skorpion-2b.gif",
+        "e1/puff-3b.gif"
+      ]
+    },
+    {
+      "name": "Warany",
+      "level": 38,
+      "places": "Spokojne Przejście, Zasłonięte Jezioro, Słoneczna Wyżyna, Cienisty Bór",
+      "recommended": false,
+      "icons": [
+        "zwi/waran1b.gif",
+        "zwi/waran2.gif",
+        "zwi/waran3.gif",
+        "zwi/waran4.gif",
+        "zwi/waran5.gif"
+      ]
+    },
+    {
+      "name": "Ghule",
+      "level": 40,
+      "places": "Ghuli Mogilnik, Polana Ścierwojadów",
+      "recommended": false,
+      "icons": [
+        "hum/ghul3-a.gif",
+        "hum/ghul5-a.gif",
+        "hum/ghul2-b.gif",
+        "hum/ghul4-a.gif",
+        "hum/ghul6-a.gif",
+        "e1/ghul-elita-a.gif"
+      ]
+    },
+    {
+      "name": "Odyńce",
+      "level": 40,
+      "places": "Spokojne Przejście, Racicowy Matecznik, Zbójecka Skarpa",
+      "recommended": true,
+      "icons": [
+        "zwi/locha2b.gif",
+        "zwi/warchlak1b.gif",
+        "zwi/dzik4b.gif"
+      ]
+    },
+    {
+      "name": "Wilcze Plemię",
+      "level": 44,
+      "places": "Warczące Osuwiska, Wilcza Skarpa, Legowisko Wilczej Hordy",
+      "recommended": true,
+      "icons": [
+        "hum/wilk_plemie1-a.gif",
+        "hum/wilk_plemie2-a.gif",
+        "hum/wilk_plemie3-a.gif",
+        "hum/wilk_plemie4-a.gif",
+        "hum/wilk_plemie5-a.gif",
+        "e1/wilk_jagoda.gif",
+        "e1/wilk_paszcza.gif"
+      ]
+    },
+    {
+      "name": "Tolloki",
+      "level": 45,
+      "places": "Skarpiska Tolloków, Skalne Turnie",
+      "recommended": false,
+      "icons": [
+        "hum/tollok02-b.gif",
+        "hum/tollok03.gif",
+        "hum/tollok04-a.gif",
+        "hum/tollok01.gif"
+      ]
+    },
+    {
+      "name": "Zbiry",
+      "level": 46,
+      "places": "Stary Kupiecki Trakt, Stukot Widmowych Kół, Wertepy Rzezimieszków",
+      "recommended": true,
+      "icons": [
+        "woj/zbir5a.gif",
+        "woj/zbir4b.gif",
+        "woj/zbir24a.gif"
+      ]
+    },
+    {
+      "name": "Orkowie",
+      "level": 47,
+      "places": "Zburzona Twierdza, Opuszczony Bastion, Nawiedzony Jar",
+      "recommended": true,
+      "icons": [
+        "hum/ork1.gif",
+        "hum/ork2.gif",
+        "hum/ork3.gif",
+        "hum/ork4.gif",
+        "hum/orkm.gif",
+        "e1/orkd.gif",
+        "e1/orkkrogor.gif"
+      ]
+    },
+    {
+      "name": "Grzechotniki, Kobry",
+      "level": 48,
+      "places": "Mroczny Przesmyk, Zapomniany Szlak",
+      "recommended": false,
+      "icons": [
+        "zwi/grzechotnik01a.gif",
+        "zwi/kobra09a.gif"
+      ]
+    },
+    {
+      "name": "Harpie",
+      "level": 49,
+      "places": "Mroczny Przesmyk",
+      "recommended": false,
+      "icons": [
+        "hum/harpia2a.gif",
+        "hum/harpia1a.gif"
+      ]
+    },
+    {
+      "name": "Galarety",
+      "level": 50,
+      "places": "Mokra Grota w Zapomnianym Szlaku",
+      "recommended": false,
+      "icons": [
+        "pot/bestia31.gif",
+        "pot/bestia36b.gif",
+        "pot/bestia30b.gif",
+        "pot/bestia32.gif",
+        "pot/bestia34b.gif",
+        "pot/bestia33.gif"
+      ]
+    },
+    {
+      "name": "Pokątniki",
+      "level": 52,
+      "places": "Grota Bezszelestnych Kroków w Zapomnianym Szlaku",
+      "recommended": false,
+      "icons": [
+        "zwi/pokatnik1.gif",
+        "zwi/pokatnik2.gif",
+        "zwi/pokatnik3.gif"
+      ]
+    },
+    {
+      "name": "Górskie/Czarne Orły",
+      "level": 53,
+      "places": "Zapomniany Szlak",
+      "recommended": false,
+      "icons": [
+        "pot/orzel2a.gif",
+        "pot/orzel1b.gif"
+      ]
+    },
+    {
+      "name": "Koboldy",
+      "level": 54,
+      "places": "Lazurytowa Grota w Uroczysku",
+      "recommended": true,
+      "icons": [
+        "hum/kobold04b.gif",
+        "hum/kobold06b.gif",
+        "hum/kobold05b.gif"
+      ]
+    },
+    {
+      "name": "Żądłaki",
+      "level": 58,
+      "places": "Porzucone Pasieki",
+      "recommended": true,
+      "icons": [
+        "zwi/zadlak1a.gif",
+        "zwi/zadlak2a.gif",
+        "zwi/zadlak4a.gif",
+        "e1/zadlak5a.gif"
+      ]
+    },
+    {
+      "name": "Bazyliszki",
+      "level": 61,
+      "places": "Pieczara Szaleńców w Radosnej Polanie",
+      "recommended": true,
+      "icons": [
+        "pot/bazyl_3l.gif",
+        "pot/bazyl_5p.gif",
+        "pot/bazyl_4p.gif",
+        "e1/bazyl-mroku-b.gif"
+      ]
+    },
+    {
+      "name": "Tygrysy",
+      "level": 62,
+      "places": "Andarum Ilami, Skały Mroźnych Śpiewów, Cmentarzysko Szerpów",
+      "recommended": false,
+      "icons": [
+        "zwi/tygrys_sniez2.gif",
+        "zwi/tygrys_lazur1.gif"
+      ]
+    },
+    {
+      "name": "Gnolle",
+      "level": 64,
+      "places": "Radosna Polana, Wioska Gnolli, Czeluść Ognistej Pożogi",
+      "recommended": false,
+      "icons": [
+        "hum/gnoll20.gif",
+        "hum/gnoll16b.gif",
+        "hum/gnoll21.gif",
+        "hum/gnoll18b.gif",
+        "hum/gnoll15b.gif",
+        "hum/gnoll13.gif",
+        "e1/gnoll19.gif"
+      ]
+    },
+    {
+      "name": "Tańczące Płomienie",
+      "level": 65,
+      "places": "Baszta Wilczych Kłów, Bagnista Dolina Dusz, Bagna Chojraków",
+      "recommended": false,
+      "icons": [
+        "pot/ogniki04.gif",
+        "pot/ogniki06.gif",
+        "pot/ogniki05.gif"
+      ]
+    },
+    {
+      "name": "Rosomaki",
+      "level": 66,
+      "places": "Zniszczone Opactwo, Leśny Bród",
+      "recommended": false,
+      "icons": [
+        "zwi/rosomak-1a.gif",
+        "zwi/rosomak-2a.gif"
+      ]
+    },
+    {
+      "name": "Szare Mrówki",
+      "level": 67,
+      "places": "Mrówcza Kolonia w Leśnym Brodzie",
+      "recommended": false,
+      "icons": [
+        "zwi/mrowka02a.gif",
+        "zwi/mrowka14a.gif",
+        "zwi/mrowka06a.gif"
+      ]
+    },
+    {
+      "name": "Olbrzymy",
+      "level": 68,
+      "places": "Kamienna Jaskinia, Zdradzieckie Przejście w Andarum Ilami",
+      "recommended": false,
+      "icons": [
+        "hum/kam_olbrzym2-b.gif",
+        "hum/kam_olbrzym3-b.gif",
+        "hum/kam_olbrzym1-b.gif"
+      ]
+    },
+    {
+      "name": "Mieszkańcy Andarum i okolic",
+      "level": 70,
+      "places": "Andarum Ilami, Skały Mroźnych Śpiewów, Cmentarzysko Szerpów, Śnieżna Granica",
+      "recommended": false,
+      "icons": [
+        "hum/straznik-anda1b.gif",
+        "zwi/tygrys_lazur1.gif",
+        "zwi/wilk_bialy1.gif",
+        "zwi/tygrys_sniez1.gif",
+        "zwi/mis_bialy2.gif"
+      ]
+    },
+    {
+      "name": "Niedźwiedzie",
+      "level": 70,
+      "places": "Gościniec Bardów, Liściaste Rozstaje, Zapomniana Ścieżyna, Niedźwiedzie Urwisko",
+      "recommended": false,
+      "icons": [
+        "zwi/polud_czarny1b.gif",
+        "zwi/polud_szary1b.gif",
+        "zwi/polud_brunatny1a.gif"
+      ]
+    },
+    {
+      "name": "Tolloki",
+      "level": 71,
+      "places": "Zdradzieckie Przejście, Głęboki Skałki",
+      "recommended": false,
+      "icons": [
+        "hum/tollok-c-01.gif",
+        "hum/tollok-c-02.gif",
+        "hum/tollok_jask-3b.gif"
+      ]
+    },
+    {
+      "name": "Demilisze",
+      "level": 72,
+      "places": "Krypty Dusz Śniegu w Cmentarzysku Szerpów",
+      "recommended": false,
+      "icons": [
+        "pot/demilisz-1b.gif",
+        "pot/demilisz-2a.gif"
+      ]
+    },
+    {
+      "name": "Mnisi",
+      "level": 74,
+      "places": "Świątynia Andarum",
+      "recommended": false,
+      "icons": [
+        "hum/mnich_braz-2b.gif",
+        "hum/mnich_braz-5a.gif",
+        "hum/mnich_braz-6a.gif",
+        "hum/mnich_braz-1a.gif",
+        "hum/mnich_braz-3a.gif",
+        "hum/mnich_braz-4a.gif"
+      ]
+    },
+    {
+      "name": "Mnisi",
+      "level": 75,
+      "places": "Biblioteka Andarum",
+      "recommended": false,
+      "icons": [
+        "hum/mnich_nieb-1a.gif",
+        "hum/mnich_nieb-2a.gif",
+        "hum/mnich_nieb-3a.gif",
+        "hum/mnich_nieb-4a.gif",
+        "hum/mnich_nieb-5a.gif",
+        "hum/mnich_nieb-6a.gif"
+      ]
+    },
+    {
+      "name": "Magazynierzy",
+      "level": 77,
+      "places": "Magazyn Świątyni w Andarum Ilami",
+      "recommended": true,
+      "icons": [
+        "hum/magazynier-1a.gif",
+        "hum/magazynier-2a.gif",
+        "hum/magazynier-3a.gif",
+        "hum/magazynier-4a.gif",
+        "hum/magazynier-5a.gif"
+      ]
+    },
+    {
+      "name": "Erem",
+      "level": 80,
+      "places": "Erem Czarnego Słońca w Skałach Mroźnego Śpiewu",
+      "recommended": true,
+      "icons": [
+        "hum/nieum_mnich-1a.gif",
+        "hum/nieum_mnich-2a.gif",
+        "hum/nieum_mnich-3a.gif",
+        "hum/nieum_mnich-4a.gif",
+        "hum/nieum_mnich-5a.gif"
+      ]
+    },
+    {
+      "name": "Minotaury",
+      "level": 81,
+      "places": "Pieczara Czasek w Nizinie Wieśniaków",
+      "recommended": false,
+      "icons": [
+        "hum/minos01.gif",
+        "hum/minos02.gif",
+        "e1/berog.gif"
+      ]
+    },
+    {
+      "name": "Mykonidy",
+      "level": 82,
+      "places": "Śnieżna Grota",
+      "recommended": false,
+      "icons": [
+        "pot/mykonid2b.gif",
+        "pot/mykonid3b.gif",
+        "pot/mykonid-4a.gif"
+      ]
+    },
+    {
+      "name": "Dławiciele",
+      "level": 83,
+      "places": "Wylęgarnia Choukkerów",
+      "recommended": false,
+      "icons": [
+        "hum/dlawiciel1.gif",
+        "hum/dlawiciel2.gif"
+      ]
+    },
+    {
+      "name": "Niedźwiedziołaki",
+      "level": 83,
+      "places": "Firnowa Grota, Lodowa Wyrwa w Skałach Mroźnych Śpiewów",
+      "recommended": true,
+      "icons": [
+        "hum/wlochacze_1b.gif",
+        "hum/wlochacze_2b.gif",
+        "hum/niedzwiedziol_1a.gif"
+      ]
+    },
+    {
+      "name": "Wermonty",
+      "level": 85,
+      "places": "Rachminowa Jaskinia w Sosnowym Odludziu, Zdradzieckie Przejście",
+      "recommended": false,
+      "icons": [
+        "pot/robal01b.gif",
+        "pot/robal03.gif",
+        "pot/robal04b.gif",
+        "pot/robal05.gif"
+      ]
+    },
+    {
+      "name": "Krasnoludy",
+      "level": 86,
+      "places": "Labirynt Margorii, Kopalnia Margorii, Margoria, Margoria - Sala Królewska",
+      "recommended": false,
+      "icons": [
+        "hum/krasnolud1b.gif",
+        "hum/krasnolud2.gif",
+        "hum/krasnolud3.gif"
+      ]
+    },
+    {
+      "name": "Darhouny",
+      "level": 87,
+      "places": "Szyb Zdrajców, Ślepe Wyrobisko",
+      "recommended": false,
+      "icons": [
+        "pot/darhoun-1b.gif",
+        "pot/darhoun-2a.gif",
+        "pot/darhoun-3a.gif"
+      ]
+    },
+    {
+      "name": "Grexy, Volmaty, Urgrapy",
+      "level": 89,
+      "places": "Grota Samotnych Dusz w Trupiej Przełęczy/Liściastych Rozstajach",
+      "recommended": true,
+      "icons": [
+        "pot/potw1b.gif",
+        "pot/potw2.gif",
+        "pot/potw3.gif"
+      ]
+    },
+    {
+      "name": "Orły",
+      "level": 90,
+      "places": "Złudny Trakt",
+      "recommended": false,
+      "icons": [
+        "pot/orzel3b.gif",
+        "pot/orzel4b.gif"
+      ]
+    },
+    {
+      "name": "Leszy",
+      "level": 91,
+      "places": "Liściaste Rozstaje, Sosnowe Odludzie, Księżycowe Wzniesienie",
+      "recommended": false,
+      "icons": [
+        "hum/leszy-1b.gif",
+        "hum/leszy-2b.gif",
+        "hum/leszy-3b.gif"
+      ]
+    },
+    {
+      "name": "Południce, Wieczornice",
+      "level": 92,
+      "places": "Mglista Polana Vesy, Trupia Przełęcz, Wzgórze Płaczek",
+      "recommended": false,
+      "icons": [
+        "hum/poludnica.gif",
+        "hum/wieczornica2.gif"
+      ]
+    },
+    {
+      "name": "Gnomy",
+      "level": 94,
+      "places": "Złowrogie Bagna, Gadzia Kotlina, Mglista Polana Vesy, Wzgórze Płaczek",
+      "recommended": true,
+      "icons": [
+        "hum/l-mlodszy_gnom.gif",
+        "hum/gnom_lesny1.gif",
+        "hum/l-starszy_gnom.gif"
+      ]
+    },
+    {
+      "name": "Błotniste Gady",
+      "level": 96,
+      "places": "Złowrogie Bagna, Gadzia Kotlina",
+      "recommended": false,
+      "icons": [
+        "zwi/zolw-5b.gif",
+        "zwi/zolw-4a.gif",
+        "zwi/krokodyl-12l.gif",
+        "zwi/krokodyl-13l.gif",
+        "zwi/krokodyl-11p.gif"
+      ]
+    },
+    {
+      "name": "Ogniki",
+      "level": 96,
+      "places": "Złowrogie Bagna, Gadzia Kotlina",
+      "recommended": false,
+      "icons": [
+        "pot/ogniki.gif",
+        "pot/ogniki02.gif"
+      ]
+    },
+    {
+      "name": "Centaury",
+      "level": 98,
+      "places": "Błędny Szlak, Zawiły Bór, Iglaste Ścieżki, Selva Oscura, Dolina Centaurów, Ostępy Galopu",
+      "recommended": true,
+      "icons": [
+        "hum/cent-lowca1a.gif",
+        "hum/cent-lowca2a.gif",
+        "hum/cent-lowca4a.gif",
+        "hum/cent-lowca3a.gif",
+        "hum/cent-woja.gif",
+        "hum/waleczny-centaura.gif"
+      ]
+    },
+    {
+      "name": "Małe gady i płazy",
+      "level": 99,
+      "places": "Lasy na północ od Mythar",
+      "recommended": false,
+      "icons": [
+        "zwi/kameleon02.gif",
+        "zwi/salamandra-1a.gif",
+        "zwi/salamandra-2a.gif",
+        "zwi/salamandra-3a.gif",
+        "zwi/salamandra-4a.gif",
+        "zwi/salamandra-5a.gif",
+        "zwi/salamandra-6a.gif",
+        "zwi/salamandra-7a.gif"
+      ]
+    },
+    {
+      "name": "Bandyci",
+      "level": 100,
+      "places": "Ostępy Szalbierskich Lasów, Cienisty Bór, Las Dziwów",
+      "recommended": false,
+      "icons": [
+        "woj/zbir-k2a.gif",
+        "woj/zbir17a.gif",
+        "woj/zbir20a.gif",
+        "woj/zbir23a.gif",
+        "woj/zbir11a.gif"
+      ]
+    },
+    {
+      "name": "Molochy",
+      "level": 103,
+      "places": "Podziemia Zniszczonej Wieży w Selvie Oscurze",
+      "recommended": false,
+      "icons": [
+        "hum/moloch-1a.gif",
+        "hum/moloch-2a.gif",
+        "hum/moloch-3a.gif",
+        "hum/moloch-4a.gif",
+        "hum/moloch-5a.gif"
+      ]
+    },
+    {
+      "name": "Dwugłowe olbrzymy",
+      "level": 105,
+      "places": "Smocze Góry",
+      "recommended": false,
+      "icons": [
+        "hum/olbrzym_dwug-1a.gif",
+        "hum/olbrzym_dwug-2a.gif",
+        "hum/olbrzym_dwug-3a.gif"
+      ]
+    },
+    {
+      "name": "Gady i płazy",
+      "level": 106,
+      "places": "Zawiły Bór, Solny Szyb, Zabłocona Jama",
+      "recommended": false,
+      "icons": [
+        "zwi/waz_wodny-1b.gif",
+        "zwi/waz_wodny-2b.gif",
+        "zwi/waz_wodny-3b.gif",
+        "zwi/waz_wodny-4b.gif",
+        "zwi/ropucha_mythar-1b.gif",
+        "zwi/ropucha_mythar-2b.gif"
+      ]
+    },
+    {
+      "name": "Błotniaki",
+      "level": 107,
+      "places": "Zabłocona grota",
+      "recommended": false,
+      "icons": [
+        "pot/blotniak-1a.gif",
+        "pot/blotniak-2a.gif",
+        "pot/blotniak-3a.gif"
+      ]
+    },
+    {
+      "name": "Pustynne kotowate",
+      "level": 108,
+      "places": "Trupia Przełęcz, Płaskowyż Arpan, Sucha Dolina",
+      "recommended": false,
+      "icons": [
+        "zwi/grozny_lew_a.gif",
+        "zwi/grozna_lwica_b.gif",
+        "zwi/piask_tygrys_b.gif",
+        "zwi/szakal_pustynny_a.gif"
+      ]
+    },
+    {
+      "name": "Pustynne Szkielety",
+      "level": 110,
+      "places": "Płaskowyż Arpan, Sucha Dolina",
+      "recommended": false,
+      "icons": [
+        "pot/szkiel06.gif",
+        "pot/szkiel08.gif",
+        "pot/szkielet09.gif"
+      ]
+    },
+    {
+      "name": "Alghule",
+      "level": 111,
+      "places": "Skalne Cmentarzysko w Płaskowyżu Arpan",
+      "recommended": false,
+      "icons": [
+        "hum/umarlak5.gif",
+        "hum/umarlak1.gif",
+        "hum/umarlak3.gif",
+        "hum/umarlak2.gif"
+      ]
+    },
+    {
+      "name": "Mumie",
+      "level": 114,
+      "places": "Oaza Siedmiu Wichrów, Ciche Rumowiska, Ruiny Pustynnych Burz, Dolina Suchych Łez, Złote Piaski",
+      "recommended": false,
+      "icons": [
+        "pot/mumia-1b.gif",
+        "pot/mumia-2b.gif",
+        "pot/mumia-3b.gif",
+        "pot/mumia-4b.gif",
+        "pot/mumia-5b.gif"
+      ]
+    },
+    {
+      "name": "Morskie stwory",
+      "level": 117,
+      "places": "Archipelag Bremus An",
+      "recommended": false,
+      "icons": [
+        "pot/kalamarnica1-a.gif",
+        "pot/kalamarnica2-a.gif",
+        "e1/osmiornica-e1-a.gif",
+        "pot/osmiornica2-a.gif",
+        "pot/osmiornica1-a.gif"
+      ]
+    },
+    {
+      "name": "Rogogłowi",
+      "level": 121,
+      "places": "Wyspa Ingotia",
+      "recommended": false,
+      "icons": [
+        "hum/ingotia_minotaur-1a.gif",
+        "hum/ingotia_minotaur-2a.gif",
+        "hum/ingotia_minotaur-3a.gif",
+        "hum/ingotia_minotaur-4a.gif",
+        "hum/ingotia_minotaur-5a.gif",
+        "hum/ingotia_minotaur-6a.gif"
+      ]
+    },
+    {
+      "name": "Gliniane golemy",
+      "level": 124,
+      "places": "Wyspa Caneum",
+      "recommended": false,
+      "icons": [
+        "pot/caneum_golem-1a.gif",
+        "pot/caneum_golem-2a.gif",
+        "pot/caneum_golem-3a.gif",
+        "pot/caneum_golem-4a.gif",
+        "pot/caneum_golem-5a.gif"
+      ]
+    },
+    {
+      "name": "Skorpiony, Feniksy",
+      "level": 127,
+      "places": "Wyspa Magradit",
+      "recommended": false,
+      "icons": [
+        "pot/magradit_skorp-1a.gif",
+        "pot/magradit_skorp-2a.gif",
+        "pot/magradit_skorp-3a.gif",
+        "pot/magradit_skorp-4a.gif",
+        "pot/magradit_feniks-1a.gif"
+      ]
+    },
+    {
+      "name": "Szkielety Piratów",
+      "level": 128,
+      "places": "Wyspa Wraków",
+      "recommended": true,
+      "icons": [
+        "pot/szkielet-lowca2.gif",
+        "pot/szkiel03.gif",
+        "pot/szkiel01.gif"
+      ]
+    },
+    {
+      "name": "Piraci",
+      "level": 130,
+      "places": "Korsarska Nora, Ukryta Grota Morskich Diabłów w Latarnianym Wybrzeżu",
+      "recommended": true,
+      "icons": [
+        "hum/pirat1b.gif",
+        "hum/pirat3a.gif",
+        "hum/pirat2a.gif",
+        "hum/pirat4b.gif",
+        "e1/pirat5a.gif"
+      ]
+    },
+    {
+      "name": "Piaskowe potwory",
+      "level": 133,
+      "places": "Ruchome Piaski, Piachy Zniewolonych",
+      "recommended": true,
+      "icons": [
+        "pot/piaskowy_potwor-1a.gif",
+        "pot/piaskowy_potwor-2a.gif",
+        "pot/piaskowy_potwor-3a.gif",
+        "pot/piaskowy_potwor-4a.gif"
+      ]
+    },
+    {
+      "name": "Korredy",
+      "level": 134,
+      "places": "Kopalnia Żółtego Kruszcu",
+      "recommended": true,
+      "icons": [
+        "pot/korred-wojb.gif",
+        "pot/korred-czterb.gif",
+        "pot/korred-zbrojb.gif"
+      ]
+    },
+    {
+      "name": "Impy",
+      "level": 136,
+      "places": "Chodniki Mrinding w Sosnowym Odludziu",
+      "recommended": false,
+      "icons": [
+        "pot/imp-1a.gif",
+        "pot/imp-2a.gif",
+        "pot/imp-3a.gif",
+        "pot/imp-4a.gif",
+        "pot/imp-5a.gif"
+      ]
+    },
+    {
+      "name": "Ognie",
+      "level": 137,
+      "places": "Kuźnia Worundiela w Sosnowym Odludziu",
+      "recommended": false,
+      "icons": [
+        "pot/kuznia_ogien-1a.gif",
+        "pot/kuznia_ogien-2a.gif",
+        "pot/kuznia_ogien-3a.gif"
+      ]
+    },
+    {
+      "name": "Ogniste golemy",
+      "level": 138,
+      "places": "Kuźnia Worundiela w Sosnowym Odludziu/Mirvenis-Adur",
+      "recommended": false,
+      "icons": [
+        "pot/lava_golem01-b.gif",
+        "pot/stone_golem01-b.gif",
+        "pot/lava_golem02-b.gif",
+        "hum/golem06.gif"
+      ]
+    },
+    {
+      "name": "Pająki",
+      "level": 139,
+      "places": "Szlak Thorpa w Sosnowym Odludziu/Mirvenis-Adur",
+      "recommended": false,
+      "icons": [
+        "zwi/pajak_sosn3-a.gif",
+        "zwi/pajak_sosn2-a.gif",
+        "zwi/pajak_sosn1-a.gif"
+      ]
+    },
+    {
+      "name": "Ważki",
+      "level": 140,
+      "places": "Jezioro Ważek",
+      "recommended": false,
+      "icons": [
+        "pot/wazka_mala1a.gif",
+        "pot/wazka_mala2a.gif"
+      ]
+    },
+    {
+      "name": "Górale",
+      "level": 143,
+      "places": "Wyjący Wąwóz, Babi Wzgórek, Góralskie Przejście",
+      "recommended": false,
+      "icons": [
+        "hum/goral-1a.gif",
+        "hum/goral-2a.gif",
+        "hum/goral-3a.gif",
+        "hum/goral-4a.gif",
+        "hum/goral-5a.gif",
+        "hum/goral-6a.gif",
+        "hum/goral-7a.gif",
+        "hum/goral-8a.gif"
+      ]
+    },
+    {
+      "name": "Berserkowie",
+      "level": 146,
+      "places": "Czarcie Oparzeliska, Grobowiec Przodków, Opuszczona Twierdza, Zaginiona Dolina",
+      "recommended": true,
+      "icons": [
+        "hum/ahin1.gif",
+        "hum/murro1.gif",
+        "hum/kohta1.gif",
+        "hum/grilull1.gif",
+        "hum/thruta2.gif",
+        "hum/hlomer2.gif",
+        "hum/okel2.gif",
+        "hum/rokh1.gif"
+      ]
+    },
+    {
+      "name": "Duchy eteryczne",
+      "level": 149,
+      "places": "Korytarze Milczących Intryg we Włościach Rodu Kruzo",
+      "recommended": false,
+      "icons": [
+        "hum/duch_eterycz-1a.gif",
+        "hum/duch_eterycz-2a.gif",
+        "hum/duch_eterycz-3a.gif",
+        "hum/duch_eterycz-4a.gif",
+        "hum/duch_eterycz-5a.gif",
+        "hum/duch_eterycz-6a.gif"
+      ]
+    },
+    {
+      "name": "Mechaniczne Gobliny",
+      "level": 151,
+      "places": "Lokum Złych Goblinów we Włościach Rodu Kruzo",
+      "recommended": false,
+      "icons": [
+        "hum/mech_goblin-1a.gif",
+        "hum/mech_goblin-2a.gif",
+        "hum/mech_goblin-3a.gif",
+        "hum/mech_goblin-4a.gif",
+        "hum/mech_goblin-5a.gif",
+        "hum/mech_goblin-6a.gif",
+        "hum/mech_goblin-7a.gif"
+      ]
+    },
+    {
+      "name": "Dusze",
+      "level": 152,
+      "places": "Upiorna Droga, Wiedźmie Kotłowisko, Sabatowe Góry, Tristam",
+      "recommended": false,
+      "icons": [
+        "tru/tri_ghost3.gif",
+        "tru/tri_ghost2b.gif",
+        "tru/tri_ghost1.gif",
+        "tru/tri_ghost6.gif",
+        "tru/tri_ghost5.gif",
+        "tru/tri_ghost4.gif"
+      ]
+    },
+    {
+      "name": "Wiedźmy",
+      "level": 154,
+      "places": "Upiorna Droga, Wiedźmie Kotłowisko, Sabatowe Góry, Tristam",
+      "recommended": false,
+      "icons": [
+        "kob/tri_witch_1b.gif",
+        "kob/tri_witch_5a.gif",
+        "kob/tri_witch_3b.gif",
+        "kob/tri_witch_4a.gif",
+        "kob/tri_witch_6a.gif",
+        "kob/tri_witch_2a.gif"
+      ]
+    },
+    {
+      "name": "Czerwoni Orkowie",
+      "level": 157,
+      "places": "Orcza Wyżyna, Osada Czerwonych Orków, Kurhany Zwyciężonych",
+      "recommended": true,
+      "icons": [
+        "hum/cz_ork5b.gif",
+        "hum/cz_ork6a.gif",
+        "hum/orkcz-low1.gif",
+        "hum/orkcz-pal2.gif",
+        "hum/orkcz-mag1.gif",
+        "hum/orkcz-pal1.gif",
+        "hum/cz_e_ork1a.gif"
+      ]
+    },
+    {
+      "name": "Hydry i Mantikory",
+      "level": 161,
+      "places": "Dziki Zagajnik",
+      "recommended": false,
+      "icons": [
+        "pot/h_bagienna1.gif",
+        "pot/h_kamienna1.gif",
+        "pot/h_turkusowa1.gif",
+        "pot/h_morska1.gif",
+        "pot/h_piaskowa1.gif",
+        "pot/mantikora.gif"
+      ]
+    },
+    {
+      "name": "Duchy Praorków",
+      "level": 163,
+      "places": "Nawiedzone Kazamaty w Kurhanach Zwyciężonych",
+      "recommended": true,
+      "icons": [
+        "hum/praork_duch1a.gif",
+        "hum/praork_duch5a.gif",
+        "hum/praork_duch6a.gif",
+        "hum/praork_duch4.gif",
+        "e1/praork_duch3a.gif"
+      ]
+    },
+    {
+      "name": "Pradawni Orkowie",
+      "level": 168,
+      "places": "Nawiedzone Kazamaty w Kurhanach Zwyciężonych",
+      "recommended": true,
+      "icons": [
+        "hum/praork_pal.gif",
+        "hum/praork_low-a.gif",
+        "hum/praork_mag.gif",
+        "hum/praork_lowca.gif",
+        "hum/praork_mag2a.gif",
+        "hum/praork_woj_2.gif",
+        "e1/praork_woj_1a.gif"
+      ]
+    },
+    {
+      "name": "Gwardziści",
+      "level": 172,
+      "places": "Komnata Czarnej Perły",
+      "recommended": true,
+      "icons": [
+        "woj/czarna_gwardia_3.gif",
+        "woj/czar_gwardia4a.gif",
+        "woj/czar_gwardia5a.gif",
+        "woj/czar_gwardia2a.gif",
+        "e1/czarna_gwardia_1.gif"
+      ]
+    },
+    {
+      "name": "Nimfy, Golemy",
+      "level": 174,
+      "places": "Kryształowa Grota",
+      "recommended": true,
+      "icons": [
+        "pot/kryszt_olbrzym_blue-1a.gif",
+        "pot/kryszt_olbrzym_blue-2a.gif",
+        "pot/kryszt_olbrzym_blue-3a.gif",
+        "pot/kryszt_olbrzym_blue-4a.gif",
+        "pot/kryszt_olbrzym_purple_3a.gif",
+        "pot/kryszt_olbrzym_green-1a.gif",
+        "pot/kryszt_olbrzym_green-2a.gif"
+      ]
+    },
+    {
+      "name": "Driady",
+      "level": 177,
+      "places": "Błota Sham Al, Kwieciste Kresy, Głusza Świstu, Las Porywów Wiatru",
+      "recommended": true,
+      "icons": [
+        "hum/driada1a.gif",
+        "hum/driada4b.gif",
+        "hum/driada5b.gif",
+        "hum/driada3b.gif",
+        "hum/driada_8b.gif",
+        "hum/driada6a.gif",
+        "hum/driada2b.gif",
+        "hum/driada7a.gif"
+      ]
+    },
+    {
+      "name": "Ogry",
+      "level": 181,
+      "places": "Ogrza Kawerna w Grani Gawronich Piór",
+      "recommended": false,
+      "icons": [
+        "hum/ogr-1a.gif",
+        "hum/ogr-2a.gif",
+        "hum/ogr-3a.gif",
+        "hum/ogr-4a.gif",
+        "hum/ogr-5a.gif"
+      ]
+    },
+    {
+      "name": "Patrycjusze",
+      "level": 183,
+      "places": "Krypty Bezsennych w Ruinach Tass Zhil",
+      "recommended": true,
+      "icons": [
+        "hum/thuz-patr2-l.gif",
+        "hum/thuz-patr3-l.gif",
+        "hum/thuz-patr4-p.gif",
+        "hum/thuz-patr6-b.gif",
+        "hum/thuz-patr5-p.gif",
+        "e1/e-thuz-pat1-b.gif"
+      ]
+    },
+    {
+      "name": "Zmutowane rośliny",
+      "level": 186,
+      "places": "Kwieciste Przejście, Ukwiecona Skarpa, Głuchy Las, Zapomniana Ścieżyna, Skarpa Trzech Słów",
+      "recommended": false,
+      "icons": [
+        "pot/dzbanecznik1a.gif",
+        "pot/kwiat3a.gif",
+        "pot/kielich2a.gif",
+        "pot/mucholowka2a.gif",
+        "pot/kwiat1a.gif",
+        "pot/kielich1a.gif",
+        "pot/kielich3a.gif",
+        "pot/kwiat2a.gif"
+      ]
+    },
+    {
+      "name": "Drakowie",
+      "level": 189,
+      "places": "Przysiółek Valmirów, Szczerba Samobójców, Śnieżycowy Las, Śnieżna Granica, Kwieciste Kresy",
+      "recommended": false,
+      "icons": [
+        "hum/drak_5b.gif",
+        "hum/drak_3b.gif",
+        "hum/drak_1a.gif",
+        "hum/drak_4a.gif",
+        "hum/drak_2b.gif",
+        "e1/e-thuz-drak-1a.gif",
+        "e1/e-thuz-drak-2a.gif"
+      ]
+    },
+    {
+      "name": "Mroczny Las",
+      "level": 192,
+      "places": "Złudny Trakt, Bór Zagubionych, Martwy Las, Bezgwiezdna Gęstwina, Ziemia Szepczących Cierni, Zbocze Starych Bogów",
+      "recommended": true,
+      "icons": [
+        "pot/forest_monster-1a.gif",
+        "pot/forest_monster-2a.gif",
+        "pot/forest_monster-3a.gif",
+        "pot/forest_monster-4a.gif",
+        "pot/forest_monster-5a.gif"
+      ]
+    },
+    {
+      "name": "Myświóry",
+      "level": 196,
+      "places": "Kanały Nithal, Szlamowe Kanały",
+      "recommended": true,
+      "icons": [
+        "hum/myswior-1a.gif",
+        "hum/myswior-2a.gif",
+        "hum/myswior-3a.gif",
+        "hum/myswior-4a.gif",
+        "hum/myswior-5a.gif",
+        "hum/myswior-6a.gif",
+        "hum/myswior-7a.gif",
+        "hum/myswior-8a.gif"
+      ]
+    },
+    {
+      "name": "Hurysy",
+      "level": 199,
+      "places": "Przerażające Sypialnie, Sale Rozdzierania",
+      "recommended": true,
+      "icons": [
+        "hum/sekta-hurysa2a.gif",
+        "hum/sekta-hurysa3a.gif",
+        "hum/sekta-hurysa4a.gif",
+        "hum/sekta-hurysa5a.gif"
+      ]
+    },
+    {
+      "name": "Sekta",
+      "level": 200,
+      "places": "Przedsionek Kultu, Tajemnicza Siedziba, Lochy Kultu, Mroczne Komnaty, Sala Spowiedzi Konających, Sala Tysiąca Świec",
+      "recommended": true,
+      "icons": [
+        "hum/sekta-heretyk1b.gif",
+        "hum/sekta-zabojca1a.gif",
+        "hum/sekta-heretyk2b.gif",
+        "hum/sekta-heretykh01b.gif",
+        "hum/sekta-wtransie1a.gif",
+        "hum/sekta-wdowiec1b.gif",
+        "hum/sekta-msciciel1a.gif",
+        "hum/sekta-wzywajacy1a.gif",
+        "hum/sekta-wyznh01b.gif",
+        "hum/sekta-mistrz2b.gif",
+        "hum/sekta-mistrz1a.gif",
+        "hum/sekta-wyznw01a.gif",
+        "hum/sekta-bractwo1a.gif"
+      ]
+    },
+    {
+      "name": "Furbole",
+      "level": 208,
+      "places": "Zapomniany Las, Terytorium Furii, Rozległa Równina, Dolina Gniewu",
+      "recommended": true,
+      "icons": [
+        "hum/forbol06.gif",
+        "hum/forbol04.gif",
+        "hum/forbol08.gif",
+        "hum/forbol14.gif",
+        "hum/forbol02.gif",
+        "hum/forbol12.gif",
+        "e1/forbol15.gif"
+      ]
+    },
+    {
+      "name": "Arachnitopia",
+      "level": 212,
+      "places": "Rozległa Równina, Pajęczy Las, Otchłań Pajęczych Sieci, Dolina Pajęczych Korytarzy, Arachnitopia",
+      "recommended": false,
+      "icons": [
+        "pot/pajak3-b.gif",
+        "pot/pajak5-a.gif",
+        "pot/pajak6-b.gif",
+        "pot/pajak4-a.gif",
+        "pot/pajak7-a.gif",
+        "pot/pajak8-b.gif",
+        "pot/pajak9-b.gif"
+      ]
+    },
+    {
+      "name": "Drowy",
+      "level": 216,
+      "places": "Zakazana Grota w Szczerbie Samobójców",
+      "recommended": true,
+      "icons": [
+        "hum/drow-mez09a.gif",
+        "hum/drow-kob05a.gif",
+        "hum/drow-kob16a.gif",
+        "hum/drow-kob06a.gif",
+        "hum/drow-mez10a.gif",
+        "hum/drow-kob07a.gif"
+      ]
+    },
+    {
+      "name": "Dridery",
+      "level": 216,
+      "places": "Zapomniane Sztolnie, Zamierzchłe Arterie",
+      "recommended": false,
+      "icons": [
+        "hum/drider1a.gif",
+        "hum/drider2a.gif",
+        "hum/drider3a.gif",
+        "hum/drider4a.gif",
+        "hum/drider5a.gif",
+        "hum/drider6a.gif",
+        "hum/drider7a.gif",
+        "hum/drider8a.gif"
+      ]
+    },
+    {
+      "name": "Anuraki",
+      "level": 224,
+      "places": "Zatrute Torfowiska, Grząska Ziemia, Mglisty Las, Bagna Umarłych, Urwisko Vapora, Dolina Pełznącego Krzyku",
+      "recommended": true,
+      "icons": [
+        "hum/madbagna_7.gif",
+        "hum/madbagna_6.gif",
+        "hum/madbagna_2.gif",
+        "e1/madbagna_1.gif",
+        "hum/madbagna_3.gif",
+        "hum/madbagna_4a.gif",
+        "e1/madbagna_5a.gif"
+      ]
+    },
+    {
+      "name": "Maddoki, Krokodyle",
+      "level": 228,
+      "places": "Dolina Potoku Śmierci, Skryty Azyl, Strumienie Szemrzących Wód, Zawodzące Kaskady, Złota Dąbrowa",
+      "recommended": true,
+      "icons": [
+        "zwi/krokodyl-14p.gif",
+        "zwi/krokodyl-15p.gif",
+        "zwi/krokodyl-16l.gif",
+        "hum/maddok-1a.gif",
+        "hum/maddok-2a.gif",
+        "hum/maddok-5c.gif",
+        "hum/maddok-3a.gif",
+        "hum/maddok-6c.gif",
+        "hum/maddok-4a.gif"
+      ]
+    },
+    {
+      "name": "Zainfekowana Puszcza",
+      "level": 233,
+      "places": "Gęste Sploty, Zmurszały Łęg, Garb Połamanych Konarów, Zalesiony Step",
+      "recommended": false,
+      "icons": [
+        "pot/zombie-zubr-1a.gif",
+        "pot/zombie-niedzwiedz-2a.gif",
+        "pot/zombie-wilk-2a.gif",
+        "pot/zombie-niedzwiedz-1a.gif",
+        "pot/zombie-wilk-1a.gif",
+        "pot/zombie-jelen-1a.gif",
+        "pot/zombie-lania-1a.gif"
+      ]
+    },
+    {
+      "name": "Elgary",
+      "level": 236,
+      "places": "Głusza Srebrnego Rogu, Knieja Lunarnych Głazów, Szepty Menhirów, Gaj Księżycowego Blasku, Zakątek Nocnych Szelestów",
+      "recommended": true,
+      "icons": [
+        "hum/lunar_faun-1a.gif",
+        "hum/lunar_faun-2a.gif",
+        "hum/lunar_faun-3a.gif",
+        "hum/lunar_faun-4a.gif",
+        "hum/lunar_faun-6a.gif",
+        "hum/lunar_faun-5a.gif"
+      ]
+    },
+    {
+      "name": "Dendrostwory",
+      "level": 239,
+      "places": "Urwisko Zdrewniałych, Wąwóz Zakorzenionych Dusz, Regiel Zabłąkanych, Źródło Zakorzenionego Ludu, Piaskowa Gęstwina",
+      "recommended": false,
+      "icons": [
+        "hum/dendro_szkiel1.gif",
+        "hum/dendro_kam1.gif",
+        "hum/dendro_pasz1.gif",
+        "hum/dendro_kos2.gif"
+      ]
+    },
+    {
+      "name": "Egzotyczne istoty",
+      "level": 242,
+      "places": "Dolina Chmur, Złota Góra",
+      "recommended": true,
+      "icons": [
+        "pot/bolita2-a.gif",
+        "zwi/pancernike.gif",
+        "zwi/bolita-b.gif",
+        "pot/nokturni-b.gif",
+        "pot/mutokli-a.gif"
+      ]
+    },
+    {
+      "name": "Mahoptekowie",
+      "level": 249,
+      "places": "Niecka Xiuh Atl, Dolina Chmur, Oztotl Tzacua",
+      "recommended": true,
+      "icons": [
+        "hum/mahoptek5-a.gif",
+        "hum/mahoptek6-b.gif",
+        "hum/mahoptek2-a.gif",
+        "e1/mahoptek9-b.gif"
+      ]
+    },
+    {
+      "name": "Mahoptecka starszyzna",
+      "level": 252,
+      "places": "Altepetl Mahoptekan z wnętrzami piramid",
+      "recommended": true,
+      "icons": [
+        "hum/mahoptek4-b.gif",
+        "hum/mahoptek3-b.gif",
+        "hum/mahoptek12-b.gif",
+        "hum/mahoptek7-a.gif",
+        "hum/mahoptek13-a.gif",
+        "e1/mahoptek8-a.gif"
+      ]
+    },
+    {
+      "name": "Wiedźmie potwory",
+      "level": 258,
+      "places": "Plugawe Pustkowie, Jęczywąwóz, Skalisty Styk, Zacisze Zimnych Wiatrów, Pogranicze Wisielców",
+      "recommended": true,
+      "icons": [
+        "pot/tris2-flee_monster-1a.gif",
+        "pot/tris2-flee_monster-2a.gif",
+        "kob/trist2_witch-7a.gif",
+        "kob/trist2_witch-1a.gif",
+        "kob/trist2_witch-5a.gif",
+        "pot/trist2_arm-1a.gif",
+        "kob/trist2_witch-6a.gif"
+      ]
+    },
+    {
+      "name": "Potępione Wiedźmy",
+      "level": 262,
+      "places": "Potępione Zamczysko",
+      "recommended": false,
+      "icons": [
+        "kob/trist2_witch-3a.gif",
+        "kob/trist2_witch-4a.gif",
+        "kob/trist2_witch-8a.gif",
+        "kob/trist2_witch-2a.gif",
+        "kob/trist2_witch-9a.gif",
+        "kob/trist2_witch-10a.gif"
+      ]
+    },
+    {
+      "name": "Skalne Pustkowie",
+      "level": 264,
+      "places": "Tereny na południowy zachód od Nithal",
+      "recommended": false,
+      "icons": [
+        "pot/pustkowie_golem-1a.gif",
+        "pot/pustkowie_golem-2a.gif",
+        "pot/pustkowie_golem-3a.gif",
+        "pot/pustkowie_golem-4a.gif",
+        "pot/pustkowie_golem-5a.gif",
+        "pot/pustkowie_golem-6a.gif",
+        "hum/pustkowie_faun-1a.gif",
+        "hum/pustkowie_faun-2a.gif",
+        "hum/pustkowie_faun-5a.gif",
+        "hum/pustkowie_faun-6a.gif",
+        "hum/pustkowie_faun-7a.gif",
+        "hum/pustkowie_faun-8a.gif",
+        "hum/pustkowie_faun-9a.gif"
+      ]
+    },
+    {
+      "name": "Przestraszeni",
+      "level": 267,
+      "places": "Kompleks jaskiń na Skalnym Pustkowiu",
+      "recommended": false,
+      "icons": [
+        "pot/przestraszony-1a.gif",
+        "pot/przestraszony-2a.gif",
+        "pot/przestraszony-3a.gif",
+        "pot/przestraszony-4a.gif",
+        "pot/przestraszony-5a.gif",
+        "pot/przestraszony-6a.gif",
+        "pot/przestraszony-7a.gif",
+        "pot/przestraszony-8a.gif"
+      ]
+    },
+    {
+      "name": "Pustynne Katakumby",
+      "level": 272,
+      "places": "Kompleks jaskiń w Ruinach Pustynnych Burz",
+      "recommended": true,
+      "icons": [
+        "hum/katakumby_szkielet-1a.gif",
+        "hum/katakumby_szkielet-12a.gif",
+        "hum/katakumby_szkielet-15a.gif",
+        "hum/katakumby_szkielet-4a.gif",
+        "hum/katakumby_szkielet-5a.gif",
+        "hum/katakumby_szkielet-6a.gif",
+        "hum/katakumby_szkielet-11a.gif",
+        "hum/katakumby_szkielet-13a.gif",
+        "hum/katakumby_szkielet-2a.gif",
+        "hum/katakumby_szkielet-7a.gif",
+        "hum/katakumby_szkielet-14a.gif",
+        "hum/katakumby_szkielet-3a.gif",
+        "hum/katakumby_szkielet-9a.gif",
+        "hum/katakumby_szkielet-8a.gif",
+        "hum/katakumby_szkielet-10a.gif",
+        "hum/katakumby_szkielet-16a.gif"
+      ]
+    },
+    {
+      "name": "Smokoludzie",
+      "level": 277,
+      "places": "Pustynia Shaiharrud i okolice",
+      "recommended": false,
+      "icons": [
+        "e2/drakosep_pus.gif",
+        "zwi/sep1.gif",
+        "e1/barb7.gif",
+        "hum/sepi_zaklinacz1b.gif",
+        "hum/barb5.gif",
+        "hum/barb1.gif",
+        "hum/barb4a.gif",
+        "hum/barb6a.gif",
+        "hum/barb3a.gif"
+      ]
+    },
+    {
+      "name": "Wodniki i topielce",
+      "level": 282,
+      "places": "Tereny na północ od Nithal",
+      "recommended": false,
+      "icons": [
+        "hum/wodniki_topielec-1a.gif",
+        "hum/wodniki_topielec-2a.gif",
+        "hum/wodniki_dziwozona-1a.gif",
+        "hum/wodniki_topielec-3a.gif",
+        "hum/wodniki_dziwozona-2a.gif",
+        "hum/wodniki_wodnik-1a.gif",
+        "hum/wodniki_wodnik-2a.gif"
+      ]
+    },
+    {
+      "name": "Mroczne Driady",
+      "level": 286,
+      "places": "Tereny na zachód i południowy zachód od Thuzal",
+      "recommended": true,
+      "icons": [
+        "hum/m_hamadriada-1a.gif",
+        "hum/m_hamadriada-2a.gif",
+        "hum/m_hamadriada-3b.gif",
+        "hum/m_hamadriada-4b.gif",
+        "hum/m_hamadriada-5b.gif",
+        "hum/m_hamadriada-6a.gif",
+        "hum/m_hamadriada-7b.gif",
+        "e1/hamadriada_e1-a.gif",
+        "e1/hamadriada_e2-b.gif"
+      ]
+    }
+  ]
+}

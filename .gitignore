@@ -4,10 +4,10 @@
 !CLAUDE.md
 !margobot_auto.user.js
 !margobot_world.json
-!margobot_expowiska.json
-!expowiska.py
 !world_scrape.py
 !worldgraph.py
+!expowiska.py
+!margobot_expowiska.json
 !chrome_margonem.bat
 !docs/
 !docs/**

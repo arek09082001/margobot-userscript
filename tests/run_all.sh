@@ -6,4 +6,6 @@ for f in *_sim.js bench2.js sug_test.js; do
   echo "== $f"
   if ! node "$f"; then echo "FEHLER in $f"; fail=1; fi
 done
+echo "== expowiska_test.py"
+if ! python3 expowiska_test.py; then echo "FEHLER in expowiska_test.py"; fail=1; fi
 exit $fail
