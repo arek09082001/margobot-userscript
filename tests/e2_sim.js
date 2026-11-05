@@ -122,12 +122,18 @@ newPage(true); min(0.2); e2().autoBack = true;
 c = leaveCycle();
 loc._h = SERVER; newPage(true); min(0.1);          // Weiterleitung: nach wenigen Sekunden wieder auf der Spielseite
 const lg0 = logs.length; min(3);
-ok(!left && loc.href === SERVER && !e2().offline && e2().noLeaveUntil > BASE + now && logs.some(l => /zurück ins Spiel geleitet/.test(l)),
+ok(!left && loc.href === SERVER && !e2().offline && e2().noLeaveUntil > BASE + now && logs.some(l => /wieder im Spiel statt .*Seitenfolge: jaruna/.test(l)),
    'Startseite leitet zurück: bleibt online statt Neulade-Kreis', 'Seite ' + loc.href + ', online bis ' + new FakeDate(e2().noLeaveUntil).toISOString().slice(11, 16));
 // nächster Kill nach dieser Wartezeit: wieder normal verlassen, jetzt über eine eigene Adresse
 min((e2().noLeaveUntil - (BASE + now)) / 60000 + 0.5); e2().leaveUrl = 'https://www.margonem.pl/news';
 c = leaveCycle();
 ok(left && loc.href === 'https://www.margonem.pl/news', 'eigene Adresse zum Verlassen', 'Seite ' + loc.href);
+
+// 11) Rückkehr 1 min vor dem frühesten Respawn (alter Standard 2–4 min wird beim Laden umgestellt)
+e2().remindMin = 2; e2().remindMax = 4; delete e2().remindV; e2().leaveUrl = ''; e2().offline = false; e2().wakeAt = 0;
+loc._h = SERVER; newPage(true); e2().noLeaveUntil = 0; min(0.2);
+c = leaveCycle(); lead = (c.killAt + 15 * 60000 - c.wake) / 60000;
+ok(e2().remindMin === 1 && e2().remindMax === 1 && Math.abs(lead - 1) < 0.05, 'Rückkehr 1 min vor dem Respawn (alter Standard umgestellt)', lead.toFixed(2) + ' min vorher');
 
 // 9) Richtwert für den Respawn gegen die Messungen auf margoatlas.pl („ok. X min“, Welt mit normalem Tempo)
 const fsrc = src.match(/const e2Resp = [^\n]*\n/)[0];
