@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.7
+// @version      7.8
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -42,15 +42,42 @@
                   rules: [], chain: null, autoCaptcha: false, autoCaptchaConfirm: false, captchaWarn: true,
                   pk: { mode: 'off', maxUp: 5, near: 6, sec: 5, never: '' } };
     const cfg = Object.assign({}, DEF, GM_getValue('mbauto', {}));
-    cfg.pk = Object.assign({}, DEF.pk, cfg.pk || {});
     /* E2-Jagd: list = gemerkte Bosse (Schlüssel „Name|Karte“), sel = aktiver. away: 'stay' = am Spawnpunkt
        warten, 'leave' = bei langer Wartezeit das Spiel verlassen und rechtzeitig erinnern. back = Adresse der
        Spielseite ([server].margonem.pl), autoBack = zur Erinnerungszeit diese Seite wieder öffnen. */
     const E2DEF = { on: false, sel: '', list: {}, away: 'stay', leaveMin: 10, remindMin: 1, remindMax: 1, wakeAt: 0, offline: false, autoBack: true, back: '', returned: false, leftAt: 0, noLeaveUntil: 0, leaveUrl: '', speed: 1, reactMin: 2, reactMax: 6 };
-    cfg.e2 = Object.assign({}, E2DEF, cfg.e2 || {});
-    // Rückkehr früher Standard 2–4 min vor dem Respawn → jetzt 1 min (Wunsch: nicht so lange vorher warten).
-    // Nur den alten Standard umstellen, selbst gewählte Werte bleiben.
-    if (cfg.e2.remindV !== 2) { if (cfg.e2.remindMin === 2 && cfg.e2.remindMax === 4) { cfg.e2.remindMin = 1; cfg.e2.remindMax = 1; } cfg.e2.remindV = 2; }
+    // Routen bereinigen: leere Einträge (Kartenwechsel beim Aufnehmen) raus, doppelte direkt hintereinander zusammenfassen
+    const cleanMaps = m => (m || []).filter(x => x && x !== 'null' && x !== 'undefined')
+        .filter((x, i, a) => !i || String(x).trim().toLowerCase() !== String(a[i - 1]).trim().toLowerCase());
+    function normCfg() {                            // Unterobjekte mit Standardwerten auffüllen (nach Laden/Heldwechsel)
+        cfg.pk = Object.assign({}, DEF.pk, cfg.pk || {});
+        cfg.e2 = Object.assign({}, E2DEF, cfg.e2 || {});
+        // Rückkehr früher Standard 2–4 min vor dem Respawn → jetzt 1 min (Wunsch: nicht so lange vorher warten).
+        // Nur den alten Standard umstellen, selbst gewählte Werte bleiben.
+        if (cfg.e2.remindV !== 2) { if (cfg.e2.remindMin === 2 && cfg.e2.remindMax === 4) { cfg.e2.remindMin = 1; cfg.e2.remindMax = 1; } cfg.e2.remindV = 2; }
+        for (const k in cfg.routes || {}) cfg.routes[k].maps = cleanMaps(cfg.routes[k].maps);
+    }
+    /* Einstellungen pro Held: Wer mehrere Helden spielt, will je Held eigene Routen, Level, E2 usw.
+       Gemeinsam bleibt, was zur Welt oder zum Gerät gehört (gelerntes Kartenwissen, Panel-Lage, Handel).
+       Gespeichert unter „mbhero:<Welt>#<Held-ID>“; „mbauto“ behält wie bisher alles (Stand des zuletzt aktiven
+       Helden) – daraus startet ein neuer Held. Auf Seiten ohne Spiel (E2 offline) gilt der zuletzt aktive Held. */
+    const GLOBAL = new Set(['graph', 'names', 'tele', 'npcs', 'dlg', 'shops', 'blocked', 'blockedAt', 'x', 'y', 'open', 'tab',
+                            'logOpen', 'trade', 'captchaClick']);
+    const heroPart = () => { const o = {}; for (const k in cfg) if (!GLOBAL.has(k)) o[k] = cfg[k]; return o; };
+    function applyHero(data) {
+        data = JSON.parse(JSON.stringify(data || {}));   // Kopie: nie dasselbe Objekt wie cfg verändern
+        for (const k of Object.keys(cfg)) if (!GLOBAL.has(k)) delete cfg[k];
+        for (const k in DEF) if (!GLOBAL.has(k) && !(k in data)) cfg[k] = JSON.parse(JSON.stringify(DEF[k]));
+        Object.assign(cfg, data);
+        normCfg();
+    }
+    let heroKey = '', heroNick = '';
+    try {
+        const last = GM_getValue('mbauto_last', '');
+        const d = last && GM_getValue('mbhero:' + last, null);
+        if (d) { heroKey = last; heroNick = d.heroNick || ''; applyHero(d); }
+    } catch (e) { }
+    normCfg();
     /* Seitenfolge beim Verlassen (Fehlersuche): Jede Seite, auf der das Skript startet, solange der Bot offline sein
        will, wird gemerkt – so sieht man, ob die Startseite überhaupt geladen wurde oder wer zurück ins Spiel geführt hat. */
     if (cfg.e2.offline) {
@@ -58,20 +85,40 @@
             const h = s => String(s || '').replace(/^https?:\/\//, '').replace(/\/$/, '').slice(0, 60);
             cfg.e2.trace = (cfg.e2.trace || []).concat([h(location.href) + (document.referrer ? ' ← ' + h(document.referrer) : '')]).slice(-6);
             GM_setValue('mbauto', cfg);
+            if (heroKey) GM_setValue('mbhero:' + heroKey, heroPart());
         } catch (e) { }
     }
     const running = () => !!(cfg.on || cfg.travel || cfg.chain || cfg.e2.on);
-    // Routen bereinigen: leere Einträge (Kartenwechsel beim Aufnehmen) raus, doppelte direkt hintereinander zusammenfassen
-    const cleanMaps = m => (m || []).filter(x => x && x !== 'null' && x !== 'undefined')
-        .filter((x, i, a) => !i || String(x).trim().toLowerCase() !== String(a[i - 1]).trim().toLowerCase());
-    for (const k in cfg.routes || {}) cfg.routes[k].maps = cleanMaps(cfg.routes[k].maps);
-    const save = () => GM_setValue('mbauto', cfg);
+    const save = () => { GM_setValue('mbauto', cfg); if (heroKey) GM_setValue('mbhero:' + heroKey, heroPart()); };
     const rnd = (a, b) => a + Math.random() * Math.max(0, b - a);
     const pause = () => rnd(cfg.pauseMin, cfg.pauseMax);
 
     // ── Spieldaten ──────────────────────────────────────────────
     const E = () => W.Engine;
     function ok() { const e = E(); return e && e.hero && e.hero.d && e.map && e.map.d && e.map.size && e.npcs; }
+    function bindHero() {
+        /* Im Spiel: zum eingeloggten Helden die passenden Einstellungen laden (anderer Held als zuletzt → umschalten). */
+        const h = E().hero.d;
+        if (h.id == null) return;
+        let host = '';
+        try { host = location.hostname || ''; } catch (e) { }
+        const key = host + '#' + h.id;
+        if (key === heroKey) return;
+        const known = GM_getValue('mbheroes', []), d = GM_getValue('mbhero:' + key, null);
+        if (d) applyHero(d);
+        else if (known.length) {
+            // neuer Held: aktuelle Einstellungen als Vorlage, aber nichts „Laufendes“ übernehmen
+            Object.assign(cfg, { on: false, travel: null, chain: null, back: null, rec: null, routePos: 0, lastHome: null, sess: null, deaths: [] });
+            cfg.e2 = Object.assign({}, cfg.e2, { on: false, offline: false, wakeAt: 0, returned: false, noLeaveUntil: 0, trace: [] });
+        }                                           // allererster Held: alles so übernehmen, wie es war
+        heroKey = key; heroNick = h.nick || ''; cfg.heroNick = heroNick;
+        if (!known.includes(key)) GM_setValue('mbheroes', known.concat([key]));
+        GM_setValue('mbauto_last', key);
+        save();
+        lastStatic = '';
+        heroSwitched = d ? 'geladen' : known.length ? 'neu (Vorlage: letzte Einstellungen)' : 'übernommen';
+    }
+    let heroSwitched = '';
     function heroXY() { const h = E().hero.d; return [h.x, h.y]; }
     function mobKey(icon) {                       // hum/ghul1-a.gif → ghul (wie MargoBot)
         let s = (icon || '').split('/').pop().replace(/\.\w+$/, '');
@@ -1538,12 +1585,20 @@
                                                                        : Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
     const clock = t => new Date(t).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
     function e2Spot(t) {
-        /* Warteplatz: ein begehbares Feld direkt neben dem Spawnpunkt (nicht darauf – dort erscheint die E2). */
-        for (const [dx, dy] of [[0, 1], [1, 0], [-1, 0], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+        /* Warteplatz: zufälliges begehbares, erreichbares Feld höchstens 2 Felder vom Spawnpunkt (nicht darauf – dort
+           erscheint die E2). Nicht immer dasselbe Feld: Der Platz wird nach jedem Kampf neu ausgelost und bis dahin
+           behalten (sonst würde der Held hin und her laufen). */
+        if (e2rt && e2rt.spot && e2rt.spotFor === t.x + ',' + t.y) return e2rt.spot;
+        const [hx, hy] = heroXY(), d = walls ? bfs(hx, hy) : null, opts = [];
+        for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
             const x = t.x + dx, y = t.y + dy;
-            if (x >= 0 && y >= 0 && x < MW && y < MH && !(walls && walls[y * MW + x])) return [x, y];
+            if ((!dx && !dy) || x < 0 || y < 0 || x >= MW || y >= MH) continue;
+            if (walls && (walls[y * MW + x] || d[y * MW + x] < 0)) continue;
+            opts.push([x, y]);
         }
-        return [t.x, t.y];
+        const spot = opts.length ? opts[Math.floor(Math.random() * opts.length)] : [t.x, t.y];
+        if (e2rt) { e2rt.spot = spot; e2rt.spotFor = t.x + ',' + t.y; }
+        return spot;
     }
     function e2Text() {
         /* Statuszeile für Panel und Kopfbereich. */
@@ -1647,6 +1702,7 @@
             if (Math.max(Math.abs(hx - e2rt.x), Math.abs(hy - e2rt.y)) <= 12) {
                 const mine = now - e2rt.atk < 30000;
                 t.lastKill = now; t.by = mine ? 'bot' : 'other';
+                e2rt.spot = null;                              // nach dem Kampf neuen Warteplatz auslosen
                 if (mine) t.kills = (t.kills || 0) + 1;
                 const w = e2Window(t);
                 log(`E2: ${t.nick} ${mine ? 'besiegt' : 'von jemand anderem erlegt'} – Respawn ${clock(w.start)}–${clock(w.end)}`);
@@ -1759,7 +1815,11 @@
 
     function tick() {
         e2Away();
-        if (ok()) { trackMaps(); recordFights(); learnGraph(); learnNames(); learnWorldBits(); }
+        if (ok()) {
+            bindHero();
+            if (heroSwitched) { log(`Einstellungen für ${heroNick || 'diesen Helden'}: ${heroSwitched}`); heroSwitched = ''; }
+            trackMaps(); recordFights(); learnGraph(); learnNames(); learnWorldBits();
+        }
         if (!ok() || checkDeath()) return;
         watchBattle();
         watchPlayers();
@@ -2797,6 +2857,7 @@
         }
         const gws = gateways(), mn = mapName();
         return `
+            ${heroNick ? `<div class="hint" style="margin:0 0 6px">Einstellungen für <b>${esc(heroNick)}</b> – jeder Held hat eigene (Routen, Level, E2 …). Kartenwissen gilt für alle.</div>` : ''}
             <h4>Ziele</h4>
             <label class="chk"><input type="checkbox" data-a="lvlOn" ${cfg.lvlOn ? 'checked' : ''}>Alle Mobs im Level-Bereich ${cfg.lvlMin}–${cfg.lvlMax}</label>
             <div class="hint">Zusätzlich einzelne Mobs auf ${esc(mn)}:</div>
@@ -3476,6 +3537,7 @@
             }
             return;
         }
+        bindHero();
         if (cfg.lvlMin === 1 && cfg.lvlMax === 300 && heroLvl()) {   // erster Start: Bereich um das eigene Level
             cfg.lvlMin = Math.max(1, heroLvl() - 5); cfg.lvlMax = heroLvl() + 3; save();
         }

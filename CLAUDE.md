@@ -15,6 +15,8 @@ Tampermonkey-Userscript für das Browser-MMORPG Margonem (margonem.com und margo
 
 Das Skript hängt nicht vom Python-Teil ab. Die Python-Dateien erzeugen nur die Weltkarte.
 
+Einstellungen im GM-Speicher: `mbauto` enthält alles (Stand des zuletzt aktiven Helden, Vorlage für neue Helden), `mbhero:<Welt-Host>#<Held-ID>` den Teil pro Held, `mbauto_last` den zuletzt aktiven Helden (gilt auf Seiten ohne Spiel, z. B. E2 offline). Was für alle Helden gilt (Kartenwissen, Panel-Lage, Handel), steht in `GLOBAL` im Skript. Änderungen immer über `save()`.
+
 ## Tests
 
 Es gibt kein echtes Spiel in der Testumgebung. Die Simulationen laden das Skript in Node mit einem nachgebauten `Engine`-Objekt.
