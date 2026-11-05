@@ -6,7 +6,7 @@ const W = 80, H = 60, wall = new Set();
 for (let y = 10; y < 50; y++) if (y !== 30) wall.add('40,' + y);            // Mauer mit Lücke in der Mitte
 let fail = 0;
 
-function run(name, { pos, pct, alive }) {
+function run(name, { pos, pct, alive, pvp }) {
     let seed = 7; const R = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
     const spots = [];
     while (spots.length < 20) { const x = 3 + Math.floor(R() * (W - 6)), y = 3 + Math.floor(R() * (H - 6)); if (!wall.has(x + ',' + y)) spots.push([x, y]); }
@@ -16,7 +16,7 @@ function run(name, { pos, pct, alive }) {
                    heroAtackRequest(id) { kills++; all = all.filter(n => n.d.id !== id); } };
     const near = () => all.filter(n => Math.abs(n.d.x - hero.d.x) <= 7 && Math.abs(n.d.y - hero.d.y) <= 7);
     const Engine = { hero, battle: { show: false }, npcs: { getDrawableList: near }, deadController: {},
-      map: { d: { id: 500, name: 'Grobowiec' }, size: { x: W, y: H }, col: { check: (x, y) => wall.has(x + ',' + y) ? 1 : 0 },
+      map: { d: { id: 500, name: 'Grobowiec', pvp },  size: { x: W, y: H }, col: { check: (x, y) => wall.has(x + ',' + y) ? 1 : 0 },
         getGateways: () => ({ townnames: { 501: 'Ausgang' }, getList: () => [{ d: { id: 501, x: 79, y: 30 } }] }) } };
     const mob = ['Ghul', 41, 20];
     if (pos) mob.push(spots.flat(), 'hum/ghul.gif');
@@ -57,4 +57,9 @@ const d = run('', { pos: true, pct: 50, alive: 0 });
 const e = run('', { pos: false, pct: 100, alive: 0 });
 show('leer, Plätze 50 %', d, d.t != null && d.t < e.t);
 show('leer, ohne Plätze', e, e.t != null);
+// Nebel nur auf roten Karten: gelbe Karte (pvp 1) mit wenig sichtbaren Mobs → nicht absuchen, direkt weiter
+const y = run('', { pos: true, pct: 100, alive: 6, pvp: 1 });
+const r = run('', { pos: true, pct: 100, alive: 6, pvp: 2 });
+show('gelb (PvP 1): nicht absuchen', y, y.t != null && y.t < 25 && y.kills < 6);
+show('rot (PvP 2): wie bisher absuchen', r, r.kills === 6 && r.t === a.t);
 process.exit(fail);

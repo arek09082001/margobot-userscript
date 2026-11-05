@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.4
+// @version      7.5
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -509,7 +509,7 @@
     function fogUpdate(hx, hy) {
         const now = performance.now();
         if (fog.key !== colKey) Object.assign(fog, { key: colKey, t0: now, maxVis: 0, far: 0, on: false, seen: new Uint8Array(MW * MH),
-                                                     goal: null, doneAt: 0, pct: 0, known: new Set(), spawns: new Map(), mem: new Map(), wspots: null });
+                                                     goal: null, doneAt: 0, pct: 0, known: new Set(), spawns: new Map(), mem: new Map(), wspots: null, noRed: false });
         const visL = E().npcs.getDrawableList().filter(n => n.d && (n.d.type === 2 || n.d.type === 3)).map(n => n.d);
         fog.maxVis = Math.max(fog.maxVis, visL.length);
         // typisch für Nebel: alles Sichtbare steht nah am Helden. Ein einziger weit entfernter Mob = kein Nebel.
@@ -517,9 +517,17 @@
         const wm = world && world[mapId()], total = wm ? wm[4].reduce((n, x) => n + x[2], 0) : 0;
         const big = MW * MH >= 40 * 40;
         if (!fog.on && cfg.fogExplore !== false && big && now - fog.t0 > 2500 && now - fog.t0 < 4000 && total >= 8
-            && fog.maxVis < total * 0.3 && (fog.far || 0) <= 12) {
-            fog.on = true; fog.sight = Math.max(5, Math.min(12, fog.far || 8));
-            log('Nebel auf ' + mapName() + ': sehe ' + fog.maxVis + ' von ~' + total + ' Mobs – erkunde die Karte');
+            && fog.maxVis < total * 0.3 && (fog.far || 0) <= 12 && !fog.noRed) {
+            /* Begrenzte Sicht gibt es nur auf roten Karten (PvP). Auf gelben/grünen sind wenige sichtbare Mobs
+               einfach wenige Mobs – dann nicht die Karte absuchen. Ohne PvP-Angabe wie bisher (Feld noch ungeprüft). */
+            const pv = mapPvp();
+            if (pv != null && pv !== 2) {
+                fog.noRed = true;
+                log(`Wenig Mobs auf ${mapName()} (${fog.maxVis} von ~${total}), aber keine rote Karte (PvP-Stufe ${pv}) – kein Nebel, suche nicht`);
+            } else {
+                fog.on = true; fog.sight = Math.max(5, Math.min(12, fog.far || 8));
+                log('Nebel auf ' + mapName() + ': sehe ' + fog.maxVis + ' von ~' + total + ' Mobs – erkunde die Karte');
+            }
         }
         for (const d of visL) if (wanted(d) || cfg.picked[mobKey(d.icon)]) {   // von Anfang an merken, auch vor der Nebel-Erkennung
             fog.mem.set(d.id, { x: d.x, y: d.y, at: now, nick: d.nick, lvl: d.lvl || 0 });
@@ -2799,7 +2807,7 @@
             <label class="chk"><input type="checkbox" data-a="autoCaptchaConfirm" ${cfg.autoCaptchaConfirm ? 'checked' : ''}>Zagadka: danach auch „Potwierdzam“ klicken</label>
             <label class="chk"><input type="checkbox" data-a="captchaWarn" ${cfg.captchaWarn !== false ? 'checked' : ''}>Bei Zagadka Ton und Benachrichtigung</label>
             <div class="hint">Vorwarnung (Zähler) → Bot jagt weiter. Sobald das Fenster da ist: Bot pausiert und klickt (wenn aktiv) alle *…*-Antworten. „Potwierdzam“ nur bei zweiter Option.</div>
-            <div class="hint">Im Nebel sieht der Bot nur Mobs in seiner Nähe. Er läuft die bekannten Mob-Plätze nacheinander ab und geht weiter, wenn genug davon abgesucht sind. Mobs, die hinter der Sichtgrenze verschwinden, merkt er sich.</div>
+            <div class="hint">Nebel gibt es nur auf roten Karten: Dort sieht der Bot nur Mobs in seiner Nähe. Er läuft die bekannten Mob-Plätze nacheinander ab und geht weiter, wenn genug davon abgesucht sind. Mobs, die hinter der Sichtgrenze verschwinden, merkt er sich.</div>
 
             <h4>Andere Spieler</h4>
             <select data-a="pkMode"><option value="off" ${cfg.pk.mode === 'off' ? 'selected' : ''}>nicht beachten</option>
