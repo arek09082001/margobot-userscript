@@ -33,7 +33,8 @@ let left = false;                              // Seitenwechsel: ab dann läuft 
 const loc = { _h: 'https://jaruna.margonem.pl/', get href() { return this._h; }, set href(v) { this._h = v; left = true; W.Engine = undefined; },
   get hostname() { return this._h.split('/')[2]; }, get origin() { return this._h.replace(/\/$/, ''); } };
 const doc = { createElement: el, head: el(), body: el(), addEventListener() {}, querySelector: () => null };
-const sb = { unsafeWindow: W, GM_getValue: (k, d) => store[k] || d, GM_setValue: (k, v) => store[k] = v, GM_notification: o => notes.push(o.text),
+// Der Test ändert Einstellungen direkt in store.mbauto (am Panel vorbei) – die Helden-Ablage daraus lesen, wie im Spiel beide gleich sind
+const sb = { unsafeWindow: W, GM_getValue: (k, d) => (/^mbhero:/.test(k) ? store.mbauto : store[k]) || d, GM_setValue: (k, v) => store[k] = v, GM_notification: o => notes.push(o.text),
   document: doc, innerWidth: 1400, setInterval: f => timers.push(f), setTimeout: (f, ms) => later.push([now + (ms || 0), f]),
   performance: { now: () => now }, Date: FakeDate, location: loc, navigator: {} };
 const notes = [];
