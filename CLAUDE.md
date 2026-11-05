@@ -10,8 +10,8 @@ Tampermonkey-Userscript für das Browser-MMORPG Margonem (margonem.com und margo
 | `margobot_world.json` | Weltkarte fürs Skript (2785 Karten: Größe, Türen, Mobs). Lädt der Nutzer einmal im Panel, liegt dann im GM-Speicher. |
 | `world_scrape.py` | Holt die Rohdaten von margoworld.pl nach `templates/_maps/worldgraph.json` (ca. 30 min, abbrechbar). |
 | `worldgraph.py` | Wegsuche auf der Kommandozeile und `export` nach `margobot_world.json`. |
-| `margobot_expowiska.json` | 110 Expowiska (Einteilung wie im „Spis expowisk“, Quelle margoworld.pl-Tags): Karten, fertige Rundgang-Route, Kern-Level der Mobs. Holt das Skript selbst von GitHub (`mbexpo`). |
-| `expowiska.py` | Erzeugt `margobot_expowiska.json` aus margoworld.pl und `margobot_world.json` (~1 min, Cache in `templates/_maps/expowiska_cache`). |
+| `margobot_expowiska.json` | Generierter Forum-Katalog: 119 Gebiete und 131 Teilrouten; im Userscript eingebettet. |
+| `expowiska.py` | Baut den Katalog offline aus `docs/expowiska-source.json` und der Weltkarte; `--embed` aktualisiert das Userscript. |
 | `chrome_margonem.bat` | Startet Chrome ohne Hintergrund-Drosselung (Windows). |
 | `tests/` | Simulationen ohne Browser, siehe unten. |
 
@@ -31,9 +31,15 @@ node -e "new Function(require('fs').readFileSync('margobot_auto.user.js','utf8')
 python tests/preview/build_prev.py    # baut tests/preview/index.html für den Browser
 ```
 
+XP-Rundgänge (ab 7.10): Der normalisierte Forenauszug (`docs/expowiska-source.json`, Stand 23.06.2026) enthält 119 Gebiete, davon 45 empfohlen. `expowiska.py` erzeugt `margobot_expowiska.json`; `python3 expowiska.py --embed` aktualisiert zusätzlich den eingebetteten Katalog im Userscript, ohne weitere Laufzeit-Downloads. Nicht die Quelldaten aus den generierten Dateien zurückschreiben. Der Import bewahrt Durchschnittslevel und Empfehlungen; Kartennamen/Etagen, dokumentierte Schreibvarianten und Mob-Grafiken werden gegen die Weltkarte abgeglichen. Unaufgelöste Ortsnamen stehen im Katalog.
+
+Vorschläge stehen in beiden XP-Modi. `suggestAuto` folgt dem Heldenlevel (−5 bis +3), ausgeschaltet gilt der eingestellte Bereich. `expoAll` zeigt alle Forumgebiete inklusive getrennter Teilrouten, unbekannter Anreise und fehlender Mob-Daten. `forumRoutes` nutzt den gemeinsamen Rundgang-Algorithmus `suggestRoutes(..., area)`, mit allen Gebietskarten einschließlich Durchgangskarten. Ohne Forumtreffer bleiben die automatisch berechneten Weltkarten-Vorschläge. Kreuzungen können mehrfach in `maps` vorkommen; `cards` zählt eindeutige Karten, `mode` ist `loop`. Einzelkarten bleiben Jagdorte ohne Kartenwechsel. Mob-Zahlen und XP werden pro Karte nur einmal geschätzt. Übernahme startet den Bot nicht und ist während laufender Aktionen oder ohne Anreise/Mob-Daten gesperrt. Tests: `node tests/xproutes_sim.js` und `python3 tests/expowiska_test.py` (beide in `tests/run_all.sh`). Details: `docs/xp-routen.md`.
+
 Die Vorschau zeigt das Panel im Browser mit Testdaten. Über URL-Parameter lassen sich Zustände einstellen, z. B. `?tab=trade&ah`, `?tab=rules&shop&log`, `?capt&log`, `?route`.
 
 Eine bestandene Simulation beweist nur die Logik. Verhalten im echten Spiel immer als „noch nicht im Spiel getestet“ kennzeichnen, bis der Nutzer es bestätigt.
+
+Unerreichbare Mobs (ab 7.11): Keine erreichbaren Ziele nach erneuter Kollisionsprüfung → 30 s überspringen und wie bei leerer Karte weiterarbeiten. Ein Laufauftrag ohne Heldbewegung wird nach 6 s übersprungen; die Frist beginnt beim Zielwechsel und berücksichtigt nachfolgende Schritte. Nebel-Erkundung darf übersprungene Geisterziele nicht erneut festhalten. Bei blockierter Mob-Kachel wird ein erreichbares Angriffs-Nachbarfeld angelaufen. Überspringen/Angriffsversuche sind pro Kartenbesuch und werden beim Kartenwechsel zurückgesetzt. Regression: `node tests/unreachable_mobs_sim.js` (in der Gesamtsuite).
 
 ## Im echten Spiel geprüfte Fakten
 

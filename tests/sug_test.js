@@ -14,5 +14,5 @@ new Function(...Object.keys(sb), src)(...Object.values(sb));
 for (const [lo, hi] of [[38, 44]]) {
   const t0 = Date.now(), r = W.__sug(lo, hi, 5);
   console.log(`Level ${lo}-${hi} (${Date.now() - t0} ms):`);
-  for (const o of r) console.log(`   ${o.name.padEnd(28)} ${String(o.maps.length).padStart(2)} Karten ${String(o.n).padStart(4)} Mobs  ~${Math.round(o.d)} Schritte  | XP/Runde ${Math.round(o.r.xp)} · ${o.r.lvlPct.toFixed(1)} % Level · ${Math.round(o.r.eff*100)} % XP/Mob`);
+  for (const o of r) console.log(`   ${o.name.padEnd(28)} ${String(o.cards).padStart(2)} Karten ${String(o.n).padStart(4)} Mobs  ~${Math.round(o.d)} Schritte  | XP/Runde ${Math.round(o.r.xp)} · ${o.r.lvlPct.toFixed(1)} % Level · ${Math.round(o.r.eff*100)} % XP/Mob`);
 }
