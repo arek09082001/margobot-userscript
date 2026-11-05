@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.8
+// @version      7.9
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -2650,6 +2650,28 @@
        (raw.githubusercontent.com erlaubt CORS, die Seite könnte es aber sperren). */
     const WORLD_URL = 'https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_world.json';
     let worldDl = false;
+    /* Expowiska (XP-Gebiete) nach margoworld.pl – dieselbe Einteilung wie der „Spis expowisk“ im Forum: pro Gebiet die
+       Karten, eine fertige Rundgang-Route (expowiska.py) und der Kernbereich der Mob-Level. Wird einmal von GitHub
+       geholt und gemerkt (für alle Helden gleich). */
+    const EXPO_URL = 'https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_expowiska.json';
+    let expo = GM_getValue('mbexpo', null), expoDl = false, expoErr = '';
+    function loadExpo(quiet) {
+        if (expoDl) return;
+        expoDl = true; expoErr = '';
+        fetchText(EXPO_URL).then(t => {
+            const d = JSON.parse(t);
+            if (!Array.isArray(d) || !d.length || !Array.isArray(d[0].route)) throw new Error('keine Expowiska');
+            expo = d; GM_setValue('mbexpo', d);
+            if (!quiet) log('Expowiska geladen: ' + d.length);
+        }).catch(er => { expoErr = er.message; log('Expowiska von GitHub fehlgeschlagen: ' + er.message); })
+          .finally(() => { expoDl = false; lastStatic = ''; render(); });
+    }
+    function expoFor(lo, hi) {                      // Expowiska, deren Mob-Level den Bereich berühren – nach Nähe zum eigenen Level
+        if (!expo) return [];
+        const me = heroLvl() || (lo + hi) / 2;
+        return expo.filter(e => e.lv[1] >= lo && e.lv[0] <= hi && e.route.length)
+            .sort((a, b) => Math.abs(a.lvl - me) - Math.abs(b.lvl - me)).slice(0, 6);
+    }
     const fetchText = url => new Promise((ok, fail) => {
         if (typeof GM_xmlhttpRequest === 'function') {
             GM_xmlhttpRequest({ method: 'GET', url, timeout: 60000,
@@ -2661,6 +2683,7 @@
         const d = JSON.parse(t), n = Object.keys(d).length, any = d[Object.keys(d)[0]];
         if (!n || !Array.isArray(any) || !Array.isArray(any[3])) throw new Error('keine Weltkarte');
         world = d; GM_setValue('mbworld', d); cfg.blocked = []; save();
+        loadExpo(true);                                // Expowiska gleich mit auffrischen
         log('Weltkarte geladen: ' + n + ' Karten');
         xpKey = ''; lastStatic = ''; render();
     }
@@ -2825,6 +2848,17 @@
                     <span class="mt xpl">${xpLine(o.r)}</span>
                   </button>`).join('')}</div><div class="hint">Antippen übernimmt die Route. Gelaufen wird hin und zurück.</div>`
                 : '<div class="hint">Keine zusammenhängenden Karten für diesen Bereich – Level-Bereich größer machen oder XP-Ort nutzen.</div>');
+            if (world && !expo && !expoDl && !expoErr && (typeof GM_xmlhttpRequest === 'function' || typeof window !== 'undefined')) loadExpo(true);
+            const ex = expoFor(cfg.lvlMin, cfg.lvlMax);
+            body += `<h4>Expowiska für Level ${cfg.lvlMin}–${cfg.lvlMax}</h4>` + (!world ? '' : !expo ? `<div class="hint">${expoDl ? 'Lade Expowiska …' : 'Expowiska nicht geladen' + (expoErr ? ' (' + esc(expoErr) + ')' : '')}</div>
+                  ${expoDl ? '' : '<button class="btn" data-a="expoload">Erneut laden</button>'}` :
+                ex.length ? `<div class="spots">${ex.map(e => `
+                  <button class="spot ${cfg.route === 'Expowisko ' + e.name ? 'sel' : ''}" data-a="expotake" data-n="${esc(e.name)}">
+                    <span class="nm">${esc(e.name)} · ${e.lvl} lvl</span>
+                    <span class="ds">${e.maps.length} Karten</span>
+                    <span class="mt">Mobs ${e.lv[0] === e.lv[1] ? e.lv[0] : e.lv[0] + '–' + e.lv[1]} · ${esc(wname(e.maps[0]))}${e.maps.length > 1 ? ' …' : ''}</span>
+                  </button>`).join('')}</div><div class="hint">Einteilung wie im Spis expowisk (margoworld). Antippen übernimmt die Runde durch alle Karten des Gebiets.</div>`
+                : '<div class="hint">Kein Expowisko in diesem Level-Bereich.</div>');
             if (run) cta = `<button class="cta stop" data-a="stopall">${ico('stop')}Stopp</button>`;
             else if (ro) cta = `<button class="cta" data-a="runroute">${ico('play')}Route „${esc(cfg.route)}“ starten</button>`;
             else cta = '';
@@ -3547,7 +3581,7 @@
         const rk = editId ? [editId, !!shopOpen(), (cfg.rules || []).map(r => [r.id, r.when.t, r.steps.map(x => x.t)])] : cfg.rules;
         if (tab === 'xp' && botMode() === 'route') refreshSug();
         if (botMode() === 'xp') refreshXp();
-        const sKey = JSON.stringify([cfg.open, tab, run, mn, rk, cfg.chain, botMode(), capt.state,
+        const sKey = JSON.stringify([cfg.open, tab, run, mn, rk, cfg.chain, botMode(), capt.state, !!expo, expoDl, expoErr,
                                      tab === 'skills' ? skillSig() : 0,
                                      tab === 'trade' ? [!!MK.scan, !!auctionOpen(), MK.deals.map(d => d.id + d.kind), cfg.trade, market.scans] : 0, sugList && sugList.map(o => o.maps.join()), cfg.route, cfg.rec && cfg.rec.length, Object.keys(cfg.routes),
                                      cfg.routes[cfg.route] && routeMode(cfg.routes[cfg.route]), worldN(), xpList && xpList.map(o => o.id), xpSel, cfg.lvlMin, cfg.lvlMax, heroLvl(),
@@ -3652,6 +3686,17 @@
             while (cfg.routes[name] && JSON.stringify(cfg.routes[name].maps) !== JSON.stringify(o.maps)) name = o.name + ' (' + k++ + ')';
             cfg.routes[name] = { maps: o.maps, mode: 'back', picked: {}, lvlOn: true, lvlMin: cfg.lvlMin, lvlMax: cfg.lvlMax, gen: true };
             selectRoute(name);
+        }
+        else if (a === 'expoload') { expoErr = ''; loadExpo(); return; }
+        else if (a === 'expotake') {
+            const e = (expo || []).find(x => x.name === el.dataset.n);
+            if (!e) return;
+            const name = 'Expowisko ' + e.name;
+            // Rundgang durch alle Karten (im Kreis), Level-Bereich = Kern der Mobs dort, etwas Luft nach beiden Seiten
+            cfg.routes[name] = { maps: e.route.slice(), mode: 'loop', picked: {}, lvlOn: true,
+                                 lvlMin: Math.max(1, e.lv[0] - 2), lvlMax: e.lv[1] + 2, gen: true, expo: e.name };
+            selectRoute(name);
+            log(`Expowisko ${e.name}: ${e.maps.length} Karten, Runde über ${e.route.length} Kartenwechsel, Mobs ${cfg.lvlMin}–${cfg.lvlMax}`);
         }
         else if (a === 'runroute') { cfg.e2.on = false; cfg.travel = null; cfg.on = true; goal = null; startSession(); log('Route „' + cfg.route + '“ gestartet'); }
         else if (a === 'mode') {
