@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.6
+// @version      7.7
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -46,8 +46,20 @@
     /* E2-Jagd: list = gemerkte Bosse (Schlüssel „Name|Karte“), sel = aktiver. away: 'stay' = am Spawnpunkt
        warten, 'leave' = bei langer Wartezeit das Spiel verlassen und rechtzeitig erinnern. back = Adresse der
        Spielseite ([server].margonem.pl), autoBack = zur Erinnerungszeit diese Seite wieder öffnen. */
-    const E2DEF = { on: false, sel: '', list: {}, away: 'stay', leaveMin: 10, remindMin: 2, remindMax: 4, wakeAt: 0, offline: false, autoBack: true, back: '', returned: false, leftAt: 0, noLeaveUntil: 0, leaveUrl: '', speed: 1, reactMin: 2, reactMax: 6 };
+    const E2DEF = { on: false, sel: '', list: {}, away: 'stay', leaveMin: 10, remindMin: 1, remindMax: 1, wakeAt: 0, offline: false, autoBack: true, back: '', returned: false, leftAt: 0, noLeaveUntil: 0, leaveUrl: '', speed: 1, reactMin: 2, reactMax: 6 };
     cfg.e2 = Object.assign({}, E2DEF, cfg.e2 || {});
+    // Rückkehr früher Standard 2–4 min vor dem Respawn → jetzt 1 min (Wunsch: nicht so lange vorher warten).
+    // Nur den alten Standard umstellen, selbst gewählte Werte bleiben.
+    if (cfg.e2.remindV !== 2) { if (cfg.e2.remindMin === 2 && cfg.e2.remindMax === 4) { cfg.e2.remindMin = 1; cfg.e2.remindMax = 1; } cfg.e2.remindV = 2; }
+    /* Seitenfolge beim Verlassen (Fehlersuche): Jede Seite, auf der das Skript startet, solange der Bot offline sein
+       will, wird gemerkt – so sieht man, ob die Startseite überhaupt geladen wurde oder wer zurück ins Spiel geführt hat. */
+    if (cfg.e2.offline) {
+        try {
+            const h = s => String(s || '').replace(/^https?:\/\//, '').replace(/\/$/, '').slice(0, 60);
+            cfg.e2.trace = (cfg.e2.trace || []).concat([h(location.href) + (document.referrer ? ' ← ' + h(document.referrer) : '')]).slice(-6);
+            GM_setValue('mbauto', cfg);
+        } catch (e) { }
+    }
     const running = () => !!(cfg.on || cfg.travel || cfg.chain || cfg.e2.on);
     // Routen bereinigen: leere Einträge (Kartenwechsel beim Aufnehmen) raus, doppelte direkt hintereinander zusammenfassen
     const cleanMaps = m => (m || []).filter(x => x && x !== 'null' && x !== 'undefined')
@@ -1577,7 +1589,7 @@
                wieder → Endlos-Neuladen. Darum bis zum Respawn online bleiben. */
             if (!E2.returned && now < E2.wakeAt && now - (E2.leftAt || 0) < 90000) {
                 E2.noLeaveUntil = E2.wakeAt + 30 * 60000;
-                log(`E2: ${E2.leaveUrl || 'die Startseite'} hat zurück ins Spiel geleitet – bleibe diesmal online. Unter „Seite zum Verlassen“ eine andere Adresse eintragen.`);
+                log(`E2: wieder im Spiel statt auf ${E2.leaveUrl || 'der Startseite'} – bleibe diesmal online. Seitenfolge: ${(E2.trace || []).join(' → ') || '–'}`);
             } else log('E2: wieder im Spiel – weiter mit ' + t.nick);
             E2.offline = false; E2.wakeAt = 0; E2.returned = false; save();
         }
@@ -1656,7 +1668,7 @@
             if (wake - now > E2.leaveMin * 60000) {
                 e2Leaving = true;
                 // Von [server].margonem.pl auf die Hauptseite – dort ist man nicht mehr in der Spielwelt
-                E2.wakeAt = wake; E2.offline = true; E2.returned = false; E2.back = location.origin + '/'; E2.leftAt = now; save();
+                E2.wakeAt = wake; E2.offline = true; E2.returned = false; E2.back = location.origin + '/'; E2.leftAt = now; E2.trace = []; save();
                 log(`E2: Respawn frühestens ${clock(w.start)} – verlasse das Spiel, ${E2.autoBack ? 'zurück' : 'Erinnerung'} um ${clock(wake)}`);
                 const home = e2LeaveUrl();
                 setTimeout(() => { location.href = home; }, 1500);
@@ -3164,7 +3176,8 @@
             <div class="rg">${stp('remindMin', E2.remindMin, 0, 60)}<span class="to">bis</span>${stp('remindMax', E2.remindMax, 0, 60)}</div>
             <label class="chk"><input type="checkbox" data-a="e2back" ${E2.autoBack ? 'checked' : ''}>Dann selbst zurück auf die Spielseite</label>
             <div class="fld"><span>Seite zum Verlassen</span><input type="text" data-a="e2leaveUrl" value="${esc(E2.leaveUrl || '')}" placeholder="${esc(e2LeaveUrl())}"></div>
-            ${Date.now() < (E2.noLeaveUntil || 0) ? `<div class="hint" style="color:var(--bad)">Die Seite hat zurück ins Spiel geleitet – der Bot bleibt bis ${clock(E2.noLeaveUntil)} online. Andere Adresse eintragen (Seite auf margonem.pl/.com, auf der man nicht im Spiel ist).</div>` : ''}
+            ${Date.now() < (E2.noLeaveUntil || 0) ? `<div class="hint" style="color:var(--bad)">Verlassen hat nicht geklappt, die Spielseite kam gleich wieder – der Bot bleibt bis ${clock(E2.noLeaveUntil)} online.
+              Seitenfolge: ${esc((E2.trace || []).join(' → ') || 'keine andere Seite geladen')}</div>` : ''}
             <div class="hint">Der Bot geht vom Spawnpunkt offline: von der Spielseite (z. B. classic.margonem.pl) auf www.margonem.pl.
               Dort zählt er herunter und öffnet zufällig im eingestellten Abstand vor dem Respawn wieder die Spielseite – mit deiner
               bestehenden Sitzung. Passwörter gibt er nie ein: Ist die Sitzung abgelaufen, meldet er sich (Benachrichtigung, Ton,
@@ -3721,25 +3734,44 @@
         if (typeof oc === 'function') W.confirm = function (m) { if (FS_Q.test(String(m || ''))) { log('Vollbild-Frage: Nein'); return false; } return oc.apply(this, arguments); };
     } catch (e) { }
     function fullscreenNo() {
-        // erst billig nach dem Fragetext suchen (XPath), nur dann den Knopf im selben Fenster
+        /* Im Spiel: Meldungsfenster mit „…recommended to use Full Screen mode.“ und den Knöpfen
+           .alert-accept-hotkey (OK) / .alert-cancel-hotkey (No). Erst den Spiel-Knopf direkt suchen. */
+        if (!document.querySelectorAll) return;
+        const near = el => { for (let w = el.parentElement, i = 0; w && w !== document.body && i < 8; w = w.parentElement, i++) {
+            const t = w.innerText || ''; if (t.length > 600) return false; if (FS_Q.test(t)) return true; } return false; };
+        for (const b of document.querySelectorAll('.alert-cancel-hotkey')) {
+            if (b.closest('#mba') || !b.offsetWidth || !near(b)) continue;
+            fsPress(b, (b.innerText || 'No').trim());
+            return;
+        }
+        // Sonst allgemein: Textknoten mit Vollbild-Frage (auch wenn der Text durch <br> geteilt ist), Nein-Knopf daneben
         if (!document.evaluate) return;
-        const r = document.evaluate("//*[not(self::script) and not(self::style) and (contains(text(),'ekran') or contains(text(),'creen') or contains(text(),'Vollbild') or contains(text(),'ollbild'))]",
+        const r = document.evaluate("//text()[contains(.,'ekran') or contains(.,'creen') or contains(.,'ollbild')]",
             document.body, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
         for (let k = 0; k < r.snapshotLength; k++) {
-            const q = r.snapshotItem(k);
-            if (q.closest('#mba') || !q.offsetWidth || !FS_Q.test(q.innerText || '')) continue;
-            // Fenster um die Frage: höchstens 6 Ebenen hoch, bis ein „Nein“-Knopf darin steckt
-            for (let w = q.parentElement, i = 0; w && w !== document.body && i < 6; w = w.parentElement, i++) {
-                if ((w.innerText || '').length > 400) break;
+            const q = r.snapshotItem(k).parentElement;
+            if (!q || q.closest('#mba') || q.closest('script,style') || !q.offsetWidth) continue;
+            for (let w = q, i = 0; w && w !== document.body && i < 8; w = w.parentElement, i++) {
+                const t = w.innerText || '';
+                if (t.length > 600) break;
+                if (!FS_Q.test(t)) continue;
                 const b = [...w.querySelectorAll('button, .button, [role=button], a, div, span')]
                     .find(x => x.offsetWidth && x.children.length <= 2 && FS_NO.test(x.innerText || ''));
                 if (!b) continue;
-                const btn = b.closest('button, .button, [role=button], a') || b;
-                press(btn);
-                log('Vollbild-Frage: „' + (b.innerText || '').trim() + '“ gedrückt');
+                fsPress(b.closest('button, .button, [role=button], a') || b, (b.innerText || '').trim());
                 return;
             }
         }
+    }
+    /* Am Handy reagieren Spiel-Knöpfe oft nicht auf einen Maus-Klick (im Spiel blieb das Fenster offen). Darum:
+       Ist das Fenster eine Sekunde später noch da, die nächste Klick-Art – am Handy zuerst Touch. */
+    let fsTry = 0;
+    function fsPress(btn, label) {
+        const kinds = clickOrder(), k = kinds[fsTry % kinds.length];
+        fsTry++;
+        try { CLICKS[k](btn); } catch (e) { }
+        if (fsTry <= kinds.length) log(`Vollbild-Frage: „${label}“ gedrückt (${k})`);
+        else if (fsTry === kinds.length + 1) log('Vollbild-Frage: Fenster geht nicht zu – bitte selbst „No“ tippen');
     }
     setInterval(() => { try { fullscreenNo(); } catch (e) { } }, 1000);
     render();
