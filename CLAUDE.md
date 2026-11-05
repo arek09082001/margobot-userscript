@@ -10,6 +10,8 @@ Tampermonkey-Userscript für das Browser-MMORPG Margonem (margonem.com und margo
 | `margobot_world.json` | Weltkarte fürs Skript (2785 Karten: Größe, Türen, Mobs). Lädt der Nutzer einmal im Panel, liegt dann im GM-Speicher. |
 | `world_scrape.py` | Holt die Rohdaten von margoworld.pl nach `templates/_maps/worldgraph.json` (ca. 30 min, abbrechbar). |
 | `worldgraph.py` | Wegsuche auf der Kommandozeile und `export` nach `margobot_world.json`. |
+| `margobot_expowiska.json` | 110 Expowiska (Einteilung wie im „Spis expowisk“, Quelle margoworld.pl-Tags): Karten, fertige Rundgang-Route, Kern-Level der Mobs. Holt das Skript selbst von GitHub (`mbexpo`). |
+| `expowiska.py` | Erzeugt `margobot_expowiska.json` aus margoworld.pl und `margobot_world.json` (~1 min, Cache in `templates/_maps/expowiska_cache`). |
 | `chrome_margonem.bat` | Startet Chrome ohne Hintergrund-Drosselung (Windows). |
 | `tests/` | Simulationen ohne Browser, siehe unten. |
 
