@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.14
+// @version      7.15
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -1836,7 +1836,14 @@
         }
     }
     // ── Heros suchen: nur belegte/importierte Spawnpunkte, niemals aus gewöhnlichen Mobs ableiten ──
-    let herosCatalog = GM_getValue('mbheros', []), herosWalk = null, herosAudio = null;
+    // Vom Nutzer bereitgestellte Spawnpunkte; Quelle und Koordinaten in docs/heros-spawns.json.
+    const HEROS_SPAWNS = [{"name":"Złodziej","source":"Vom Nutzer bereitgestellte Margoworld-Spawnliste, 06.11.2026","points":[{"map":162,"x":6,"y":7},{"map":2010,"x":6,"y":5},{"map":157,"x":5,"y":5},{"map":2011,"x":11,"y":12},{"map":2016,"x":6,"y":12},{"map":2018,"x":5,"y":6},{"map":221,"x":10,"y":5},{"map":2341,"x":9,"y":5},{"map":2342,"x":8,"y":10},{"map":2349,"x":5,"y":6},{"map":43,"x":11,"y":11},{"map":244,"x":59,"y":60},{"map":247,"x":7,"y":17},{"map":249,"x":10,"y":4},{"map":251,"x":11,"y":14},{"map":252,"x":10,"y":10},{"map":2350,"x":8,"y":14},{"map":2351,"x":13,"y":5},{"map":2352,"x":45,"y":12},{"map":2352,"x":51,"y":53},{"map":2308,"x":8,"y":8},{"map":2308,"x":51,"y":12},{"map":2308,"x":55,"y":44},{"map":2308,"x":55,"y":92},{"map":2324,"x":5,"y":5},{"map":2324,"x":20,"y":28},{"map":2324,"x":23,"y":61},{"map":2324,"x":48,"y":72},{"map":4151,"x":12,"y":55},{"map":4151,"x":53,"y":12},{"map":4151,"x":53,"y":51},{"map":4528,"x":6,"y":4}]},{"name":"Karmazyn","source":"Vom Nutzer bereitgestellte Margoworld-Spawnliste, 06.11.2026","points":[{"map":1664,"x":9,"y":26},{"map":1664,"x":16,"y":23},{"map":1665,"x":20,"y":6},{"map":1665,"x":41,"y":15},{"map":1670,"x":21,"y":37},{"map":1670,"x":22,"y":13},{"map":1667,"x":26,"y":12},{"map":1667,"x":28,"y":36},{"map":1667,"x":51,"y":38},{"map":1668,"x":4,"y":21},{"map":1668,"x":34,"y":10},{"map":1688,"x":12,"y":20},{"map":1688,"x":32,"y":22},{"map":1688,"x":40,"y":11},{"map":2536,"x":15,"y":19},{"map":2536,"x":16,"y":50},{"map":2536,"x":60,"y":48},{"map":2538,"x":18,"y":5},{"map":4546,"x":32,"y":25},{"map":4546,"x":38,"y":2},{"map":4546,"x":45,"y":56},{"map":4546,"x":58,"y":34},{"map":155,"x":6,"y":25},{"map":155,"x":32,"y":35},{"map":156,"x":13,"y":9},{"map":4547,"x":4,"y":40},{"map":4547,"x":33,"y":39},{"map":4547,"x":35,"y":8},{"map":4547,"x":48,"y":34},{"map":4547,"x":60,"y":31},{"map":4547,"x":60,"y":68},{"map":5948,"x":4,"y":61},{"map":5948,"x":36,"y":32},{"map":5948,"x":37,"y":15},{"map":5948,"x":52,"y":25},{"map":5293,"x":30,"y":36},{"map":5293,"x":31,"y":3},{"map":5293,"x":42,"y":57},{"map":5293,"x":61,"y":39}],"aliases":["Karmazynowy Mściciel"]}];
+    function mergeHeros(overrides) {
+        overrides = Array.isArray(overrides) ? overrides : [];
+        const names = new Set(overrides.map(h => fold(h.name)));
+        return HEROS_SPAWNS.filter(h => !names.has(fold(h.name))).concat(overrides);
+    }
+    let herosCatalog = mergeHeros(GM_getValue('mbheros', [])), herosWalk = null, herosAudio = null;
     const heroChoice = () => herosCatalog.find(h => h.name === cfg.heros.selected);
     function useHeros(text) {
         const input = JSON.parse(text);
@@ -1855,10 +1862,12 @@
                 if (seen.has(key)) throw new Error('Doppelter Spawnpunkt');
                 seen.add(key); return { map: p.map, x: p.x, y: p.y };
             });
-            return { name: h.name.trim(), source: typeof h.source === 'string' ? h.source.slice(0, 500) : '', points };
+            const aliases = h.aliases || [];
+            if (!Array.isArray(aliases) || aliases.length > 20 || aliases.some(a => typeof a !== 'string' || !a.trim() || a.length > 100)) throw new Error('Ungültige alternative Hero-Namen');
+            return { name: h.name.trim(), aliases: aliases.map(a => a.trim()), source: typeof h.source === 'string' ? h.source.slice(0, 500) : '', points };
         });
         herosStop('Neue Spawnliste geladen');
-        herosCatalog = clean; GM_setValue('mbheros', clean);
+        herosCatalog = mergeHeros(clean); GM_setValue('mbheros', clean);
         if (!heroChoice()) cfg.heros.selected = clean[0].name;
         save(); lastStatic = ''; render();
     }
@@ -1913,7 +1922,8 @@
         const s = cfg.heros, h = heroChoice(), now = performance.now();
         if (!h) { herosStop('Hero nicht mehr in der Spawnliste'); save(); return; }
         // Auf jeder durchquerten Karte prüfen, auch bevor der nächste Spawnpunkt erreicht ist.
-        const found = E().npcs.getDrawableList().map(n => n.d).find(d => d && fold(d.nick) === fold(h.name));
+        const names = new Set([h.name].concat(h.aliases || []).map(fold));
+        const found = E().npcs.getDrawableList().map(n => n.d).find(d => d && names.has(fold(d.nick)));
         if (found) {
             s.found = { name: found.nick, map: mapId(), x: found.x, y: found.y, at: Date.now() };
             herosStop('Gefunden: ' + found.nick + ' auf ' + mapName() + ' (' + found.x + ',' + found.y + ')');

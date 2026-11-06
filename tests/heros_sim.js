@@ -1,19 +1,21 @@
 // Heros: synthetische Spawnliste, keine Behauptung über tatsächliche Spiel-Spawns.
 const assert = require('assert/strict'), fs = require('fs'), path = require('path');
 const src = fs.readFileSync(path.join(__dirname, '..', 'margobot_auto.user.js'), 'utf8').replace(/\}\)\(\);\s*$/,
-    'W.test = { cfg, useHeros, herosPlan, herosStart, herosStop, herosTab }; })();');
-function setup() {
+    'W.test = { cfg, useHeros, herosPlan, herosStart, herosStop, herosTab, HEROS_SPAWNS, mergeHeros }; })();');
+function setup(real = false) {
     let now = 0, cur = 1, npcs = [], dead = false;
     const hits = [], visits = [], sounds = [], notifications = [], timers = [];
-    const graph = { 1: [[2, 19, 5]], 2: [[1, 0, 5]], 3: [] };
-    const world = Object.fromEntries([1, 2, 3].map(id => [id, [20, 10, 'Karte ' + id, graph[id], []]]));
+    const synthetic = { 1: [[2, 19, 5]], 2: [[1, 0, 5]], 3: [] };
+    const world = real ? JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'margobot_world.json'), 'utf8')) : Object.fromEntries([1, 2, 3].map(id => [id, [20, 10, 'Karte ' + id, synthetic[id], []]]));
+    const graph = Object.fromEntries(Object.entries(world).map(([id, m]) => [id, m[3]]));
+    if (real) cur = 33;
     const hero = { d: { x: 1, y: 5, lvl: 50 }, autoGoTo(p) {
         hero.d.x = p.x; hero.d.y = p.y;
         const g = graph[cur].find(g => g[1] === p.x && g[2] === p.y);
         if (g) { cur = g[0]; Engine.map.d = { id: cur, name: 'Karte ' + cur }; visits.push(cur); hero.d.x = cur === 2 ? 0 : 19; }
     }, heroAtackRequest(id) { hits.push(id); } };
     const Engine = { hero, battle: { show: false }, deadController: { isDead: () => dead }, npcs: { getDrawableList: () => npcs },
-        map: { d: { id: 1, name: 'Karte 1' }, size: { x: 20, y: 10 }, col: { check: () => 0 },
+        map: { d: { id: cur, name: world[cur][2] }, size: { x: world[cur][0], y: world[cur][1] }, col: { check: () => 0 },
             getGateways: () => ({ townnames: { 1: 'Karte 1', 2: 'Karte 2' }, getList: () => graph[cur].map(g => ({ d: { id: g[0], x: g[1], y: g[2] } })) }) } };
     class Audio {
         constructor() { this.state = 'running'; this.currentTime = 0; this.destination = {}; }
@@ -33,7 +35,8 @@ function setup() {
         die: () => { dead = true; }, npcs: list => npcs = list, tick: n => { for (let i = 0; i < n; i++) { now += 200; timers[0](); } } };
 }
 let t = setup();
-assert(t.herosTab().includes('Noch keine belegte Spawnliste'));
+assert(t.herosTab().includes('Złodziej'));
+assert(t.herosTab().includes('Karmazyn'));
 assert(!t.herosStart());
 t.useHeros(JSON.stringify(t.data));
 assert.equal(t.cfg.heros.selected, 'Testhero');
@@ -78,3 +81,46 @@ console.log('OK Heros: Routenreihenfolge, einmal/wiederholen, Fundton, kein Angr
 
 t = setup(); t.useHeros(JSON.stringify(t.data)); t.herosStart(); t.die(); t.tick(1);
 assert.equal(t.cfg.heros.on, false, 'Standardeinstellung stoppt auch Heros-Suche bei Tod');
+
+// Nutzerliste: alle Punkte unverändert vorinstalliert, gleicher Stand wie die dokumentierte Quelle.
+t = setup(true);
+const bundled = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'docs/heros-spawns.json'), 'utf8'));
+assert.deepEqual(t.HEROS_SPAWNS, bundled);
+assert.deepEqual(bundled.map(h => [h.name, h.points.length]), [['Złodziej', 32], ['Karmazyn', 39]]);
+const world = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'margobot_world.json'), 'utf8'));
+for (const h of bundled) {
+    const seen = new Set();
+    for (const p of h.points) {
+        const m = world[p.map]; assert(m);
+        assert(p.x >= 0 && p.x < m[0] && p.y >= 0 && p.y < m[1]);
+        const key = `${p.map}:${p.x},${p.y}`; assert(!seen.has(key)); seen.add(key);
+    }
+    const plan = t.herosPlan(h.points);
+    assert.equal(plan.missing.length, 0, h.name + ': bekannte Kartenwege von Eder');
+    assert.equal(plan.route.length, h.points.length);
+    assert.deepEqual(new Set(plan.route.map(p => `${p.map}:${p.x},${p.y}`)), seen);
+}
+assert(!bundled[0].points.some(p => p.map === 33), 'Eder ist nur eine Überschrift');
+assert(!bundled[1].points.some(p => p.map === 244), 'Fort Eder ist in der zweiten Liste nur eine Überschrift');
+assert.equal(bundled[0].points.filter(p => p.map === 2352).length, 2);
+const custom = { name: 'Złodziej', source: 'Eigene Ergänzung', points: [{ map: 33, x: 2, y: 2 }] };
+const merged = t.mergeHeros([custom]);
+assert.strictEqual(merged.find(h => h.name === 'Złodziej'), custom);
+assert(merged.some(h => h.name === 'Karmazyn'), 'Import darf andere mitgelieferte Heros nicht entfernen');
+console.log('OK Vorgegebene Heros: 32 Złodziej- und 39 Karmazyn-Punkte, Koordinaten, Kartenwege, vollständige Besuchsreihenfolge und Import-Erhalt');
+// Vorinstallierten Hero tatsächlich auswählen: Fund erkennt auch Schreibweise ohne polnische Diakritika.
+t = setup(true); t.cfg.heros.selected = 'Złodziej';
+assert(t.herosStart());
+t.npcs([{ d: { id: 123, nick: 'ZLODZIEJ', type: 0, x: 4, y: 5 } }]); t.tick(10);
+assert.equal(t.cfg.heros.on, false);
+assert.equal(t.cfg.heros.found.name, 'ZLODZIEJ');
+assert.equal(t.sounds.length, 3);
+assert.equal(t.notifications.length, 1);
+assert.equal(t.hits.length, 0);
+
+// Kurzname in der Auswahl und vollständiger NPC-Name im Spiel.
+t = setup(true); t.cfg.heros.selected = 'Karmazyn'; assert(t.herosStart());
+t.npcs([{ d: { id: 124, nick: 'Karmazynowy Mściciel', type: 0, x: 4, y: 5 } }]); t.tick(10);
+assert.equal(t.cfg.heros.on, false);
+assert.equal(t.cfg.heros.found.name, 'Karmazynowy Mściciel');
+assert.equal(t.sounds.length, 3);
