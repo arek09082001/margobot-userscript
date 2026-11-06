@@ -41,6 +41,8 @@ Eine bestandene Simulation beweist nur die Logik. Verhalten im echten Spiel imme
 
 Unerreichbare Mobs (ab 7.11): Keine erreichbaren Ziele nach erneuter Kollisionsprüfung → 30 s überspringen und wie bei leerer Karte weiterarbeiten. Ein Laufauftrag ohne Heldbewegung wird nach 6 s übersprungen; die Frist beginnt beim Zielwechsel und berücksichtigt nachfolgende Schritte. Nebel-Erkundung darf übersprungene Geisterziele nicht erneut festhalten. Bei blockierter Mob-Kachel wird ein erreichbares Angriffs-Nachbarfeld angelaufen. Überspringen/Angriffsversuche sind pro Kartenbesuch und werden beim Kartenwechsel zurückgesetzt. Regression: `node tests/unreachable_mobs_sim.js` (in der Gesamtsuite).
 
+Gelbe Karten (ab 7.12): Bei `pk.mode=follow`, erkanntem Verfolger innerhalb `heroLvl + pk.maxUp` und aktiver Route mit nächster Karte wird die aktuelle Karte ohne weitere Jagd verlassen. `pkRouteSkip` hält diesen Auftrag bis zum Kartenwechsel fest; danach normal weiterjagen. Keine zufällige Höhlenflucht und kein automatischer Rückweg. Fehlende Routentür melden und warten. Andere PvP-Fälle behalten ihre bisherige Reaktion. Tests: `tests/pvp_sim.js`.
+
 ## Im echten Spiel geprüfte Fakten
 
 - `Engine.hero.d` (x, y, lvl, exp, gold, `warrior_stats`), `hero.autoGoTo({x, y}, false)`, `hero.heroAtackRequest(id, true)`.
