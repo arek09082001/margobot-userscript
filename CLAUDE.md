@@ -51,6 +51,10 @@ Heros-Optimierung (ab 7.16): Spawnpunkte pro Karte bündeln, Kartenfolge über g
 
 E2-Erkennung (ab 7.17): Keine Erkennung allein über Level mehr. Konkrete E2-Grafik aus Weltkarte/gespeichertem `icon` oder bekannte Namen verwenden; `Szczęt alias Gładki` und `Raze aka Smoothly` sind Aliasse (auch in der Suche). Alte `gameNick`-Werte ohne `gameNickVerified` beim Laden verwerfen. Nur bestätigte Sichtungen lernen Namen und korrigieren `x/y`; sichtbare passende E2 auch weit vom alten Spawn erkennen. Regression: `tests/e2_alias_sim.js`, inklusive normalem Level-47-Mob als falschem Kandidaten und tatsächlich entfernter .com-E2.
 
+E2 nach Kill (ab 7.18): `e2rt.afterKillUntil` wird beim erkannten Tod einmal auf jetzt + zufällig 1,5–2,5 s gesetzt. Vorher weder Patrouille/Warteplatz anlaufen noch Logout beginnen; der bestehende 1,5-s-Seitenwechsel folgt erst danach. Warteplatz möglichst weder aktuelles Feld noch `previousSpot`, wenn andere erreichbare Felder vorhanden sind. Tests in `tests/e2_sim.js` prüfen gemeinsame Frist, keine Aktionen vorher und Logout danach.
+
+E2-Wartebewegung (ab 7.19): Vor dem Respawn-Fenster alle 55–75 s genau einmal mit 50 % Chance eine kurze lokale Runde oder Hin-und-zurück laufen, sonst stehen bleiben. Lokale BFS-Wege bleiben höchstens 5 Felder vom Spawn entfernt, meiden Wände, Spawnkachel und Türen und kehren zum Warteplatz zurück. Nach spätestens 20 s bzw. 6 s Stillstand abbrechen. Sichtbare E2, offene Spawn-Suche, Kill-Pause und fälliger Logout haben Vorrang. Kein erneutes Würfeln in jedem Takt. Tests in `tests/e2_sim.js` steuern den Zufall für beide Entscheidungen sowie Unterbrechung und Hindernisse.
+
 ## Im echten Spiel geprüfte Fakten
 
 - `Engine.hero.d` (x, y, lvl, exp, gold, `warrior_stats`), `hero.autoGoTo({x, y}, false)`, `hero.heroAtackRequest(id, true)`.

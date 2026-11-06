@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.17
+// @version      7.19
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -1643,7 +1643,9 @@
             if (walls && (walls[y * MW + x] || d[y * MW + x] < 0)) continue;
             opts.push([x, y]);
         }
-        const spot = opts.length ? opts[Math.floor(Math.random() * opts.length)] : [t.x, t.y];
+        const alternatives = opts.filter(p => (p[0] !== hx || p[1] !== hy) && (!e2rt || !e2rt.previousSpot || p[0] !== e2rt.previousSpot[0] || p[1] !== e2rt.previousSpot[1]));
+        const pool = alternatives.length ? alternatives : opts;
+        const spot = pool.length ? pool[Math.floor(Math.random() * pool.length)] : [t.x, t.y];
         if (e2rt) { e2rt.spot = spot; e2rt.spotFor = t.x + ',' + t.y; }
         return spot;
     }
@@ -1653,6 +1655,8 @@
         if (!t) return 'keine E2 gewählt';
         const w = e2Window(t), now = Date.now();
         if (e2rt && e2rt.alive) return `${t.nick} ist da – greife an`;
+        if (e2rt && now < (e2rt.afterKillUntil || 0)) return 'Kurze Pause nach dem Kampf';
+        if (e2rt && e2rt.idle) return 'Kleine Bewegung beim Warten';
         if (mapId() !== t.map) return `Reise nach ${wname(t.map)}` + (lastTravel ? ` · noch ${lastTravel.left} ${lastTravel.left === 1 ? 'Karte' : 'Karten'}` : '');
         if (!w) return `warte am Spawnpunkt · Respawn unbekannt`;
         if (now < w.start) return `Respawn in ${mmss(w.start - now)} (bis ${clock(w.end)})`;
@@ -1726,7 +1730,7 @@
             t.x = m.x; t.y = m.y; e2rt.spot = null; save();
         }
         if (m) {
-            e2rt.patrol = null;
+            e2rt.patrol = null; e2rt.idle = null;
             if (!e2rt.alive) {
                 e2rt.alive = true; e2rt.tries = 0;
                 // Reaktionszeit: nicht im selben Augenblick losrennen, in dem sie erscheint – ein Mensch braucht ein paar Sekunden
@@ -1762,15 +1766,25 @@
             if (Math.max(Math.abs(hx - e2rt.x), Math.abs(hy - e2rt.y)) <= 12) {
                 const mine = now - e2rt.atk < 30000;
                 t.lastKill = now; t.by = mine ? 'bot' : 'other';
+                e2rt.previousSpot = e2rt.spot || null;
                 e2rt.spot = null;                              // nach dem Kampf neuen Warteplatz auslosen
+                e2rt.idle = null; e2rt.nextIdleAt = now + rnd(55000, 75000);
+                e2rt.afterKillUntil = now + rnd(1500, 2500);    // einmal je Kill: gleiche Pause vor Weggehen und Logout
                 if (mine) t.kills = (t.kills || 0) + 1;
                 const w = e2Window(t);
                 log(`E2: ${t.nick} ${mine ? 'besiegt' : 'von jemand anderem erlegt'} – Respawn ${clock(w.start)}–${clock(w.end)}`);
                 save(); lastStatic = '';
             }
         }
+        if (now < (e2rt.afterKillUntil || 0)) return;
         // Warteplatz neben dem Spawnpunkt
         const w0 = e2Window(t);
+        const leaveDue = E2.away === 'leave' && w0 && now >= (E2.noLeaveUntil || 0)
+            && w0.start - Math.min(E2.remindMin, E2.remindMax) * 60000 - now > E2.leaveMin * 60000;
+        if (e2rt.idle) {
+            if (leaveDue || !w0 || now >= w0.start) { e2rt.idle = null; goal = null; }
+            else if (e2Idle(t, w0, hx, hy, now)) return;
+        }
         if (t.x != null && !e2Patrol(t, w0, hx, hy, now)) {
             const [sx, sy] = e2Spot(t);
             if (hx !== sx || hy !== sy) { walkTo(sx, sy, 'Warteplatz ' + t.nick); return; }
@@ -1790,6 +1804,7 @@
                 setTimeout(() => { location.href = home; }, 1500);
             }
         }
+        if (!e2Leaving && t.x != null) e2Idle(t, w0, hx, hy, now);
     }
     function e2LeaveUrl() {
         /* Ziel beim Verlassen: eingestellte Adresse, sonst die Startseite der Domain. Nur Seiten auf margonem.pl/.com,
@@ -1797,6 +1812,63 @@
         const u = (cfg.e2.leaveUrl || '').trim();
         if (/^https:\/\/([a-z0-9-]+\.)*margonem\.(pl|com)(\/|$)/i.test(u)) return u;
         return /margonem\.com$/.test(location.hostname) ? 'https://www.margonem.com/' : 'https://www.margonem.pl/';
+    }
+    function e2Idle(t, w, hx, hy, now) {
+        // Nur in der eigentlichen Wartezeit. Spawn-Suche, sichtbare E2 und Logout haben Vorrang.
+        if (!w || now >= w.start) { e2rt.idle = null; return false; }
+        if (!e2rt.nextIdleAt) e2rt.nextIdleAt = now + rnd(55000, 75000);
+        let idle = e2rt.idle;
+        if (!idle) {
+            if (now < e2rt.nextIdleAt) return false;
+            e2rt.nextIdleAt = now + rnd(55000, 75000); // auch bei „stehen bleiben“ erst im nächsten Minutenfenster neu würfeln
+            if (Math.random() >= 0.5) return false;
+            const home = e2rt.spot || [hx, hy], blocked = new Set(gateways().map(g => g.y * MW + g.x));
+            blocked.add(t.y * MW + t.x);              // Spawn und Türen nicht als Spazierweg benutzen
+            const path = (from, to) => {
+                const start = from[1] * MW + from[0], end = to[1] * MW + to[0], prev = new Map([[start, null]]), q = [start];
+                const allowed = (x, y) => x >= 0 && x < MW && y >= 0 && y < MH && !walls[y * MW + x]
+                    && !blocked.has(y * MW + x) && cheb(x, y, t.x, t.y) <= 5;
+                if (!allowed(to[0], to[1])) return null;
+                for (let i = 0; i < q.length; i++) {
+                    const c = q[i];
+                    if (c === end) {
+                        const out = [];
+                        for (let at = end; at !== start; at = prev.get(at)) out.unshift([at % MW, (at / MW) | 0]);
+                        return out;
+                    }
+                    const x = c % MW, y = (c / MW) | 0;
+                    for (const [dx, dy] of [[0, 1], [1, 0], [0, -1], [-1, 0]]) {
+                        const nx = x + dx, ny = y + dy, n = ny * MW + nx;
+                        if (allowed(nx, ny) && !prev.has(n)) { prev.set(n, c); q.push(n); }
+                    }
+                }
+                return null;
+            };
+            const [x, y] = home, patterns = [
+                [[x, y - 2], [x, y + 2], home], [[x - 2, y], [x + 2, y], home],
+                [[x + 2, y], [x + 2, y + 2], [x, y + 2], home],
+                [[x - 2, y], [x - 2, y - 2], [x, y - 2], home]
+            ], valid = [];
+            for (const pattern of patterns) {
+                let from = [hx, hy], points = [], possible = true;
+                for (const to of pattern) {
+                    const segment = path(from, to);
+                    if (!segment) { possible = false; break; }
+                    points.push(...segment); from = to;
+                }
+                if (possible && points.length && points.length <= 24) valid.push(points);
+            }
+            if (!valid.length) return false;
+            idle = e2rt.idle = { points: valid[Math.floor(Math.random() * valid.length)], i: 0, at: now, moved: now, x: hx, y: hy };
+            goal = null; log('E2: kurze Bewegung beim Warten');
+        }
+        if (idle.x !== hx || idle.y !== hy) { idle.x = hx; idle.y = hy; idle.moved = now; }
+        while (idle.i < idle.points.length && idle.points[idle.i][0] === hx && idle.points[idle.i][1] === hy) idle.i++;
+        if (idle.i >= idle.points.length || now - idle.at > 20000 || now - idle.moved > 6000) { e2rt.idle = null; goal = null; return false; }
+        const [x, y] = idle.points[idle.i];
+        if (walls[y * MW + x]) { e2rt.idle = null; goal = null; return false; }
+        walkTo(x, y, 'kleine E2-Warterunde');
+        return true;
     }
     function e2Patrol(t, w, hx, hy, now) {
         /* Die E2 erscheint 2–10 Felder neben ihrem festen Platz (margoatlas). Auf Karten mit Nebel liefert das Spiel
@@ -3588,7 +3660,7 @@
             <div class="fld"><span>Seite zum Verlassen</span><input type="text" data-a="e2leaveUrl" value="${esc(E2.leaveUrl || '')}" placeholder="${esc(e2LeaveUrl())}"></div>
             ${Date.now() < (E2.noLeaveUntil || 0) ? `<div class="hint" style="color:var(--bad)">Verlassen hat nicht geklappt, die Spielseite kam gleich wieder – der Bot versucht es ab ${clock(E2.noLeaveUntil)} erneut (2 min Pause).
               Seitenfolge: ${esc((E2.trace || []).join(' → ') || 'keine andere Seite geladen')}</div>` : ''}
-            <div class="hint">Der Bot geht vom Spawnpunkt offline: von der Spielseite (z. B. classic.margonem.pl) auf www.margonem.pl.
+            <div class="hint">Beim Online-Warten entscheidet der Bot ungefähr jede Minute mit 50 % Chance über eine kurze Bewegung in Spawnnähe. E2 und Logout haben Vorrang.<br>Der Bot geht vom Spawnpunkt offline: von der Spielseite (z. B. classic.margonem.pl) auf www.margonem.pl.
               Dort zählt er herunter und öffnet zufällig im eingestellten Abstand vor dem Respawn wieder die Spielseite – mit deiner
               bestehenden Sitzung. Passwörter gibt er nie ein: Ist die Sitzung abgelaufen, meldet er sich (Benachrichtigung, Ton,
               Vibration) und du loggst dich selbst ein. Die Seite muss offen bleiben.</div>` : ''}
