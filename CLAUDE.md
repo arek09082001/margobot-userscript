@@ -45,6 +45,8 @@ Gelbe Karten (ab 7.12): Bei `pk.mode=follow`, erkanntem Verfolger innerhalb `her
 
 E2-Logout (ab 7.13): Leitet die Startseite sofort zurück ins Spiel, wird `noLeaveUntil` auf jetzt + 2 min gesetzt; ältere längere Sperren werden beim Laden auf maximal 2 min Restzeit gekürzt. Danach ohne neuen Kill erneut verlassen, sofern bis zur Rückkehr noch genügend Zeit gemäß `leaveMin` bleibt. Die kurze Pause verhindert Neulade-Schleifen. Regressionen stehen in `tests/e2_sim.js`.
 
+Heros (ab 7.14): Neuer Tab mit validiertem JSON-Spawnlistenimport (`mbheros`, global) und pro-Held-Zustand `cfg.heros`. Einmalige oder wiederholte Suchrunden, Kartenweg-Heuristik, Fund per normalisiertem exakten NPC-Namen, Ton und Benachrichtigung; keine Angriffe. Fehlende Wege bleiben ungeprüft. Es ist noch kein recherchierter Katalog vorinstalliert: Margoworld/Margoatlas sind vom Proxy gesperrt, Złodziej-Daten fehlen. Keine Spawnpunkte aus normalen Mob-Daten ableiten. Dokumentation: `docs/heros.md`; synthetische Regressionstests: `tests/heros_sim.js`.
+
 ## Im echten Spiel geprüfte Fakten
 
 - `Engine.hero.d` (x, y, lvl, exp, gold, `warrior_stats`), `hero.autoGoTo({x, y}, false)`, `hero.heroAtackRequest(id, true)`.
