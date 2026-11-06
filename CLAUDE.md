@@ -49,6 +49,8 @@ Heros (ab 7.14): Neuer Tab mit validiertem JSON-Spawnlistenimport (`mbheros`, gl
 
 Heros-Optimierung (ab 7.16): Spawnpunkte pro Karte bündeln, Kartenfolge über gerichtete Weltkartenkosten verbessern, Zwischenkarten in `mapPath` ausweisen. `cfg.heros.sight` (Standard 5, 1–12) ist ein konfigurierter konservativer Sichtradius, keine gemessene Servergarantie. `seen` wird pro Runde gespeichert; `herosCoverage` wartet 1 s in Reichweite und wird beim Kartenwechsel geleert. Überlappende Punkte gemeinsam prüfen. Sichtbaren Hero zuerst bis auf 1 Feld anlaufen und erst dann den Fundton abspielen; verschwindende oder unerreichbare Heros nicht als erfolgreichen Nah-Fund melden. Tests in `tests/heros_sim.js` prüfen Gruppierung, Kostenverbesserung, Türfolge, Sichtbereiche und Alarmzeitpunkt.
 
+E2-Erkennung (ab 7.17): Keine Erkennung allein über Level mehr. Konkrete E2-Grafik aus Weltkarte/gespeichertem `icon` oder bekannte Namen verwenden; `Szczęt alias Gładki` und `Raze aka Smoothly` sind Aliasse (auch in der Suche). Alte `gameNick`-Werte ohne `gameNickVerified` beim Laden verwerfen. Nur bestätigte Sichtungen lernen Namen und korrigieren `x/y`; sichtbare passende E2 auch weit vom alten Spawn erkennen. Regression: `tests/e2_alias_sim.js`, inklusive normalem Level-47-Mob als falschem Kandidaten und tatsächlich entfernter .com-E2.
+
 ## Im echten Spiel geprüfte Fakten
 
 - `Engine.hero.d` (x, y, lvl, exp, gold, `warrior_stats`), `hero.autoGoTo({x, y}, false)`, `hero.heroAtackRequest(id, true)`.

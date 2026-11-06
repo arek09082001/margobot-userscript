@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.16
+// @version      7.17
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -54,6 +54,7 @@
         cfg.heros = Object.assign({ on: false, selected: '', repeat: false, sight: 5, seen: {}, rounds: 0, index: 0, checked: 0, route: [], skipped: [], status: '', found: null }, cfg.heros || {});
         cfg.e2 = Object.assign({}, E2DEF, cfg.e2 || {});
         // Alte Logout-Sperren (Rückkehrzeit + 30 min) auf höchstens zwei Minuten Restzeit kürzen.
+        for (const t of Object.values(cfg.e2.list || {})) if (!t.gameNickVerified) delete t.gameNick;
         cfg.e2.noLeaveUntil = Math.min(cfg.e2.noLeaveUntil || 0, Date.now() + 2 * 60000);
         // Rückkehr früher Standard 2–4 min vor dem Respawn → jetzt 1 min (Wunsch: nicht so lange vorher warten).
         // Nur den alten Standard umstellen, selbst gewählte Werte bleiben.
@@ -1600,7 +1601,7 @@
         for (const id in world) for (const m of world[id][4]) {
             if (!m[4] || !String(m[4]).startsWith('e2/')) continue;
             const p = Array.isArray(m[3]) && m[3].length >= 2 ? m[3] : null;
-            l.push({ nick: m[0], lvl: m[1], map: +id, x: p ? p[0] : null, y: p ? p[1] : null });
+            l.push({ nick: m[0], lvl: m[1], map: +id, x: p ? p[0] : null, y: p ? p[1] : null, icon: m[4] });
         }
         l.sort((a, b) => a.lvl - b.lvl);
         e2WorldCache = { n: worldN(), l };
@@ -1618,7 +1619,7 @@
     function e2Add(o) {
         const k = e2Key(o.nick, o.map);
         if (!cfg.e2.list[k]) cfg.e2.list[k] = { nick: o.nick, lvl: o.lvl || 0, map: +o.map, x: o.x ?? null, y: o.y ?? null,
-                                                respMin: 15, respMax: 30, lastKill: 0, by: '', kills: 0, meas: [] };
+                                                icon: o.icon || '', respMin: 15, respMax: 30, lastKill: 0, by: '', kills: 0, meas: [] };
         if (!cfg.e2.list[k].lastKill && cfg.e2.list[k].respAuto !== false) e2AutoResp(cfg.e2.list[k]);
         cfg.e2.sel = k;
         log(`E2 gemerkt: ${o.nick} (${o.lvl || '?'}) auf ${wname(+o.map)}`);
@@ -1658,19 +1659,29 @@
         if (now < w.end) return `Respawn jederzeit · Fenster bis ${clock(w.end)}`;
         return `überfällig seit ${mmss(now - w.end)} – warte weiter`;
     }
+    const E2_ALIASES = [['Szczęt alias Gładki', 'Raze aka Smoothly']];
+    function e2Names(t) {
+        const names = new Set([fold(t.nick)]);
+        for (const group of E2_ALIASES) if (group.some(n => names.has(fold(n)))) for (const n of group) names.add(fold(n));
+        return names;
+    }
+    function e2Icon(icon) {
+        return String(icon || '').split(/[?#]/)[0].replace(/^.*\/npc\//i, '').replace(/^\/+/, '').toLowerCase();
+    }
     function e2Find(t) {
-        /* E2 auf der Karte suchen. Erst nach Namen (auch dem im Spiel gelernten), ohne Typ-Filter – falls das Spiel
-           die E2 anders einordnet als normale Mobs. Sonst ein Mob mit genau ihrem Level nah am Spawnpunkt: der Name
-           auf margoworld kann vom Namen im Spiel abweichen. */
-        const L = E().npcs.getDrawableList().map(n => n.d).filter(d => d && d.nick && d.x != null);
-        const names = [fold(t.nick), fold(t.gameNick || '')].filter(Boolean);
-        let d = L.find(x => names.includes(fold(x.nick))), how = 'Name';
-        if (!d && t.x != null && t.lvl) {
-            d = L.filter(x => (+x.lvl || 0) === +t.lvl && Math.max(Math.abs(x.x - t.x), Math.abs(x.y - t.y)) <= 12)
-                 .sort((a, b) => Math.max(Math.abs(a.x - t.x), Math.abs(a.y - t.y)) - Math.max(Math.abs(b.x - t.x), Math.abs(b.y - t.y)))[0];
-            how = 'Level';
+        // Gleicher Level allein beweist keine E2. Namen/Aliasse und die konkrete E2-Grafik
+        // funktionieren auch bei übersetzten .com-Namen und weit vom alten Spawnpunkt entfernt.
+        const L = E().npcs.getDrawableList().map(n => n.d).filter(d => d && d.nick && Number.isFinite(d.x) && Number.isFinite(d.y));
+        const names = e2Names(t);
+        const known = e2World().find(e => e.map === +t.map && names.has(fold(e.nick)));
+        const icon = e2Icon(t.icon || (known && known.icon));
+        let d = L.find(x => names.has(fold(x.nick))), how = 'Name';
+        if (!d && icon.startsWith('e2/')) { d = L.find(x => e2Icon(x.icon) === icon); how = 'Grafik'; }
+        // Vor 7.17 wurden Namen allein anhand gleicher Level gelernt. Diese Altwerte sind nicht verlässlich.
+        if (!d && t.gameNickVerified && t.gameNick && !icon) {
+            d = L.find(x => fold(x.nick) === fold(t.gameNick)); how = 'Bestätigter Name';
         }
-        return d ? { id: d.id, nick: d.nick, lvl: +d.lvl || 0, x: d.x, y: d.y, how } : null;
+        return d ? { id: d.id, nick: d.nick, lvl: +d.lvl || 0, x: d.x, y: d.y, how, icon: e2Icon(d.icon) } : null;
     }
     function e2Seen(t) {
         /* Für die Anzeige: Mobs nah am Spawnpunkt (bzw. am Helden), damit man sieht, was der Bot erkennt. */
@@ -1707,9 +1718,12 @@
         if (!e2rt || e2rt.mapAt !== mapAt) e2rt = { mapAt, since: now, alive: false, atk: 0, tries: 0 };
         const [hx, hy] = heroXY();
         const m = e2Find(t);
-        if (m && m.how === 'Level' && fold(m.nick) !== fold(t.gameNick || '')) {
-            t.gameNick = m.nick; save();
-            log(`E2: im Spiel heißt sie „${m.nick}“ (Lvl ${m.lvl}) – erkannt am Level, Name gemerkt`);
+        if (m && (m.how === 'Grafik' || m.how === 'Name') && (fold(m.nick) !== fold(t.gameNick || '') || !t.gameNickVerified)) {
+            t.gameNick = m.nick; t.gameNickVerified = true; save();
+            log(`E2: im Spiel heißt sie „${m.nick}“ (Lvl ${m.lvl}) – erkannt über ${m.how}, Name bestätigt`);
+        }
+        if (m && (t.x !== m.x || t.y !== m.y)) {
+            t.x = m.x; t.y = m.y; e2rt.spot = null; save();
         }
         if (m) {
             e2rt.patrol = null;
@@ -3518,7 +3532,7 @@
     function e2Hits(q) {
         /* Suche in den E2 der Weltkarte: Name oder Karte; ohne Suchtext die E2 um das eigene Level. */
         const all = e2World(), f = fold(q), l = heroLvl();
-        const hit = f ? all.filter(o => fold(o.nick).includes(f) || fold(wname(o.map)).includes(f))
+        const hit = f ? all.filter(o => [...e2Names(o)].some(n => n.includes(f)) || fold(wname(o.map)).includes(f))
                       : all.filter(o => Math.abs(o.lvl - l) <= 25).sort((a, b) => Math.abs(a.lvl - l) - Math.abs(b.lvl - l));
         return hit.slice(0, 8);
     }
@@ -3597,7 +3611,7 @@
             if (o) e2Add(o);
         } else if (a === 'e2pick') {
             const m = mobs().find(x => String(x.id) === el.dataset.id);
-            if (m) e2Add({ nick: m.nick, lvl: m.lvl, map: mapId(), x: m.x, y: m.y });
+            if (m) e2Add({ nick: m.nick, lvl: m.lvl, map: mapId(), x: m.x, y: m.y, icon: (E().npcs.getDrawableList().map(n => n.d).find(d => d && String(d.id) === el.dataset.id) || {}).icon });
         } else if (a === 'e2num' && t || a === 'e2num' && /^(leaveMin|remind|react)/.test(el.dataset.f)) {
             const f = el.dataset.f, obj = /^(leaveMin|remindMin|remindMax|reactMin|reactMax)$/.test(f) ? E2 : t;
             obj[f] = Math.max(+el.dataset.lo, Math.min(+el.dataset.hi, (+obj[f] || 0) + +el.dataset.d));

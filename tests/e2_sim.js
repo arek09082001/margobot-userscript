@@ -80,9 +80,9 @@ const spots = new Set(); let allNear = true;
 for (let i = 0; i < 6; i++) { npcs = [boss()]; min(0.2); min(0.3); spots.add(hero.d.x + ',' + hero.d.y); if (!nearSpawn()) allNear = false; }
 ok(allNear && spots.size >= 3, 'Warteplatz nach dem Kampf zufällig, 1–2 Felder vom Spawn', [...spots].join(' '));
 
-// 3b) Name im Spiel weicht ab (anderer Name, gleiches Level, nah am Spawn) → am Level erkannt und angegriffen
+// 3b) Name im Spiel weicht ab (anderer Name, passende E2-Grafik) → an Grafik erkannt und angegriffen
 npcs = [boss('Dzika Mushita', 14, 13)]; min(0.3);
-ok(hits.length === 9 && t().gameNick === 'Dzika Mushita' && logs.some(l => /erkannt am Level/.test(l)), 'anderer Name im Spiel: am Level erkannt, angegriffen', 'Name gemerkt: ' + t().gameNick);
+ok(hits.length === 9 && t().gameNick === 'Dzika Mushita' && logs.some(l => /erkannt über Grafik/.test(l)), 'anderer Name im Spiel: an Grafik erkannt, angegriffen', 'Name gemerkt: ' + t().gameNick);
 
 // 3c) Nebel: E2 erscheint 10 Felder vom Spawn, der Bot sieht nur 8 Felder weit → Runde um den Spawnpunkt, findet sie
 fogR = 8; min(15.5); npcs = [boss('Mushita', 5, 15)]; min(2);
