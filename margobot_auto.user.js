@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.17
+// @version      7.18
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -1643,7 +1643,9 @@
             if (walls && (walls[y * MW + x] || d[y * MW + x] < 0)) continue;
             opts.push([x, y]);
         }
-        const spot = opts.length ? opts[Math.floor(Math.random() * opts.length)] : [t.x, t.y];
+        const alternatives = opts.filter(p => (p[0] !== hx || p[1] !== hy) && (!e2rt || !e2rt.previousSpot || p[0] !== e2rt.previousSpot[0] || p[1] !== e2rt.previousSpot[1]));
+        const pool = alternatives.length ? alternatives : opts;
+        const spot = pool.length ? pool[Math.floor(Math.random() * pool.length)] : [t.x, t.y];
         if (e2rt) { e2rt.spot = spot; e2rt.spotFor = t.x + ',' + t.y; }
         return spot;
     }
@@ -1653,6 +1655,7 @@
         if (!t) return 'keine E2 gewählt';
         const w = e2Window(t), now = Date.now();
         if (e2rt && e2rt.alive) return `${t.nick} ist da – greife an`;
+        if (e2rt && now < (e2rt.afterKillUntil || 0)) return 'Kurze Pause nach dem Kampf';
         if (mapId() !== t.map) return `Reise nach ${wname(t.map)}` + (lastTravel ? ` · noch ${lastTravel.left} ${lastTravel.left === 1 ? 'Karte' : 'Karten'}` : '');
         if (!w) return `warte am Spawnpunkt · Respawn unbekannt`;
         if (now < w.start) return `Respawn in ${mmss(w.start - now)} (bis ${clock(w.end)})`;
@@ -1762,13 +1765,16 @@
             if (Math.max(Math.abs(hx - e2rt.x), Math.abs(hy - e2rt.y)) <= 12) {
                 const mine = now - e2rt.atk < 30000;
                 t.lastKill = now; t.by = mine ? 'bot' : 'other';
+                e2rt.previousSpot = e2rt.spot || null;
                 e2rt.spot = null;                              // nach dem Kampf neuen Warteplatz auslosen
+                e2rt.afterKillUntil = now + rnd(1500, 2500);    // einmal je Kill: gleiche Pause vor Weggehen und Logout
                 if (mine) t.kills = (t.kills || 0) + 1;
                 const w = e2Window(t);
                 log(`E2: ${t.nick} ${mine ? 'besiegt' : 'von jemand anderem erlegt'} – Respawn ${clock(w.start)}–${clock(w.end)}`);
                 save(); lastStatic = '';
             }
         }
+        if (now < (e2rt.afterKillUntil || 0)) return;
         // Warteplatz neben dem Spawnpunkt
         const w0 = e2Window(t);
         if (t.x != null && !e2Patrol(t, w0, hx, hy, now)) {

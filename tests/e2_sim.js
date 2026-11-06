@@ -2,10 +2,11 @@
 // mit „Spiel verlassen“: nach dem Kill offline gehen (Seite wechselt) und Erinnerung vor dem Respawn.
 // Karten: 1 A ↔ 2 B. Die E2 „Mushita“ steht auf B bei 15,15; Respawn im Spiel nach 20 min.
 const fs = require('fs');
-const src = fs.readFileSync(require('path').join(__dirname, '..', 'margobot_auto.user.js'), 'utf8').replace('function log(t) {', 'function log(t) { globalThis.__logs.push(t); if (process.env.LOG) console.log("   log:", t);');
+const src = fs.readFileSync(require('path').join(__dirname, '..', 'margobot_auto.user.js'), 'utf8').replace('function log(t) {', 'function log(t) { globalThis.__logs.push(t); if (process.env.LOG) console.log("   log:", t);').replace(/\}\)\(\);\s*$/, 'W.__e2state = () => e2rt; })();');
 const logs = globalThis.__logs = [];
 const NAMES = { 1: 'A', 2: 'B' };
 const G = { 1: [[2, 19, 10]], 2: [[1, 0, 10]] };
+const moves = [], pageLeaves = [];
 let cur = 1, npcs = [], changedAt = -1e9, hits = [];
 var now = 0;
 const BASE = Date.UTC(2026, 10, 4, 10, 0, 0);
@@ -17,6 +18,7 @@ const go = m => {
 const boss = (nick, x, y) => ({ d: { id: 777 + hits.length, nick: nick || 'Mushita', lvl: 23, x: x ?? 15, y: y ?? 15, type: 2, icon: 'e2/st-puma.gif' } });
 let fogR = 0;                                   // Nebel: das Spiel liefert nur Mobs bis fogR Felder um den Helden
 const hero = { d: { id: 1, x: 5, y: 5, lvl: 25 }, autoGoTo(p) {
+    moves.push({ at: BASE + now, x: p.x, y: p.y });
     hero.d.x = p.x; hero.d.y = p.y;
     const g = G[cur].find(g => g[1] === p.x && g[2] === p.y);
     if (g) go(g[0]);
@@ -30,7 +32,7 @@ const world = { 1: [20, 20, 'A', G[1], []], 2: [20, 20, 'B', G[2], [['Mushita', 
 const store = { mbworld: world, mbauto: { on: false, pauseMin: 300, pauseMax: 300 } };
 const timers = [], later = [];
 let left = false;                              // Seitenwechsel: ab dann läuft das Spiel nicht mehr
-const loc = { _h: 'https://jaruna.margonem.pl/', get href() { return this._h; }, set href(v) { this._h = v; left = true; W.Engine = undefined; },
+const loc = { _h: 'https://jaruna.margonem.pl/', get href() { return this._h; }, set href(v) { pageLeaves.push(BASE + now); this._h = v; left = true; W.Engine = undefined; },
   get hostname() { return this._h.split('/')[2]; }, get origin() { return this._h.replace(/\/$/, ''); } };
 const doc = { createElement: el, head: el(), body: el(), addEventListener() {}, querySelector: () => null };
 // Der Test ändert Einstellungen direkt in store.mbauto (am Panel vorbei) – die Helden-Ablage daraus lesen, wie im Spiel beide gleich sind
@@ -158,4 +160,30 @@ const e2Resp = new Function('cfg', fsrc + 'return e2Resp;')({ e2: { speed: 1 } }
 const ATLAS = [[23, 4.5], [37, 7], [57, 9.5], [75, 12], [105, 15], [131, 17], [160, 18], [183, 19], [237, 19], [300, 19]];
 const bad = ATLAS.filter(([l, m]) => Math.abs(e2Resp(l) - m) > 0.6);
 ok(!bad.length, 'Respawn-Richtwert passt zu margoatlas', ATLAS.map(([l, m]) => `${l}: ${e2Resp(l).toFixed(1)}/${m}`).join(' · '));
+// 12) Nach dem Kill einmal 1,5–2,5 s warten: weder Warteplatz noch Logout vorher starten.
+const prepareKill = away => {
+    e2().on = true; e2().offline = false; e2().wakeAt = 0; e2().noLeaveUntil = 0; e2().away = away;
+    e2().reactMin = e2().reactMax = 0; e2().leaveMin = 1;
+    t().x = t().y = 15; t().lastKill = 0; npcs = []; fogR = 0;
+    store.mbauto.pauseMin = store.mbauto.pauseMax = 0;
+    loc._h = SERVER; newPage(true); T(2);
+    const beforeHits = hits.length; npcs = [boss()];
+    for (let i = 0; i < 20 && hits.length === beforeHits; i++) T(1);
+    T(1); // Verschwinden bemerken, Kill-Zeit setzen
+    return { at: t().lastKill, until: W.__e2state().afterKillUntil, moves: moves.length, left: pageLeaves.length };
+};
+let pause = prepareKill('stay');
+ok(pause.until - pause.at >= 1500 && pause.until - pause.at <= 2500, 'Kill-Pause zufällig zwischen 1,5 und 2,5 s');
+while (BASE + now + 200 < pause.until) T(1);
+ok(moves.length === pause.moves && pageLeaves.length === pause.left, 'Während Kill-Pause weder weglaufen noch ausloggen');
+T(1);
+ok(moves.length > pause.moves && moves[pause.moves].at >= pause.until && nearSpawn(), 'Nach Kill-Pause zufälligen nahen Warteplatz anlaufen');
+const chosen = W.__e2state().spot, previous = W.__e2state().previousSpot;
+ok(!previous || chosen[0] !== previous[0] || chosen[1] !== previous[1], 'Anderen Warteplatz wählen, wenn Alternativen vorhanden sind');
+pause = prepareKill('leave');
+while (BASE + now + 200 < pause.until) T(1);
+ok(!e2().offline && !left && moves.length === pause.moves, 'Logout verwendet dieselbe Kill-Pause wie Weglaufen');
+T(25);
+ok(left && pageLeaves[pause.left] >= pause.until + 1500 && pageLeaves[pause.left] <= pause.until + 2500,
+    'Logout nach Kill-Pause plus bestehender Seitenwechsel-Frist', ((pageLeaves[pause.left] - pause.at) / 1000).toFixed(1) + ' s nach Kill');
 if (fail) process.exit(1);
