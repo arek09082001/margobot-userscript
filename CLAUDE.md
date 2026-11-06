@@ -47,6 +47,8 @@ E2-Logout (ab 7.13): Leitet die Startseite sofort zurück ins Spiel, wird `noLea
 
 Heros (ab 7.14): Neuer Tab mit validiertem JSON-Spawnlistenimport (`mbheros`, global) und pro-Held-Zustand `cfg.heros`. Einmalige oder wiederholte Suchrunden, Kartenweg-Heuristik, Fund per normalisiertem exakten NPC-Namen, Ton und Benachrichtigung; keine Angriffe. Fehlende Wege bleiben ungeprüft. Seit 7.15 sind die vom Nutzer vorgegebenen Spawnlisten für Złodziej (32 Punkte) und Karmazyn (39 Punkte) eingebettet; dokumentierte Daten: `docs/heros-spawns.json`. Eigene `mbheros`-Einträge ergänzen die eingebauten Heros und haben bei gleichem Namen Vorrang. Die vollständigen Punktlisten und Kartenwege werden gegen die Weltkarte getestet. Keine Spawnpunkte aus normalen Mob-Daten ableiten. Dokumentation: `docs/heros.md`; synthetische Regressionstests: `tests/heros_sim.js`.
 
+Heros-Optimierung (ab 7.16): Spawnpunkte pro Karte bündeln, Kartenfolge über gerichtete Weltkartenkosten verbessern, Zwischenkarten in `mapPath` ausweisen. `cfg.heros.sight` (Standard 5, 1–12) ist ein konfigurierter konservativer Sichtradius, keine gemessene Servergarantie. `seen` wird pro Runde gespeichert; `herosCoverage` wartet 1 s in Reichweite und wird beim Kartenwechsel geleert. Überlappende Punkte gemeinsam prüfen. Sichtbaren Hero zuerst bis auf 1 Feld anlaufen und erst dann den Fundton abspielen; verschwindende oder unerreichbare Heros nicht als erfolgreichen Nah-Fund melden. Tests in `tests/heros_sim.js` prüfen Gruppierung, Kostenverbesserung, Türfolge, Sichtbereiche und Alarmzeitpunkt.
+
 ## Im echten Spiel geprüfte Fakten
 
 - `Engine.hero.d` (x, y, lvl, exp, gold, `warrior_stats`), `hero.autoGoTo({x, y}, false)`, `hero.heroAtackRequest(id, true)`.

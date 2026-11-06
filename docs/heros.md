@@ -1,18 +1,38 @@
 # Heros-Suche – Suchablauf und Datenstand
 
 Der Tab „Heros“ unterstützt die Auswahl eines Heros aus einer geladenen Spawnliste,
-einmalige Suchrunden und automatische Wiederholung. Die Reihenfolge bevorzugt
-jeweils den nächsten über die Weltkarte erreichbaren Spawnpunkt. Es ist eine
-Heuristik, keine Garantie für die global kürzeste Route. Auf den Karten läuft der
-Bot jeden Punkt bis auf Angriffs-/Sichtnähe an und wartet kurz auf die NPC-Liste.
+einmalige Suchrunden und automatische Wiederholung. Ab 7.16 bündelt die Planung
+alle Punkte derselben Karte in einem Besuch. Die Kartenfolge wird zunächst nach
+Kosten über die tatsächlichen Türen aufgebaut und anschließend mit gerichteten
+Kosten durch Umkehrungen verbessert. Wiederholte Runden berücksichtigen auch
+den Rückweg zum ersten Ziel. Die Planung ist eine Heuristik, keine Garantie für
+die global kürzeste Route. „Geplante Kartenfolge“ zeigt auch die Zwischenkarten,
+die benötigt werden, um Häuser und Etagen zu verbinden. Bei gesperrten Türen
+kann die laufende Navigation davon abweichen.
 
-Sobald ein NPC mit dem gewählten Namen sichtbar ist (auch unterwegs auf einer
-Durchgangskarte), endet die Suche. Ein dreifacher Ton und eine Benachrichtigung
-melden Karte und Koordinaten. Der Bot greift den Hero nicht an. Bei einmaligem
-Absuchen ohne Fund endet die Runde ohne Fundton. Wiederholung beginnt eine neue
-Runde. Nicht erreichbare Karten/Punkte werden als ungeprüft gezählt. Sind gar
-keine Punkte prüfbar, läuft keine Endlosschleife. Die Standardeinstellung stoppt
-bei Tod; „zurücklaufen“ setzt die Suche nach Wiederbelebung fort.
+Zum Prüfen muss der Held nicht mehr auf jeden Spawnpunkt laufen. Es genügt,
+wenn die Position mindestens eine Sekunde innerhalb der eingestellten Sichtweite
+liegt. Mehrere überlappende Spawnpunkte werden gemeinsam geprüft, auch auf
+Durchgangskarten. Der Bot wählt erreichbare Beobachtungsfelder, die mit möglichst
+wenig Laufweg mehrere offene Punkte abdecken. Die Sichtweite ist einstellbar
+(1–12 Felder, vorsichtiger Standard 5); sie ist keine automatisch verifizierte
+Serverangabe und muss zum tatsächlichen Nebel-Sichtbereich passen. Zu groß
+gewählte Werte können Spawnpunkte zu früh als geprüft markieren.
+
+Sobald der gewählte Hero sichtbar ist, hat die Annäherung Vorrang vor der
+Suchroute. Der Bot läuft bis auf **höchstens ein Feld** heran; erst wenn der Hero
+dort noch sichtbar ist, stoppt die Suche und meldet Karte und Koordinaten mit
+einem dreifachen Ton und einer Benachrichtigung. Er greift den Hero nicht an.
+Verschwindet der Hero vorher, wird kein erfolgreicher Fundalarm ausgelöst.
+Ist der Hero sichtbar, aber nicht erreichbar, stoppt die Suche mit einer
+entsprechenden Meldung ohne den Erfolgston.
+
+Bei einmaligem Absuchen ohne Fund endet die Runde ohne Fundton. Wiederholung
+beginnt eine neue Runde. Nicht erreichbare Karten/Punkte werden als ungeprüft
+gezählt. Sind gar keine Punkte prüfbar, läuft keine Endlosschleife. Die
+Standardeinstellung stoppt bei Tod; „zurücklaufen“ setzt die Suche nach
+Wiederbelebung fort. Laufende Suchrouten aus älteren Versionen werden beim
+Fortsetzen mit der neuen Planung neu aufgebaut.
 
 Der Ton wird beim Start-Klick im Browser vorbereitet. „Ton testen“ prüft die
 Browser-Freigabe. Stummgeschaltete Tabs, blockierte Audiowiedergabe und
