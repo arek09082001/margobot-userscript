@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.13
+// @version      7.15
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -51,6 +51,7 @@
         .filter((x, i, a) => !i || String(x).trim().toLowerCase() !== String(a[i - 1]).trim().toLowerCase());
     function normCfg() {                            // Unterobjekte mit Standardwerten auffüllen (nach Laden/Heldwechsel)
         cfg.pk = Object.assign({}, DEF.pk, cfg.pk || {});
+        cfg.heros = Object.assign({ on: false, selected: '', repeat: false, rounds: 0, index: 0, checked: 0, route: [], skipped: [], status: '', found: null }, cfg.heros || {});
         cfg.e2 = Object.assign({}, E2DEF, cfg.e2 || {});
         // Alte Logout-Sperren (Rückkehrzeit + 30 min) auf höchstens zwei Minuten Restzeit kürzen.
         cfg.e2.noLeaveUntil = Math.min(cfg.e2.noLeaveUntil || 0, Date.now() + 2 * 60000);
@@ -90,7 +91,7 @@
             if (heroKey) GM_setValue('mbhero:' + heroKey, heroPart());
         } catch (e) { }
     }
-    const running = () => !!(cfg.on || cfg.travel || cfg.chain || cfg.e2.on);
+    const running = () => !!(cfg.on || cfg.travel || cfg.chain || cfg.e2.on || cfg.heros.on);
     const save = () => { GM_setValue('mbauto', cfg); if (heroKey) GM_setValue('mbhero:' + heroKey, heroPart()); };
     const rnd = (a, b) => a + Math.random() * Math.max(0, b - a);
     const pause = () => rnd(cfg.pauseMin, cfg.pauseMax);
@@ -111,6 +112,7 @@
         else if (known.length) {
             // neuer Held: aktuelle Einstellungen als Vorlage, aber nichts „Laufendes“ übernehmen
             Object.assign(cfg, { on: false, travel: null, chain: null, back: null, rec: null, routePos: 0, lastHome: null, sess: null, deaths: [] });
+            cfg.heros = Object.assign({}, cfg.heros, { on: false, found: null, route: [], skipped: [], index: 0, rounds: 0, checked: 0, status: '' });
             cfg.e2 = Object.assign({}, cfg.e2, { on: false, offline: false, wakeAt: 0, returned: false, noLeaveUntil: 0, trace: [] });
         }                                           // allererster Held: alles so übernehmen, wie es war
         heroKey = key; heroNick = h.nick || ''; cfg.heroNick = heroNick;
@@ -1062,6 +1064,7 @@
                 cfg.on = false;
                 log('Bot gestoppt (Tod)');
             }
+            if (cfg.heros.on && cfg.onDeath !== 'back') herosStop('Suche gestoppt (Tod)');
             if (cfg.e2.on && cfg.onDeath !== 'back') { cfg.e2.on = false; log('E2-Jagd gestoppt (Tod)'); }
             save(); lastStatic = '';
         }
@@ -1832,6 +1835,159 @@
             e2Notify(`E2 ${t ? t.nick : ''}: jetzt einloggen – Respawn ${w && w.start > now ? 'in ca. ' + Math.ceil((w.start - now) / 60000) + ' min' : 'jederzeit'}`);
         }
     }
+    // ── Heros suchen: nur belegte/importierte Spawnpunkte, niemals aus gewöhnlichen Mobs ableiten ──
+    // Vom Nutzer bereitgestellte Spawnpunkte; Quelle und Koordinaten in docs/heros-spawns.json.
+    const HEROS_SPAWNS = [{"name":"Złodziej","source":"Vom Nutzer bereitgestellte Margoworld-Spawnliste, 06.11.2026","points":[{"map":162,"x":6,"y":7},{"map":2010,"x":6,"y":5},{"map":157,"x":5,"y":5},{"map":2011,"x":11,"y":12},{"map":2016,"x":6,"y":12},{"map":2018,"x":5,"y":6},{"map":221,"x":10,"y":5},{"map":2341,"x":9,"y":5},{"map":2342,"x":8,"y":10},{"map":2349,"x":5,"y":6},{"map":43,"x":11,"y":11},{"map":244,"x":59,"y":60},{"map":247,"x":7,"y":17},{"map":249,"x":10,"y":4},{"map":251,"x":11,"y":14},{"map":252,"x":10,"y":10},{"map":2350,"x":8,"y":14},{"map":2351,"x":13,"y":5},{"map":2352,"x":45,"y":12},{"map":2352,"x":51,"y":53},{"map":2308,"x":8,"y":8},{"map":2308,"x":51,"y":12},{"map":2308,"x":55,"y":44},{"map":2308,"x":55,"y":92},{"map":2324,"x":5,"y":5},{"map":2324,"x":20,"y":28},{"map":2324,"x":23,"y":61},{"map":2324,"x":48,"y":72},{"map":4151,"x":12,"y":55},{"map":4151,"x":53,"y":12},{"map":4151,"x":53,"y":51},{"map":4528,"x":6,"y":4}]},{"name":"Karmazyn","source":"Vom Nutzer bereitgestellte Margoworld-Spawnliste, 06.11.2026","points":[{"map":1664,"x":9,"y":26},{"map":1664,"x":16,"y":23},{"map":1665,"x":20,"y":6},{"map":1665,"x":41,"y":15},{"map":1670,"x":21,"y":37},{"map":1670,"x":22,"y":13},{"map":1667,"x":26,"y":12},{"map":1667,"x":28,"y":36},{"map":1667,"x":51,"y":38},{"map":1668,"x":4,"y":21},{"map":1668,"x":34,"y":10},{"map":1688,"x":12,"y":20},{"map":1688,"x":32,"y":22},{"map":1688,"x":40,"y":11},{"map":2536,"x":15,"y":19},{"map":2536,"x":16,"y":50},{"map":2536,"x":60,"y":48},{"map":2538,"x":18,"y":5},{"map":4546,"x":32,"y":25},{"map":4546,"x":38,"y":2},{"map":4546,"x":45,"y":56},{"map":4546,"x":58,"y":34},{"map":155,"x":6,"y":25},{"map":155,"x":32,"y":35},{"map":156,"x":13,"y":9},{"map":4547,"x":4,"y":40},{"map":4547,"x":33,"y":39},{"map":4547,"x":35,"y":8},{"map":4547,"x":48,"y":34},{"map":4547,"x":60,"y":31},{"map":4547,"x":60,"y":68},{"map":5948,"x":4,"y":61},{"map":5948,"x":36,"y":32},{"map":5948,"x":37,"y":15},{"map":5948,"x":52,"y":25},{"map":5293,"x":30,"y":36},{"map":5293,"x":31,"y":3},{"map":5293,"x":42,"y":57},{"map":5293,"x":61,"y":39}],"aliases":["Karmazynowy Mściciel"]}];
+    function mergeHeros(overrides) {
+        overrides = Array.isArray(overrides) ? overrides : [];
+        const names = new Set(overrides.map(h => fold(h.name)));
+        return HEROS_SPAWNS.filter(h => !names.has(fold(h.name))).concat(overrides);
+    }
+    let herosCatalog = mergeHeros(GM_getValue('mbheros', [])), herosWalk = null, herosAudio = null;
+    const heroChoice = () => herosCatalog.find(h => h.name === cfg.heros.selected);
+    function useHeros(text) {
+        const input = JSON.parse(text);
+        if (!world) throw new Error('Erst die Weltkarte laden');
+        if (!Array.isArray(input) || !input.length || input.length > 100) throw new Error('Erwartet wird eine Liste mit 1–100 Heros');
+        const names = new Set();
+        const clean = input.map(h => {
+            if (!h || typeof h.name !== 'string' || !h.name.trim() || h.name.length > 100 || names.has(fold(h.name))) throw new Error('Ungültiger oder doppelter Hero-Name');
+            names.add(fold(h.name));
+            if (!Array.isArray(h.points) || !h.points.length || h.points.length > 300) throw new Error('Spawnpunkte fehlen oder sind zu viele');
+            const seen = new Set(), points = h.points.map(p => {
+                const m = p && world[p.map];
+                if (!m || !Number.isInteger(p.map) || !Number.isInteger(p.x) || !Number.isInteger(p.y)
+                    || p.x < 0 || p.y < 0 || p.x >= m[0] || p.y >= m[1]) throw new Error('Unbekannte Karte oder ungültige Spawnkoordinaten');
+                const key = p.map + ':' + p.x + ',' + p.y;
+                if (seen.has(key)) throw new Error('Doppelter Spawnpunkt');
+                seen.add(key); return { map: p.map, x: p.x, y: p.y };
+            });
+            const aliases = h.aliases || [];
+            if (!Array.isArray(aliases) || aliases.length > 20 || aliases.some(a => typeof a !== 'string' || !a.trim() || a.length > 100)) throw new Error('Ungültige alternative Hero-Namen');
+            return { name: h.name.trim(), aliases: aliases.map(a => a.trim()), source: typeof h.source === 'string' ? h.source.slice(0, 500) : '', points };
+        });
+        herosStop('Neue Spawnliste geladen');
+        herosCatalog = mergeHeros(clean); GM_setValue('mbheros', clean);
+        if (!heroChoice()) cfg.heros.selected = clean[0].name;
+        save(); lastStatic = ''; render();
+    }
+    function herosPlan(points) {
+        // Nächstgelegener erreichbarer Punkt, danach von dort weiter; tatsächliche Kartenwege statt Luftlinie.
+        // Eine gute Besuchsreihenfolge, keine Garantie für das globale Optimum.
+        let from = +mapId(), xy = heroXY();
+        const remaining = points.map(p => Object.assign({}, p)), route = [], missing = [];
+        while (remaining.length) {
+            const search = worldSearch(from, xy, null), candidates = remaining.map((p, i) => {
+                const arrival = p.map === from ? xy : search.prev[p.map] ? entryXY(p.map, search.prev[p.map][0]) : [p.x, p.y];
+                const score = (search.best[p.map] ?? Infinity) + Math.abs(arrival[0] - p.x) + Math.abs(arrival[1] - p.y);
+                return { i, score };
+            }).sort((a, b) => a.score - b.score || a.i - b.i);
+            if (!Number.isFinite(candidates[0].score)) { missing.push(...remaining); break; }
+            const p = remaining.splice(candidates[0].i, 1)[0]; route.push(p); from = p.map; xy = [p.x, p.y];
+        }
+        return { route, missing };
+    }
+    function herosArmSound() {
+        // Im Start-Klick initialisieren: Browser sperren Audio oft ohne vorherige Nutzeraktion.
+        try {
+            if (!herosAudio || herosAudio.state === 'closed') herosAudio = new (W.AudioContext || W.webkitAudioContext)();
+            if (herosAudio.resume) { const p = herosAudio.resume(); if (p && p.catch) p.catch(() => { cfg.heros.soundError = 'Ton blockiert – Browser-Tonfreigabe prüfen'; }); }
+            return true;
+        } catch (e) { return false; }
+    }
+    function herosSound() {
+        if (!herosArmSound()) { cfg.heros.soundError = 'Ton nicht verfügbar – Browser-Tonfreigabe prüfen'; return; }
+        try {
+            for (let i = 0; i < 3; i++) {
+                const o = herosAudio.createOscillator(), g = herosAudio.createGain(), at = herosAudio.currentTime + i * 0.4;
+                o.frequency.value = i === 2 ? 1175 : 880; o.connect(g); g.connect(herosAudio.destination); g.gain.value = 0.2;
+                o.start(at); o.stop(at + 0.25);
+            }
+        } catch (e) { cfg.heros.soundError = 'Ton nicht verfügbar – Browser-Tonfreigabe prüfen'; }
+    }
+    function herosStop(message) {
+        cfg.heros.on = false; herosWalk = null; goal = null;
+        if (message) cfg.heros.status = message;
+    }
+    function herosStart() {
+        const h = heroChoice();
+        if (!world || !h || !h.points.length || running()) return false;
+        const p = herosPlan(h.points);
+        if (!p.route.length) { cfg.heros.status = 'Kein bekannter Weg zu den Spawnpunkten'; save(); return false; }
+        Object.assign(cfg.heros, { on: true, route: p.route, index: 0, rounds: 0, checked: 0, skipped: p.missing,
+            found: null, status: 'Suche läuft', soundError: '' });
+        herosWalk = null; goal = null; herosArmSound(); save(); return true;
+    }
+    function herosStep() {
+        const s = cfg.heros, h = heroChoice(), now = performance.now();
+        if (!h) { herosStop('Hero nicht mehr in der Spawnliste'); save(); return; }
+        // Auf jeder durchquerten Karte prüfen, auch bevor der nächste Spawnpunkt erreicht ist.
+        const names = new Set([h.name].concat(h.aliases || []).map(fold));
+        const found = E().npcs.getDrawableList().map(n => n.d).find(d => d && names.has(fold(d.nick)));
+        if (found) {
+            s.found = { name: found.nick, map: mapId(), x: found.x, y: found.y, at: Date.now() };
+            herosStop('Gefunden: ' + found.nick + ' auf ' + mapName() + ' (' + found.x + ',' + found.y + ')');
+            herosSound();
+            try { GM_notification({ title: 'MargoBot · Hero gefunden', text: s.status, onclick: () => W.focus() }); } catch (e) {}
+            save(); lastStatic = ''; log(s.status); return;
+        }
+        if (s.index >= s.route.length) {
+            s.rounds++;
+            if (!s.repeat || !s.checked) {
+                herosStop(s.skipped.length ? 'Runde beendet – ' + s.skipped.length + ' Punkte nicht geprüft' : 'Runde beendet – Hero nicht gefunden');
+                save(); return;
+            }
+            const p = herosPlan(h.points); s.route = p.route; s.skipped = p.missing; s.index = 0; s.checked = 0;
+            herosWalk = null;
+            if (!p.route.length) { herosStop('Keine weitere Runde erreichbar'); save(); return; }
+            save(); return;
+        }
+        const p = s.route[s.index], key = s.index + ':' + mapId();
+        if (!herosWalk || herosWalk.key !== key) herosWalk = { key, at: now, x: E().hero.d.x, y: E().hero.d.y, moved: now };
+        const advance = missing => {
+            if (missing) s.skipped.push(p); else s.checked++;
+            s.index++; herosWalk = null; goal = null; save(); lastStatic = '';
+        };
+        if (+mapId() !== p.map) {
+            const result = travelStep([p.map], wname(p.map));
+            if (result === 'kein Weg') { advance(true); return; }
+            return;
+        }
+        if (now - mapAt < 1500) return;              // Spieldaten/Sichtbereich nach Kartenwechsel abwarten
+        const [hx, hy] = heroXY();
+        if (hx !== herosWalk.x || hy !== herosWalk.y) { herosWalk.x = hx; herosWalk.y = hy; herosWalk.moved = now; }
+        if (cheb(hx, hy, p.x, p.y) <= 1) {
+            // Nach Ankunft einen Takt warten, damit die NPC-Liste aktualisiert werden kann.
+            if (!herosWalk.arrived) { herosWalk.arrived = now; return; }
+            if (now - herosWalk.arrived >= 1000) advance(false);
+            return;
+        }
+        if (cost(bfs(hx, hy), p.x, p.y) === Infinity || now - herosWalk.moved > 8000 || now - herosWalk.at > 120000) {
+            advance(true); return;
+        }
+        // Zielkachel kann blockiert sein: nächstgelegenes tatsächlich begehbares Nachbarfeld wählen.
+        const d = bfs(hx, hy), spots = [];
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+            const x = p.x + dx, y = p.y + dy;
+            if (x >= 0 && x < MW && y >= 0 && y < MH && d[y * MW + x] >= 0) spots.push({ x, y, n: d[y * MW + x] });
+        }
+        spots.sort((a, b) => a.n - b.n);
+        if (spots.length) walkTo(spots[0].x, spots[0].y, h.name + ' · Spawnpunkt ' + (s.index + 1)); else advance(true);
+    }
+    function herosTab() {
+        const s = cfg.heros, h = heroChoice();
+        return `<h4>Heros suchen</h4>${!herosCatalog.length ? '<div class="empty">Noch keine belegte Spawnliste geladen. Hero-Daten fehlen in der Weltkarte. Importiere eine geprüfte Liste mit Karten und Koordinaten.</div>' :
+            `<select data-a="herosSelect" ${s.on ? 'disabled' : ''}><option value="">Hero wählen …</option>${herosCatalog.map(h => `<option value="${esc(h.name)}" ${h.name === s.selected ? 'selected' : ''}>${esc(h.name)} · ${h.points.length} Spawnpunkte</option>`).join('')}</select>`}
+            <button class="btn" data-a="herosImport" ${running() ? 'disabled' : ''}>Spawnliste importieren</button>
+            <label class="chk"><input type="checkbox" data-a="herosRepeat" ${s.repeat ? 'checked' : ''} ${s.on ? 'disabled' : ''}>Suchrunde wiederholen</label>
+            ${h ? `<div class="spots">${h.points.map(p => `<div class="spot"><span class="nm">${esc(wname(p.map))}</span><span class="mt">(${p.x}, ${p.y})</span></div>`).join('')}</div><div class="hint">Quelle: ${esc(h.source || 'im Import nicht angegeben')}</div>` : ''}
+            <div class="hint">${esc(s.status || 'Bereit')} · ${s.rounds} Runden · ${s.index}/${s.route.length} Routenpunkte · ${s.skipped.length} ungeprüft</div>
+            ${s.soundError ? `<div class="hint">${esc(s.soundError)}</div>` : ''}
+            ${s.on ? '<button class="cta stop" data-a="herosStop">Suche stoppen</button>' : `<button class="cta" data-a="herosStart" ${!h || !world || running() ? 'disabled' : ''}>${s.repeat ? 'Suchrunden starten' : 'Einmal absuchen'}</button>`}
+            <button class="sub" data-a="herosSound">Ton testen</button>
+            <div class="hint">Besucht bekannte Spawnpunkte in einer nach Kartenwegen berechneten Reihenfolge. Beim Fund: Suche stoppen und Ton abspielen. Der Hero wird nicht angegriffen. Unbekannte Wege werden als ungeprüft angezeigt.</div>`;
+    }
+
     function e2Notify(msg) {                       // Benachrichtigung, kurzer Ton, am Handy Vibration
         try { GM_notification({ title: 'MargoBot', text: msg, onclick: () => W.focus() }); } catch (e) {}
         {
@@ -1886,6 +2042,7 @@
             const rev = revived; revived = false;
             if (checkRules(rev)) { if (rev) cfg.back = null; return; }
         }
+        if (cfg.heros.on) { herosStep(); if (performance.now() - renderAt > 500) { renderAt = performance.now(); render(); } return; }
         // E2-Jagd hat Vorrang vor Reise und normaler Jagd
         if (cfg.e2.on) { e2Step(); if (performance.now() - renderAt > 500) { renderAt = performance.now(); render(); } return; }
         // Reise zu einer Karte (Weltkarte)
@@ -2795,6 +2952,7 @@
     }
 
     function state() {
+        if (cfg.heros.on) return ['run', 'Heros suchen', cfg.heros.selected + ' · Punkt ' + (cfg.heros.index + 1) + '/' + cfg.heros.route.length];
         if (deadNow) return ['dead', 'Tot', 'Warte auf Wiederbelebung'];
         if (capt.state === 'open' && running()) return ['dead', 'Pause: Zagadka', cfg.autoCaptcha ? (capt.solving ? 'Klicke *…*-Antworten…' : (cfg.autoCaptchaConfirm ? 'Auto-Lösen aktiv' : 'Antworten gewählt – bitte Potwierdzam')) : 'Bitte das Rätsel selbst lösen – danach geht es weiter'];
         if (cfg.chain) {
@@ -3643,14 +3801,14 @@
         if (cfg.lvlMin === 1 && cfg.lvlMax === 300 && heroLvl()) {   // erster Start: Bereich um das eigene Level
             cfg.lvlMin = Math.max(1, heroLvl() - 5); cfg.lvlMax = heroLvl() + 3; save();
         }
-        const mn = mapName(), tab = ['set', 'rules', 'trade', 'e2', 'skills'].includes(cfg.tab) ? cfg.tab : 'xp';
+        const mn = mapName(), tab = ['set', 'rules', 'trade', 'e2', 'heros', 'skills'].includes(cfg.tab) ? cfg.tab : 'xp';
         const run = running();
         if (tab === 'xp') refreshXp();
         const rk = editId ? [editId, !!shopOpen(), (cfg.rules || []).map(r => [r.id, r.when.t, r.steps.map(x => x.t)])] : cfg.rules;
         if (tab === 'xp') refreshSug();
         if (botMode() === 'xp') refreshXp();
         const sKey = JSON.stringify([cfg.open, tab, run, mn, rk, cfg.chain, botMode(), capt.state,
-                                     tab === 'skills' ? skillSig() : 0,
+                                     tab === 'skills' ? skillSig() : 0, tab === 'heros' ? [cfg.heros, herosCatalog] : 0,
                                      tab === 'trade' ? [!!MK.scan, !!auctionOpen(), MK.deals.map(d => d.id + d.kind), cfg.trade, market.scans] : 0, sugList && sugList.map(o => o.maps.join()), cfg.route, cfg.rec && cfg.rec.length, Object.keys(cfg.routes),
                                      cfg.routes[cfg.route] && routeMode(cfg.routes[cfg.route]), worldN(), xpList && xpList.map(o => o.id), xpSel, cfg.lvlMin, cfg.lvlMax, heroLvl(),
             tab === 'e2' ? [JSON.stringify(cfg.e2), mapId(), mobs().map(m => m.id).sort().join()] : 0,
@@ -3665,10 +3823,11 @@
                 (cfg.open ? `<div class="tabs"><button class="tab ${tab === 'xp' ? 'on' : ''}" data-a="tab" data-t="xp">XP</button>
                     <button class="tab ${tab === 'rules' ? 'on' : ''}" data-a="tab" data-t="rules">Abläufe${(cfg.rules || []).length ? ' · ' + cfg.rules.filter(r => r.on).length : ''}</button>
                     <button class="tab ${tab === 'trade' ? 'on' : ''}" data-a="tab" data-t="trade">Handel</button>
+                    <button class="tab ${tab === 'heros' ? 'on' : ''}" data-a="tab" data-t="heros">Heros</button>
                     <button class="tab ${tab === 'e2' ? 'on' : ''}" data-a="tab" data-t="e2">E2</button>
                     <button class="tab ${tab === 'skills' ? 'on' : ''}" data-a="tab" data-t="skills">Fähigkeiten</button>
                     <button class="tab ${tab === 'set' ? 'on' : ''}" data-a="tab" data-t="set">Einstellungen</button></div>
-                    <div class="bd">${tab === 'xp' ? xpTab() : tab === 'rules' ? rulesTab() : tab === 'trade' ? tradeTab() : tab === 'e2' ? e2Tab() : tab === 'skills' ? skillsTab() : setTab()}</div>` : '');
+                    <div class="bd">${tab === 'xp' ? xpTab() : tab === 'rules' ? rulesTab() : tab === 'trade' ? tradeTab() : tab === 'heros' ? herosTab() : tab === 'e2' ? e2Tab() : tab === 'skills' ? skillsTab() : setTab()}</div>` : '');
         }
         // aktiven Tab sichtbar halten (die Leiste scrollt seitlich)
         const onTab = box.querySelector('.tab.on'), tabBar = box.querySelector('.tabs');
@@ -3710,6 +3869,7 @@
     function headButton(running) {
         /* Gleiche Aktion wie der große Knopf unten: Route starten, zum XP-Ort, oder hier jagen. */
         if (running) return `<button class="mini stop" data-a="stopall">${ico('stop')}Stopp</button>`;
+        if (cfg.tab === 'heros') return heroChoice() && world ? '<button class="mini" data-a="herosStart">Heros suchen</button>' : '';
         if (botMode() === 'route') return cfg.routes[cfg.route] ? `<button class="mini" data-a="runroute" title="Route „${esc(cfg.route)}“ starten">${ico('play')}Route starten</button>` : '';
         const sel = xpList && xpList[xpSel];
         if (sel && sel.id !== mapId()) return `<button class="mini" data-a="goxp" title="Zu ${esc(wname(sel.id))} laufen und jagen">${ico('play')}Hin & jagen</button>`;
@@ -3724,6 +3884,7 @@
         const el = ev.target.closest('[data-a]');
         if (!el || el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'LABEL') return;
         const a = el.dataset.a;
+        if (cfg.heros.on && ['quick', 'huntxp', 'runroute', 'goxp', 'e2go', 'rrun', 'go', 'skall', 'skone'].includes(a)) herosStop('Anderer Modus gestartet');
         if (rulesClick(a, el) || e2Click(a, el)) { save(); lastStatic = ''; render(); return; }
         if (a === 'tscan') { startScan(); render(); return; }
         if (a === 'tstop') { stopScan('Scan gestoppt'); render(); return; }
@@ -3742,9 +3903,18 @@
             render(); return;
         }
         if (a === 'skstop') { skStop('angehalten'); render(); return; }
+        if (a === 'herosStart') { herosStart(); save(); lastStatic = ''; render(); return; }
+        if (a === 'herosStop') { herosStop('Suche gestoppt'); save(); lastStatic = ''; render(); return; }
+        if (a === 'herosSound') { herosSound(); save(); lastStatic = ''; render(); return; }
+        if (a === 'herosImport') {
+            if (running()) return;
+            const input = document.createElement('input'); input.type = 'file'; input.accept = '.json';
+            input.onchange = () => { const f = input.files[0]; if (f) f.text().then(useHeros).catch(e => log('Spawnliste: ' + e.message)); };
+            input.click(); return;
+        }
         if (a === 'tab') cfg.tab = el.dataset.t;
         else if (a === 'fold') cfg.open = !cfg.open;
-        else if (a === 'stopall') { pkRouteSkip = null; if (sess.t0 && !sess.end) { sess.end = Date.now(); saveSess(); } if (cfg.chain) endChain('von Hand'); if (cfg.e2.on) e2Stop(); cfg.on = false; cfg.travel = null; lastTravel = null; goal = null; log('Gestoppt'); }
+        else if (a === 'stopall') { herosStop('Suche gestoppt'); pkRouteSkip = null; if (sess.t0 && !sess.end) { sess.end = Date.now(); saveSess(); } if (cfg.chain) endChain('von Hand'); if (cfg.e2.on) e2Stop(); cfg.on = false; cfg.travel = null; lastTravel = null; goal = null; log('Gestoppt'); }
         else if (a === 'quick') { cfg.on = true; goal = null; startSession(); log('Gestartet'); }
         else if (a === 'huntxp') huntHere();
         else if (a === 'expoall') cfg.expoAll = !cfg.expoAll;
@@ -3860,6 +4030,8 @@
             save(); lastStatic = ''; render(); return;
         }
         if (rulesChange(t)) { save(); if ((a !== 'sf' || t.tagName === 'SELECT') && a !== 'wn') { lastStatic = ''; render(); } return; }
+        if (a === 'herosSelect') { if (!cfg.heros.on) cfg.heros.selected = t.value; save(); lastStatic = ''; render(); return; }
+        if (a === 'herosRepeat') { if (!cfg.heros.on) cfg.heros.repeat = t.checked; save(); lastStatic = ''; render(); return; }
         if (t.dataset.k && t.type === 'checkbox') cfg.picked[t.dataset.k] = t.checked;
         else if (a === 'suggestAuto' || a === 'lvlOn' || a === 'closeBattle' || a === 'autoCaptcha' || a === 'autoCaptchaConfirm' || a === 'captchaWarn') cfg[a] = t.checked;
         else if (a === 'fogExplore') { cfg.fogExplore = t.checked; if (!t.checked) fog.on = false; }
