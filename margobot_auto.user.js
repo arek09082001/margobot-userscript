@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.11
+// @version      7.12
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -878,6 +878,7 @@
     /* Andere Spieler beobachten: wer seit sec Sekunden höchstens near Felder entfernt ist und dabei selbst
        mindestens 3 Felder gelaufen ist, folgt uns (ein Spieler, der nur nebenan steht und jagt, zählt nicht). */
     const pkSeen = {};                              // id → { since, x0, y0, last, moved }
+    let pkRouteSkip = null;                         // gelbe Karte wegen Verfolger entlang der Route verlassen
     let pkEsc = null, pkTries = {}, pkLog = '';
     function watchPlayers() {
         if (cfg.pk.mode === 'off' || !ok()) return;
@@ -908,6 +909,13 @@
             const t = pkThreat();
             if (!t) return false;
             const up = Math.max(0, +cfg.pk.maxUp || 0), tries = pkTries[t.id] || { n: 0, at: 0 };
+            const rs = routeStep();
+            if (mapPvp() === 1 && cfg.pk.mode === 'follow' && t.lvl <= heroLvl() + up && rs && rs.n > 1) {
+                pkRouteSkip = { map: mapId(), route: cfg.route, nextE: rs.nextE, next: rs.next, warned: false };
+                committed = null; lastPlan = null; goal = null;
+                log(`${t.nick} (${t.lvl}) folgt mir – gelbe Karte → nächste Routenkarte ${rs.next}`);
+                return skipFollowedMap();
+            }
             const fight = isRed() && t.lvl <= heroLvl() + up && tries.n < 3;
             if (fight) {
                 const adj = Math.abs(t.x - hx) <= 1 && Math.abs(t.y - hy) <= 1;
@@ -927,6 +935,16 @@
                       x: t.x, y: t.y, mapAt: null, cur: null, prev: null, door: null, hide: null, maps: 0 };
             return escapeStep();
         }
+    }
+    function skipFollowedMap() {
+        const s = pkRouteSkip;
+        if (!s) return false;
+        if (!cfg.on || cfg.route !== s.route || mapId() !== s.map) { pkRouteSkip = null; goal = null; return false; }
+        committed = null; lastPlan = null;
+        const door = gateways().find(g => isId(s.nextE) ? +g.id === s.nextE : nameEq(g.name, s.nextE));
+        if (door) useDoor(door.x, door.y, 'nächste Routenkarte ' + s.next);
+        else if (!s.warned) { s.warned = true; log('Nächste Routenkarte ' + s.next + ': Tür nicht gefunden – ich warte'); }
+        return true;
     }
     /* Flucht vor einem zu starken Spieler: durch eine Tür, die von ihm weg führt (nicht zurück, woher wir kamen),
        Höhlen bevorzugt. Ist er auf der neuen Karte nicht zu sehen und es ist eine Höhle → in die hinterste Ecke und
@@ -1885,6 +1903,10 @@
             return;
         }
         if (!cfg.on) return;
+        if (pkRouteSkip) {
+            if (cfg.pk.mode !== 'follow') pkRouteSkip = null;
+            else if (skipFollowedMap()) return;
+        }
         if (pkEsc && cfg.pk.mode !== 'off') { if (loadCols()) escapeStep(); return; }   // Flucht vor einem Spieler hat Vorrang
         // Rückweg nach dem Tod: zur Todeskarte bzw. zur nächsten Karte der Route
         if (cfg.back) {
@@ -2985,7 +3007,7 @@
               <input class="num" data-a="pk" data-f="sec" value="${cfg.pk.sec}">s</div>` : ''}
             <div class="fld"><span>Kämpfen bis</span><input class="num" data-a="pk" data-f="maxUp" value="${cfg.pk.maxUp}">Lvl über mir</div>
             <div class="fld"><span>Nie angreifen</span><input type="text" data-a="pkNever" value="${esc(cfg.pk.never || '')}" placeholder="Namen, mit Komma"></div>
-            <div class="hint">Rote Karte und höchstens so viele Level über dir: der Bot kämpft (schnelle Walka). Sonst flieht er: durch Türen weg vom Spieler, bevorzugt in Höhlen, bis er ihn 30 s nicht mehr sieht. Danach zurück zum Jagdort.</div>
+            <div class="hint">Rote Karte und höchstens so viele Level über dir: der Bot kämpft (schnelle Walka). Gelbe Karte, Verfolger im Levelbereich und aktive Route: direkt zur nächsten Routenkarte, dort weiterjagen. Sonst flieht er: durch Türen weg vom Spieler, bevorzugt in Höhlen, bis er ihn 30 s nicht mehr sieht. Danach zurück zum Jagdort.</div>
             <div class="hint pkinfo">${pkInfo()}</div>`}
 
             <h4>Bei Tod</h4>
@@ -3720,7 +3742,7 @@
         if (a === 'skstop') { skStop('angehalten'); render(); return; }
         if (a === 'tab') cfg.tab = el.dataset.t;
         else if (a === 'fold') cfg.open = !cfg.open;
-        else if (a === 'stopall') { if (sess.t0 && !sess.end) { sess.end = Date.now(); saveSess(); } if (cfg.chain) endChain('von Hand'); if (cfg.e2.on) e2Stop(); cfg.on = false; cfg.travel = null; lastTravel = null; goal = null; log('Gestoppt'); }
+        else if (a === 'stopall') { pkRouteSkip = null; if (sess.t0 && !sess.end) { sess.end = Date.now(); saveSess(); } if (cfg.chain) endChain('von Hand'); if (cfg.e2.on) e2Stop(); cfg.on = false; cfg.travel = null; lastTravel = null; goal = null; log('Gestoppt'); }
         else if (a === 'quick') { cfg.on = true; goal = null; startSession(); log('Gestartet'); }
         else if (a === 'huntxp') huntHere();
         else if (a === 'expoall') cfg.expoAll = !cfg.expoAll;
