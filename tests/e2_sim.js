@@ -2,7 +2,7 @@
 // mit „Spiel verlassen“: nach dem Kill offline gehen (Seite wechselt) und Erinnerung vor dem Respawn.
 // Karten: 1 A ↔ 2 B. Die E2 „Mushita“ steht auf B bei 15,15; Respawn im Spiel nach 20 min.
 const fs = require('fs');
-const src = fs.readFileSync(require('path').join(__dirname, '..', 'margobot_auto.user.js'), 'utf8').replace('function log(t) {', 'function log(t) { globalThis.__logs.push(t); if (process.env.LOG) console.log("   log:", t);').replace(/\}\)\(\);\s*$/, 'W.__e2state = () => e2rt; })();');
+const src = fs.readFileSync(require('path').join(__dirname, '..', 'margobot_auto.user.js'), 'utf8').replace('function log(t) {', 'function log(t) { globalThis.__logs.push(t); if (process.env.LOG) console.log("   log:", t);').replace(/\}\)\(\);\s*$/, 'W.__e2state = () => e2rt; W.__reloadCols = () => loadCols(true); })();');
 const logs = globalThis.__logs = [];
 const NAMES = { 1: 'A', 2: 'B' };
 const G = { 1: [[2, 19, 10]], 2: [[1, 0, 10]] };
@@ -186,4 +186,44 @@ ok(!e2().offline && !left && moves.length === pause.moves, 'Logout verwendet die
 T(25);
 ok(left && pageLeaves[pause.left] >= pause.until + 1500 && pageLeaves[pause.left] <= pause.until + 2500,
     'Logout nach Kill-Pause plus bestehender Seitenwechsel-Frist', ((pageLeaves[pause.left] - pause.at) / 1000).toFixed(1) + ' s nach Kill');
+// 13) Ein Münzwurf je Minutenfenster; Bewegung lokal und durch Sichtung/Logout abbrechbar.
+prepareKill('stay'); T(25);
+const originalRandom = Math.random;
+try {
+    let draws = 0; Math.random = () => { draws++; return 0.9; };
+    let rt = W.__e2state(); rt.nextIdleAt = BASE + now - 1;
+    const beforeMoves = moves.length; T(1);
+    const afterDraw = draws;
+    ok(!rt.idle && rt.nextIdleAt - (BASE + now) >= 55000 && rt.nextIdleAt - (BASE + now) <= 75000,
+       '50%-Entscheidung: stehen bleiben und nächstes Minutenfenster setzen');
+    T(200);
+    ok(draws === afterDraw && moves.length === beforeMoves, 'Bei Nicht-Bewegen keine erneute Chance in jedem Takt');
+    Math.random = () => 0.1;
+    rt.nextIdleAt = BASE + now - 1;
+    const walkStart = moves.length, home = [hero.d.x, hero.d.y];
+    const nearbyDoor = [1, home[0], home[1] + 1]; G[cur].push(nearbyDoor);
+    T(1);
+    ok(!!rt.idle, '50%-Entscheidung: kurze Warterunde starten');
+    for (let i = 0; i < 100 && rt.idle; i++) T(1);
+    const walk = moves.slice(walkStart);
+    ok(!rt.idle && walk.length > 1 && hero.d.x === home[0] && hero.d.y === home[1], 'Warterunde endet wieder am Warteplatz');
+    ok(walk.every(p => Math.max(Math.abs(p.x - t().x), Math.abs(p.y - t().y)) <= 5
+        && !(p.x === t().x && p.y === t().y) && !G[cur].some(g => g[1] === p.x && g[2] === p.y)),
+        'Warterunde bleibt nah am Spawn und meidet Spawnkachel und Türen');
+    G[cur].splice(G[cur].indexOf(nearbyDoor), 1);
+    // Keine passende lokale Fläche: nicht gegen Wände laufen.
+    const colCheck = Engine.map.col.check, anchor = [hero.d.x, hero.d.y];
+    Engine.map.col.check = (x, y) => Math.max(Math.abs(x - t().x), Math.abs(y - t().y)) <= 5 && !(x === anchor[0] && y === anchor[1]) ? 1 : 0;
+    W.__reloadCols(); rt.nextIdleAt = BASE + now - 1;
+    const blockedMoves = moves.length; T(1);
+    ok(!rt.idle && moves.length === blockedMoves, 'Ohne lokale begehbare Runde stehen bleiben');
+    Engine.map.col.check = colCheck; W.__reloadCols();
+    rt.nextIdleAt = BASE + now - 1; T(1); const beforeHit = hits.length;
+    npcs = [boss()]; T(5);
+    ok(!rt.idle && hits.length === beforeHit + 1, 'Sichtbare E2 unterbricht Warterunde sofort');
+    prepareKill('stay'); T(25); rt = W.__e2state(); rt.nextIdleAt = BASE + now - 1; T(1);
+    ok(!!rt.idle, 'Warterunde vor Logout-Test aktiv');
+    e2().away = 'leave'; T(35);
+    ok(left && e2().offline && !rt.idle, 'Fälliger Logout hat Vorrang vor Warterunde');
+} finally { Math.random = originalRandom; }
 if (fail) process.exit(1);
