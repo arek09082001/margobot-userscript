@@ -43,6 +43,8 @@ Unerreichbare Mobs (ab 7.11): Keine erreichbaren Ziele nach erneuter Kollisionsp
 
 Gelbe Karten (ab 7.12): Bei `pk.mode=follow`, erkanntem Verfolger innerhalb `heroLvl + pk.maxUp` und aktiver Route mit nächster Karte wird die aktuelle Karte ohne weitere Jagd verlassen. `pkRouteSkip` hält diesen Auftrag bis zum Kartenwechsel fest; danach normal weiterjagen. Keine zufällige Höhlenflucht und kein automatischer Rückweg. Fehlende Routentür melden und warten. Andere PvP-Fälle behalten ihre bisherige Reaktion. Tests: `tests/pvp_sim.js`.
 
+E2-Logout (ab 7.13): Leitet die Startseite sofort zurück ins Spiel, wird `noLeaveUntil` auf jetzt + 2 min gesetzt; ältere längere Sperren werden beim Laden auf maximal 2 min Restzeit gekürzt. Danach ohne neuen Kill erneut verlassen, sofern bis zur Rückkehr noch genügend Zeit gemäß `leaveMin` bleibt. Die kurze Pause verhindert Neulade-Schleifen. Regressionen stehen in `tests/e2_sim.js`.
+
 ## Im echten Spiel geprüfte Fakten
 
 - `Engine.hero.d` (x, y, lvl, exp, gold, `warrior_stats`), `hero.autoGoTo({x, y}, false)`, `hero.heroAtackRequest(id, true)`.

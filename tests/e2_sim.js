@@ -124,15 +124,25 @@ c = leaveCycle(); newPage(false);
 min((c.wake - (BASE + now)) / 60000 + 0.1);
 ok(loc.href === 'https://www.margonem.pl/' && /jetzt einloggen/.test(notes.slice(-1)[0]), 'ohne Rückkehr: Erinnerung auf der Hauptseite', notes.slice(-1)[0]);
 
-// 10) margonem.com-Fall: Startseite leitet eingeloggte Spieler sofort zurück ins Spiel → nicht wieder verlassen (kein Neulade-Kreis)
-newPage(true); min(0.2); e2().autoBack = true;
+// 10) Sofort zurückgeleitet: zwei Minuten Pause gegen Neulade-Kreis, dann automatisch erneut versuchen.
+newPage(true); min(0.2); e2().autoBack = true; e2().leaveMin = 1;
 c = leaveCycle();
-loc._h = SERVER; newPage(true); min(0.1);          // Weiterleitung: nach wenigen Sekunden wieder auf der Spielseite
-const lg0 = logs.length; min(3);
-ok(!left && loc.href === SERVER && !e2().offline && e2().noLeaveUntil > BASE + now && logs.some(l => /wieder im Spiel statt .*Seitenfolge: jaruna/.test(l)),
-   'Startseite leitet zurück: bleibt online statt Neulade-Kreis', 'Seite ' + loc.href + ', online bis ' + new FakeDate(e2().noLeaveUntil).toISOString().slice(11, 16));
-// nächster Kill nach dieser Wartezeit: wieder normal verlassen, jetzt über eine eigene Adresse
-min((e2().noLeaveUntil - (BASE + now)) / 60000 + 0.5); e2().leaveUrl = 'https://www.margonem.pl/news';
+loc._h = SERVER; newPage(true); min(0.1);
+const retryAt = e2().noLeaveUntil;
+ok(!left && !e2().offline && retryAt > BASE + now && retryAt <= BASE + now + 2 * 60000,
+   'Fehlgeschlagenes Verlassen: höchstens 2 min Pause');
+min((retryAt - (BASE + now) - 2000) / 60000);
+ok(!left && !e2().offline, 'Vor Ablauf der 2 min kein erneuter Seitenwechsel');
+min(0.1);
+ok(left && e2().offline && loc.href === 'https://www.margonem.pl/',
+   'Nach 2 min automatisch erneut verlassen, ohne neuen Kill');
+// Bereits gespeicherte 30-Minuten-Sperren werden beim Laden gekürzt.
+e2().noLeaveUntil = BASE + now + 30 * 60000;
+const loadedAt = BASE + now; newPage(false);
+ok(e2().noLeaveUntil === loadedAt + 2 * 60000, 'Alte 30-min-Sperre auf 2 min gekürzt');
+// Weiterer Kill: eigene Adresse zum Verlassen bleibt nutzbar.
+e2().offline = false; e2().wakeAt = 0; e2().noLeaveUntil = 0; e2().leaveMin = 10;
+e2().leaveUrl = 'https://www.margonem.pl/news'; loc._h = SERVER; newPage(true);
 c = leaveCycle();
 ok(left && loc.href === 'https://www.margonem.pl/news', 'eigene Adresse zum Verlassen', 'Seite ' + loc.href);
 

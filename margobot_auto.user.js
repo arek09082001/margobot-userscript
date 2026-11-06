@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.12
+// @version      7.13
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -52,6 +52,8 @@
     function normCfg() {                            // Unterobjekte mit Standardwerten auffüllen (nach Laden/Heldwechsel)
         cfg.pk = Object.assign({}, DEF.pk, cfg.pk || {});
         cfg.e2 = Object.assign({}, E2DEF, cfg.e2 || {});
+        // Alte Logout-Sperren (Rückkehrzeit + 30 min) auf höchstens zwei Minuten Restzeit kürzen.
+        cfg.e2.noLeaveUntil = Math.min(cfg.e2.noLeaveUntil || 0, Date.now() + 2 * 60000);
         // Rückkehr früher Standard 2–4 min vor dem Respawn → jetzt 1 min (Wunsch: nicht so lange vorher warten).
         // Nur den alten Standard umstellen, selbst gewählte Werte bleiben.
         if (cfg.e2.remindV !== 2) { if (cfg.e2.remindMin === 2 && cfg.e2.remindMax === 4) { cfg.e2.remindMin = 1; cfg.e2.remindMax = 1; } cfg.e2.remindV = 2; }
@@ -1682,10 +1684,10 @@
         if (E2.offline) {
             /* Schon kurz nach dem Verlassen wieder im Spiel, ohne dass der Bot zurück wollte: Die Startseite hat
                eingeloggte Spieler direkt ins Spiel geleitet (so z. B. auf margonem.com). Sonst verlässt der Bot sofort
-               wieder → Endlos-Neuladen. Darum bis zum Respawn online bleiben. */
+               wieder → Endlos-Neuladen. Darum zwei Minuten warten, dann erneut versuchen. */
             if (!E2.returned && now < E2.wakeAt && now - (E2.leftAt || 0) < 90000) {
-                E2.noLeaveUntil = E2.wakeAt + 30 * 60000;
-                log(`E2: wieder im Spiel statt auf ${E2.leaveUrl || 'der Startseite'} – bleibe diesmal online. Seitenfolge: ${(E2.trace || []).join(' → ') || '–'}`);
+                E2.noLeaveUntil = now + 2 * 60000;
+                log(`E2: wieder im Spiel statt auf ${E2.leaveUrl || 'der Startseite'} – versuche das Verlassen in 2 min erneut. Seitenfolge: ${(E2.trace || []).join(' → ') || '–'}`);
             } else log('E2: wieder im Spiel – weiter mit ' + t.nick);
             E2.offline = false; E2.wakeAt = 0; E2.returned = false; save();
         }
@@ -3337,7 +3339,7 @@
             <div class="rg">${stp('remindMin', E2.remindMin, 0, 60)}<span class="to">bis</span>${stp('remindMax', E2.remindMax, 0, 60)}</div>
             <label class="chk"><input type="checkbox" data-a="e2back" ${E2.autoBack ? 'checked' : ''}>Dann selbst zurück auf die Spielseite</label>
             <div class="fld"><span>Seite zum Verlassen</span><input type="text" data-a="e2leaveUrl" value="${esc(E2.leaveUrl || '')}" placeholder="${esc(e2LeaveUrl())}"></div>
-            ${Date.now() < (E2.noLeaveUntil || 0) ? `<div class="hint" style="color:var(--bad)">Verlassen hat nicht geklappt, die Spielseite kam gleich wieder – der Bot bleibt bis ${clock(E2.noLeaveUntil)} online.
+            ${Date.now() < (E2.noLeaveUntil || 0) ? `<div class="hint" style="color:var(--bad)">Verlassen hat nicht geklappt, die Spielseite kam gleich wieder – der Bot versucht es ab ${clock(E2.noLeaveUntil)} erneut (2 min Pause).
               Seitenfolge: ${esc((E2.trace || []).join(' → ') || 'keine andere Seite geladen')}</div>` : ''}
             <div class="hint">Der Bot geht vom Spawnpunkt offline: von der Spielseite (z. B. classic.margonem.pl) auf www.margonem.pl.
               Dort zählt er herunter und öffnet zufällig im eingestellten Abstand vor dem Respawn wieder die Spielseite – mit deiner
