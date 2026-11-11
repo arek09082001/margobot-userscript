@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.19
+// @version      7.20
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -1801,10 +1801,22 @@
                 E2.wakeAt = wake; E2.offline = true; E2.returned = false; E2.back = location.origin + '/'; E2.leftAt = now; E2.trace = []; save();
                 log(`E2: Respawn frühestens ${clock(w.start)} – verlasse das Spiel, ${E2.autoBack ? 'zurück' : 'Erinnerung'} um ${clock(wake)}`);
                 const home = e2LeaveUrl();
-                setTimeout(() => { location.href = home; }, 1500);
+                setTimeout(() => leavePage(home), 1500);
             }
         }
         if (!e2Leaving && t.x != null) e2Idle(t, w0, hx, hy, now);
+    }
+    function leavePage(url) {
+        /* Das Spiel fragt beim Verlassen per beforeunload „Seite wirklich verlassen?“. Hier ist der Kampf schon
+           abgeschlossen und der Wechsel gewollt, deshalb die Rückfrage abschalten: Handler des Spiels entfernen und
+           später registrierte Listener in der Capture-Phase abfangen, bevor sie returnValue setzen. */
+        const w = (typeof unsafeWindow !== 'undefined' && unsafeWindow) || window;
+        try { w.onbeforeunload = null; } catch (e) {}
+        try { window.onbeforeunload = null; } catch (e) {}
+        const stop = ev => { ev.stopImmediatePropagation(); try { delete ev.returnValue; } catch (e) {} };
+        try { w.addEventListener('beforeunload', stop, true); } catch (e) {}
+        if (w !== window) try { window.addEventListener('beforeunload', stop, true); } catch (e) {}
+        location.href = url;
     }
     function e2LeaveUrl() {
         /* Ziel beim Verlassen: eingestellte Adresse, sonst die Startseite der Domain. Nur Seiten auf margonem.pl/.com,
