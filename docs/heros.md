@@ -47,8 +47,11 @@ Userscript eingebaut und unter `docs/heros-spawns.json` nachvollziehbar gespeich
 |---|---:|---:|
 | Złodziej | 32 | 23 |
 | Karmazyn | 39 | 14 |
+| Mroczny Aptryk | 105 | 12 |
 
 Die erste Liste wurde im Gespräch Złodziej, die zweite Karmazyn zugeordnet.
+Seit 7.20 ist zusätzlich Mroczny Aptryk (Liste vom 17.11.2026, margolab.pl/npcs/6084)
+eingebaut; doppelt genannte Punkte in Las Goblinów zählen nur einmal.
 Nur Karten mit ausdrücklich angegebenen Koordinaten sind Spawnpunkte. Eder
 (Karte 33) ist lediglich eine Überschrift; Fort Eder (244) ist nur in der
 Złodziej-Liste selbst ein Spawnpunkt. Mehrere Koordinaten derselben Karte bleiben
