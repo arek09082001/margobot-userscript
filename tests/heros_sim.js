@@ -87,7 +87,7 @@ assert.equal(t.cfg.heros.on, false, 'Standardeinstellung stoppt auch Heros-Suche
 t = setup(true);
 const bundled = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'docs/heros-spawns.json'), 'utf8'));
 assert.deepEqual(t.HEROS_SPAWNS, bundled);
-assert.deepEqual(bundled.map(h => [h.name, h.points.length]), [['Złodziej', 32], ['Karmazyn', 39]]);
+assert.deepEqual(bundled.map(h => [h.name, h.points.length]), [['Złodziej', 32], ['Karmazyn', 39], ['Mroczny Aptryk', 105]]);
 const world = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'margobot_world.json'), 'utf8'));
 for (const h of bundled) {
     const seen = new Set();
@@ -113,7 +113,7 @@ const custom = { name: 'Złodziej', source: 'Eigene Ergänzung', points: [{ map:
 const merged = t.mergeHeros([custom]);
 assert.strictEqual(merged.find(h => h.name === 'Złodziej'), custom);
 assert(merged.some(h => h.name === 'Karmazyn'), 'Import darf andere mitgelieferte Heros nicht entfernen');
-console.log('OK Vorgegebene Heros: 32 Złodziej- und 39 Karmazyn-Punkte, Koordinaten, Kartenwege, vollständige Besuchsreihenfolge und Import-Erhalt');
+console.log('OK Vorgegebene Heros: 32 Złodziej-, 39 Karmazyn- und 105 Mroczny-Aptryk-Punkte, Koordinaten, Kartenwege, vollständige Besuchsreihenfolge und Import-Erhalt');
 // Vorinstallierten Hero tatsächlich auswählen: Fund erkennt auch Schreibweise ohne polnische Diakritika.
 t = setup(true); t.cfg.heros.selected = 'Złodziej';
 assert(t.herosStart());
