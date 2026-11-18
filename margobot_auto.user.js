@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.23
+// @version      7.24
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -1527,8 +1527,9 @@
                 walkTo(m.x, m.y, m.nick); return 'run';
             }
             case 'cmd': {
+                if (!String(s.cmd || '').trim()) return 'ok';                  // leere Befehle aus alten Aufnahmen
                 if (!st.sent) { send(s.cmd); st.sent = now; log('Spielbefehl: ' + s.cmd); }
-                return now - st.sent > 800 ? 'ok' : 'run';
+                return now - st.sent > 300 ? 'ok' : 'run';
             }
             case 'hunt': cfg.on = true; if (!sess.t0) startSession(); return 'ok';
             case 'stop': cfg.on = false; return 'ok';
@@ -1634,7 +1635,9 @@
         if (res === 'run') return;
         if (res !== 'ok') return endChain('Schritt ' + (cfg.chain.i + 1) + ': ' + res);
         if ((s.t === 'sell' || s.t === 'buy') && s.closeAfter && shopOpen()) { closeShop(); log('Laden geschlossen'); }
-        cfg.chain.i++; chainSt = { t0: performance.now() }; busyUntil = performance.now() + pause();
+        cfg.chain.i++; chainSt = { t0: performance.now() };
+        // Laufen und Rohbefehle ohne Denkpause: sonst dauern lange Aufnahmen mit vielen Haltepunkten ewig.
+        busyUntil = performance.now() + (['walk', 'go', 'cmd', 'say'].includes(s.t) ? 0 : pause());
         save(); lastStatic = '';
     }
     function checkRules(justRevived) {
@@ -1675,7 +1678,8 @@
     }
     function recCmd(cmd) {
         if (!cfg.flow || running()) return;
-        cmd = String(cmd || '');
+        cmd = String(cmd || '').trim();
+        if (!cmd) return;                                              // das Spiel ruft _g auch ohne Befehl auf
         if (/^talk&/.test(cmd)) {
             if (/&c=/.test(cmd)) return;                              // Antwortklick: kommt als Text über den Klick
             const id = +((cmd.match(/[?&]id=(\d+)/) || [])[1]), n = npcList().find(d => +d.id === id);
@@ -1727,6 +1731,18 @@
         if (k !== recMove.k) { recMove = { k, t: now }; return; }
         if (now - recMove.t > 1500) recFlush(3);                         // stehen geblieben → Haltepunkt
     }
+    function flowClean(steps) {
+        /* Leere Befehle weg, mehrere Haltepunkte hintereinander auf derselben Karte auf den letzten kürzen:
+           autoGoTo sucht den Weg selbst, Zwischenpunkte kosten beim Abspielen nur Zeit. */
+        const out = [];
+        for (const s of steps) {
+            if (s.t === 'cmd' && !String(s.cmd || '').trim()) continue;
+            const prev = out[out.length - 1];
+            if (s.t === 'walk' && prev && prev.t === 'walk' && String(prev.map ?? '') === String(s.map ?? '')) { out[out.length - 1] = s; continue; }
+            out.push(s);
+        }
+        return out;
+    }
     function recStart() {
         if (running()) { log('Erst den Bot stoppen, dann aufnehmen'); return; }
         const p = recPos();
@@ -1741,6 +1757,7 @@
         recFlush(1);
         cfg.flow = null;
         if (r.steps.length < 2) { log('Aufnahme verworfen (nichts getan)'); return null; }
+        r.steps = flowClean(r.steps);
         const nr = { id: newId(), on: true, name: 'Aufnahme ' + new Date(r.t0).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }),
                      when: { t: 'hand' }, steps: r.steps };
         cfg.rules = (cfg.rules || []).concat([nr]);
@@ -3671,6 +3688,7 @@
               <div class="wn dann">dann der Reihe nach</div>
               <ol class="steps ed">${r.steps.map((s, i) => stepEditor(r, s, i)).join('')}</ol>
               <div class="fld"><button class="btn" data-a="sadd" data-r="${r.id}">${ico('plus')}Schritt</button>
+                <button class="btn" data-a="rclean" data-r="${r.id}" title="Leere Befehle entfernen, Haltepunkte zusammenfassen">Aufräumen</button>
                 <span></span><button class="btn bad" data-a="rdel" data-r="${r.id}">${ico('trash')}</button>
                 <button class="btn pri" data-a="redit" data-r="">${ico('check')}Fertig</button></div>
             </div>`;
@@ -3762,6 +3780,7 @@
         else if (a === 'rreset' && r) { r.done = false; delete lastCond[r.id]; }
         else if (a === 'rdel' && r) { if (W.confirm('Ablauf „' + whenText(r.when) + '“ löschen?')) { cfg.rules = cfg.rules.filter(x => x !== r); editId = null; } }
         else if (a === 'sadd' && r) r.steps.push({ t: 'equip' });
+        else if (a === 'rclean' && r) { const n = r.steps.length; r.steps = flowClean(r.steps); log(`Ablauf aufgeräumt: ${n - r.steps.length} Schritte entfernt, ${r.steps.length} übrig`); }
         else if (a === 'snum' && r) {
             const st = r.steps[i], f = el.dataset.f, inp = el.parentElement.querySelector('input');
             const lo = +(inp && inp.dataset.min) || 1, hi = +(inp && inp.dataset.max) || 999;
