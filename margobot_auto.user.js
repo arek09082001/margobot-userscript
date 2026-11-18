@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.20
+// @version      7.21
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -36,7 +36,7 @@
     // ── Einstellungen ───────────────────────────────────────────
     const DEF = { on: false, picked: {}, lvlOn: false, lvlMin: 1, lvlMax: 300, pauseMin: 300, pauseMax: 900,
                   exits: {}, closeBattle: true, x: null, y: null, open: true,
-                  routes: {}, route: '', routePos: 0, rec: null, suggestAuto: true, expoAll: false,
+                  routes: {}, route: '', routePos: 0, rec: null, flow: null, suggestAuto: true, expoAll: false,
                   onDeath: 'stop', deaths: [], graph: {}, back: null, optimal: true,
                   names: {}, travel: null, blocked: [], tab: 'xp', logOpen: false, tele: {},
                   rules: [], chain: null, autoCaptcha: false, autoCaptchaConfirm: false, captchaWarn: true,
@@ -112,7 +112,7 @@
         if (d) applyHero(d);
         else if (known.length) {
             // neuer Held: aktuelle Einstellungen als Vorlage, aber nichts „Laufendes“ übernehmen
-            Object.assign(cfg, { on: false, travel: null, chain: null, back: null, rec: null, routePos: 0, lastHome: null, sess: null, deaths: [] });
+            Object.assign(cfg, { on: false, travel: null, chain: null, back: null, rec: null, flow: null, routePos: 0, lastHome: null, sess: null, deaths: [] });
             cfg.heros = Object.assign({}, cfg.heros, { on: false, found: null, route: [], skipped: [], index: 0, rounds: 0, checked: 0, status: '' });
             cfg.e2 = Object.assign({}, cfg.e2, { on: false, offline: false, wakeAt: 0, returned: false, noLeaveUntil: 0, trace: [] });
         }                                           // allererster Held: alles so übernehmen, wie es war
@@ -1104,6 +1104,10 @@
         xp:    { label: 'Zum XP-Ort & jagen', f: [['min', 'Lvl von', 'num'], ['max', 'bis', 'num']] },
         back:  { label: 'Zurück zum Jagdort', f: [] },
         wait:  { label: 'Warten', f: [['s', 'Sekunden', 'num']] },
+        walk:  { label: 'Zu Feld laufen', f: [['x', 'X', 'num'], ['y', 'Y', 'num']] },
+        say:   { label: 'Dialog-Antwort', f: [['say', 'Antwort']] },
+        kill:  { label: 'Mob angreifen', f: [['name', 'Mob']] },
+        cmd:   { label: 'Spielbefehl (aufgenommen)', f: [['cmd', 'Befehl']] },
         hunt:  { label: 'Jagen', f: [] },
         stop:  { label: 'Bot stoppen', f: [] }
     };
@@ -1117,6 +1121,10 @@
             case 'sell': return 'Verkaufen: ' + (SELL[s.what || 'gear'] || SELL.gear).label + (s.closeAfter ? ' · danach Laden zu' : '');
             case 'xp': return s.min ? `XP-Ort Lvl ${s.min}–${s.max || s.min} & jagen` : 'XP-Ort um mein Level & jagen';
             case 'wait': return 'Warten ' + (s.s || 1) + ' s';
+            case 'walk': return `Laufen zu (${s.x}, ${s.y})` + (s.map ? ' auf ' + (/^\d+$/.test(String(s.map)) ? wname(+s.map) : s.map) : '');
+            case 'say': return 'Antwort „' + (s.say || '?') + '“';
+            case 'kill': return 'Angreifen: ' + (s.name || '?');
+            case 'cmd': return 'Spielbefehl: ' + (s.cmd || '?');
             default: return STEP[s.t] ? STEP[s.t].label : s.t;
         }
     }
@@ -1464,6 +1472,56 @@
                 return !shopOpen() ? 'ok' : now - st.sent > 2000 ? 'Laden ging nicht zu' : 'run';
             }
             case 'wait': return age >= (+s.s || 1) * 1000 ? 'ok' : 'run';
+            case 'walk': {
+                if (shopOpen()) { closeShop(); return 'run'; }
+                if (s.map != null && s.map !== '') {
+                    const ids = findMaps(s.map);
+                    if (!ids.length) return `Karte „${s.map}“ unbekannt`;
+                    if (mapId() !== ids[0]) {
+                        const r = travelStep([ids[0]], wname(ids[0]));
+                        return r === 'kein Weg' ? 'kein Weg nach ' + wname(ids[0]) : 'run';
+                    }
+                }
+                const [hx, hy] = heroXY();
+                if (Math.abs(hx - s.x) <= 1 && Math.abs(hy - s.y) <= 1) return 'ok';
+                if (age > 45000) return `Feld (${s.x}, ${s.y}) nicht erreicht`;
+                walkTo(+s.x, +s.y, 'aufgenommenem Feld'); return 'run';
+            }
+            case 'say': {
+                // Antworten der Aufnahme: der Dialog muss vom vorherigen Schritt (NPC ansprechen) offen sein.
+                if (st.said) return now - st.said > 900 ? 'ok' : 'run';
+                const d = dialogOpen();
+                if (!d) return age > 5000 ? 'kein Dialog offen' : 'run';
+                const want = fold(s.say), L = [...d.querySelectorAll('.dialogue-window-answer')];
+                const li = L.find(x => fold(answerOf(x)) === want) || L.find(x => fold(answerOf(x)).includes(want));
+                if (!li) return age > 5000 ? `Antwort „${s.say}“ nicht gefunden` : 'run';
+                li.click(); st.said = now; log('Antwort: ' + answerOf(li).slice(0, 40));
+                return 'run';
+            }
+            case 'kill': {
+                // Gleicher Name wie bei der Aufnahme; Mob-IDs ändern sich nach dem Respawn.
+                if (st.id) {
+                    if (!mobs().some(m => m.id === st.id)) { log('Besiegt: ' + s.name); return 'ok'; }
+                    if (now - st.atk > 20000) return `${s.name} verschwindet nicht (Kampf verloren?)`;
+                    if (now - st.atk > 3000 && (st.tries || 0) < 3) { st.id = null; }   // Angriff kam nicht an → neu versuchen
+                    return 'run';
+                }
+                const q = fold(s.name), [hx, hy] = heroXY();
+                const m = mobs().filter(x => fold(x.nick) === q).sort((a, b) => Math.max(Math.abs(a.x - hx), Math.abs(a.y - hy)) - Math.max(Math.abs(b.x - hx), Math.abs(b.y - hy)))[0];
+                if (!m) return age > 60000 ? `„${s.name}“ nicht auf dieser Karte` : 'run';
+                if (Math.abs(m.x - hx) <= 1 && Math.abs(m.y - hy) <= 1) {
+                    st.id = m.id; st.atk = now; st.tries = (st.tries || 0) + 1;
+                    act(() => E().hero.heroAtackRequest(m.id, true), 'Angriff'); noteAttack(m.id);
+                    log('Angriff (Aufnahme): ' + m.nick); goal = null;
+                    return 'run';
+                }
+                if (age > 90000) return `${s.name} nicht erreicht`;
+                walkTo(m.x, m.y, m.nick); return 'run';
+            }
+            case 'cmd': {
+                if (!st.sent) { send(s.cmd); st.sent = now; log('Spielbefehl: ' + s.cmd); }
+                return now - st.sent > 800 ? 'ok' : 'run';
+            }
             case 'hunt': cfg.on = true; if (!sess.t0) startSession(); return 'ok';
             case 'stop': cfg.on = false; return 'ok';
         }
@@ -1544,7 +1602,7 @@
         chainHome = cfg.lastHome || { map: mapId(), name: mapName(), route: cfg.route || '', lvl: { lvlMin: cfg.lvlMin, lvlMax: cfg.lvlMax, lvlOn: cfg.lvlOn } };
         cfg.chain = { rid: r.id, i: 0, wasOn: cfg.on }; chainSt = { t0: performance.now() };
         cfg.travel = null; goal = null; lastPlan = null;
-        log('▸ Ablauf „' + whenText(r.when) + '“' + (why ? ' (' + why + ')' : ''));
+        log('▸ Ablauf „' + (r.name || whenText(r.when)) + '“' + (why ? ' (' + why + ')' : ''));
         save(); lastStatic = '';
     }
     function endChain(msg) {
@@ -1580,6 +1638,104 @@
             if (now && !was) { startRule(r, whenText(r.when)); return true; }
         }
         return false;
+    }
+
+    // ── Aufnahme: eigene Handgriffe als Ablauf merken ───────────
+    /* Während der Aufnahme läuft kein Bot-Modus: alles, was über _g oder heroAtackRequest geht, kommt vom Spieler.
+       Gemerkt wird, was sich wieder abspielen lässt: Kartenwechsel (als „Zu Karte laufen“, der Weg wird beim
+       Abspielen neu geplant), Haltepunkte auf der Karte, NPCs und Mobs über den Namen (IDs wechseln nach Respawn),
+       Gegenstände über den Namen, Dialog-Antworten über den Text. Andere Spielbefehle (z. B. Beute aufheben)
+       werden wörtlich übernommen. Handel/Verkauf wird nie aufgenommen (feste Regel: nichts Unumkehrbares ohne OK). */
+    const REC_SKIP = /^(chat|friends|clan|mail|emo|settings|config|console|shop|sell|buy|auction|trade|ah&|market|depo|bank|skillshop|skills&)/i;
+    let recMove = { k: '', t: 0 };
+    const recPos = () => { const [x, y] = heroXY(); return { map: mapId(), x, y }; };
+    function recAdd(step) {
+        if (!cfg.flow) return;
+        cfg.flow.steps.push(step);
+        log('● ' + stepText(step));
+        save(); lastStatic = '';
+    }
+    function recFlush(min = 2) {
+        /* Aktuelle Stelle als Haltepunkt, wenn der Held seit dem letzten gemerkten Punkt weit genug gelaufen ist. */
+        const r = cfg.flow, p = recPos();
+        if (!r || p.map !== r.map) return;
+        if (r.x != null && Math.max(Math.abs(p.x - r.x), Math.abs(p.y - r.y)) < min) return;
+        r.x = p.x; r.y = p.y;
+        recAdd({ t: 'walk', map: world ? String(p.map) : mapName(), x: p.x, y: p.y });
+    }
+    function recCmd(cmd) {
+        if (!cfg.flow || running()) return;
+        cmd = String(cmd || '');
+        if (/^talk&/.test(cmd)) {
+            if (/&c=/.test(cmd)) return;                              // Antwortklick: kommt als Text über den Klick
+            const id = +((cmd.match(/[?&]id=(\d+)/) || [])[1]), n = npcList().find(d => +d.id === id);
+            recFlush(); if (n) return recAdd({ t: 'npc', name: n.nick });
+        }
+        const mi = cmd.match(/^moveitem&st=1&id=(\d+)$/);
+        if (mi) {
+            const d = allItems().find(x => +x.id === +mi[1]);
+            if (d) return recAdd({ t: isPotion(d) || parseStat(d.stat).amount ? 'use' : 'equip', name: d.name });
+        }
+        const fa = cmd.match(/^fight&a=attack&id=(-?\d+)/);
+        if (fa) { const m = mobs().find(x => +x.id === Math.abs(+fa[1])); if (m) return recAttack(m.id); }
+        if (REC_SKIP.test(cmd)) { log('Nicht aufgenommen (Handel/Chat): ' + cmd.split('&')[0]); return; }
+        recFlush(1); recAdd({ t: 'cmd', cmd });
+    }
+    function recAttack(id) {
+        if (!cfg.flow || running()) return;
+        const m = mobs().find(x => +x.id === +id);
+        if (!m) return;
+        recFlush(); recAdd({ t: 'kill', name: m.nick });
+    }
+    function recHook() {
+        /* Spielfunktionen umhüllen (einmal je Funktion; das Spiel kann sie nach dem Laden neu setzen). */
+        if (typeof W._g === 'function' && !W._g.__mbrec) {
+            const orig = W._g, f = function (cmd) { try { recCmd(cmd); } catch (e) {} return orig.apply(this, arguments); };
+            f.__mbrec = true; W._g = f;
+        }
+        const h = E().hero;
+        if (h && typeof h.heroAtackRequest === 'function' && !h.heroAtackRequest.__mbrec) {
+            const orig = h.heroAtackRequest, f = function (id) { try { recAttack(id); } catch (e) {} return orig.apply(this, arguments); };
+            f.__mbrec = true; h.heroAtackRequest = f;
+        }
+    }
+    document.addEventListener('click', ev => {
+        const li = cfg.flow && ev.target && ev.target.closest && ev.target.closest('.dialogue-window-answer');
+        if (li && ev.isTrusted && !running()) recAdd({ t: 'say', say: answerOf(li) });
+    }, true);
+    function recTick() {
+        const r = cfg.flow;
+        if (!r) return;
+        recHook();
+        const p = recPos(), now = performance.now();
+        if (p.map !== r.map) {                                         // Tür benutzt → Kartenwechsel merken
+            r.map = p.map; r.x = p.x; r.y = p.y;
+            recAdd({ t: 'go', map: world ? String(p.map) : mapName() });
+            return;
+        }
+        const k = p.x + ',' + p.y;
+        if (k !== recMove.k) { recMove = { k, t: now }; return; }
+        if (now - recMove.t > 1500) recFlush(3);                         // stehen geblieben → Haltepunkt
+    }
+    function recStart() {
+        if (running()) { log('Erst den Bot stoppen, dann aufnehmen'); return; }
+        const p = recPos();
+        cfg.flow = { steps: [], map: p.map, x: p.x, y: p.y, t0: Date.now() };
+        // Startpunkt gehört dazu: beim Abspielen läuft der Bot zuerst dorthin.
+        recAdd({ t: 'walk', map: world ? String(p.map) : mapName(), x: p.x, y: p.y });
+        recHook(); log('Aufnahme läuft – spiele jetzt selbst');
+    }
+    function recStop() {
+        const r = cfg.flow;
+        if (!r) return null;
+        recFlush(1);
+        cfg.flow = null;
+        if (r.steps.length < 2) { log('Aufnahme verworfen (nichts getan)'); return null; }
+        const nr = { id: newId(), on: true, name: 'Aufnahme ' + new Date(r.t0).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }),
+                     when: { t: 'hand' }, steps: r.steps };
+        cfg.rules = (cfg.rules || []).concat([nr]);
+        log(`Aufnahme gespeichert: ${nr.steps.length} Schritte`);
+        return nr;
     }
 
     // ── E2-Jagd: einen Elite-II-Boss abpassen ───────────────────
@@ -2179,6 +2335,7 @@
             bindHero();
             if (heroSwitched) { log(`Einstellungen für ${heroNick || 'diesen Helden'}: ${heroSwitched}`); heroSwitched = ''; }
             trackMaps(); recordFights(); learnGraph(); learnNames(); learnWorldBits();
+            if (cfg.flow) { if (running()) { recStop(); log('Aufnahme beendet: Bot gestartet'); } else recTick(); }
         }
         if (!ok() || checkDeath()) return;
         watchBattle();
@@ -3460,6 +3617,11 @@
                             : `<div class="hint">Angelegtes, Tränke und Quest-Gegenstände bleiben immer. Jetzt wären es ${n.length} Gegenstände${n.length ? ': ' + esc(n.slice(0, 3).map(d => d.name).join(', ')) + (n.length > 3 ? ' …' : '') : ''}.</div>`}`;
             }
             case 'wait': return `<div class="fld">${stepper(r, i, 's', s.s || 2, 1, 600)}<span>Sekunden</span></div>`;
+            case 'walk': return `<div class="fld"><span>X</span><input class="nb num" data-a="sf" ${A} data-f="x" value="${esc(s.x ?? '')}"><span>Y</span><input class="nb num" data-a="sf" ${A} data-f="y" value="${esc(s.y ?? '')}"></div>
+                        <div class="hint">${s.map ? 'Karte: ' + esc(/^\d+$/.test(String(s.map)) ? wname(+s.map) : s.map) : 'auf der aktuellen Karte'}</div>`;
+            case 'say': return `<input type="text" data-a="sf" ${A} data-f="say" value="${esc(s.say || '')}" placeholder="Antworttext">`;
+            case 'kill': return `<input type="text" data-a="sf" ${A} data-f="name" value="${esc(s.name || '')}" placeholder="Mob-Name">`;
+            case 'cmd': return `<input type="text" data-a="sf" ${A} data-f="cmd" value="${esc(s.cmd || '')}"><div class="hint">Wird wörtlich ans Spiel geschickt. Unklare Befehle lieber löschen.</div>`;
             default: return '';
         }
     }
@@ -3492,7 +3654,7 @@
             <div class="rule ${r.on ? '' : 'off'} ${run ? 'run' : ''}">
               <div class="rh">
                 <label class="sw" title="${r.on ? 'aktiv' : 'aus'}"><input type="checkbox" data-a="ron" data-r="${r.id}" ${r.on ? 'checked' : ''}><i></i></label>
-                <div class="rt2"><b>${esc(whenText(r.when))}</b>${done ? '<span class="tag">erledigt</span>' : ''}</div>
+                <div class="rt2"><b>${esc(r.name || whenText(r.when))}</b>${done ? '<span class="tag">erledigt</span>' : ''}</div>
                 <button class="ib" data-a="rrun" data-r="${r.id}" title="Jetzt ausführen">${ico('play')}</button>
                 <button class="ib" data-a="redit" data-r="${r.id}" title="Bearbeiten">${ico('edit')}</button>
               </div>
@@ -3507,6 +3669,12 @@
         return `
             ${cfg.chain ? `<div class="now"><div class="st"><span class="dot trv"></span>Ablauf läuft</div><div class="dt cdt"></div>
                 <button class="btn" data-a="cstop" style="margin-top:8px">${ico('stop')}Abbrechen</button></div>` : ''}
+            <h4>Aufnahme</h4>
+            ${cfg.flow ? `<div class="now"><div class="st"><span class="dot trv"></span>Aufnahme läuft · ${cfg.flow.steps.length} Schritte</div>
+                <div class="dt">${esc(cfg.flow.steps.length ? stepText(cfg.flow.steps[cfg.flow.steps.length - 1]) : '')}</div>
+                <button class="btn" data-a="recstop" style="margin-top:8px">${ico('stop')}Aufnahme beenden</button></div>`
+              : `<button class="btn" data-a="recstart" ${running() ? 'disabled' : ''}>${ico('rec')}Aufnahme starten</button>
+                <div class="hint">Spiel danach selbst: Laufen, Türen, NPCs, Antworten, Angriffe, Gegenstände. Beim Beenden entsteht ein Ablauf „Nur von Hand“, den du bearbeiten und mit ${ico('play')} abspielen kannst. Handel wird nicht aufgenommen.</div>`}
             ${rules.length ? `<h4>Deine Abläufe</h4>${rules.map(ruleView).join('')}` :
               `<div class="empty">Ein Ablauf startet von selbst, wenn seine Bedingung eintritt, und arbeitet dann seine Schritte der Reihe nach ab.
                  Danach jagt der Bot weiter. Starte mit einer Vorlage:</div>`}
@@ -3581,6 +3749,8 @@
         else if (a === 'sdel' && r) r.steps.splice(i, 1);
         else if (a === 'smv' && r && i > 0) [r.steps[i - 1], r.steps[i]] = [r.steps[i], r.steps[i - 1]];
         else if (a === 'cstop') { if (cfg.chain) endChain('von Hand'); }
+        else if (a === 'recstart') recStart();
+        else if (a === 'recstop') { const nr = recStop(); if (nr) editId = null; }
         else return false;
         return true;
     }
@@ -3965,7 +4135,7 @@
         const mn = mapName(), tab = ['set', 'rules', 'trade', 'e2', 'heros', 'skills'].includes(cfg.tab) ? cfg.tab : 'xp';
         const run = running();
         if (tab === 'xp') refreshXp();
-        const rk = editId ? [editId, !!shopOpen(), (cfg.rules || []).map(r => [r.id, r.when.t, r.steps.map(x => x.t)])] : cfg.rules;
+        const rk = [editId ? [editId, !!shopOpen(), (cfg.rules || []).map(r => [r.id, r.when.t, r.steps.map(x => x.t)])] : cfg.rules, cfg.flow && cfg.flow.steps.length, running()];
         if (tab === 'xp') refreshSug();
         if (botMode() === 'xp') refreshXp();
         const sKey = JSON.stringify([cfg.open, tab, run, mn, rk, cfg.chain, botMode(), capt.state,
