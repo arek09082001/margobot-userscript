@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.21
+// @version      7.22
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -3088,6 +3088,9 @@
          font:700 11px/1 var(--disp);font-variant-numeric:tabular-nums}
     #mba .steps li.cur{color:var(--tx)} #mba .steps li.cur .no{background:var(--blue);color:#0d1626}
     #mba .steps li.past{color:var(--dim)}
+    #mba .rule .sd>summary{cursor:pointer;color:var(--mut);font-size:12px;list-style:none;display:flex;align-items:center;gap:4px;margin-top:4px}
+    #mba .rule .sd>summary::-webkit-details-marker{display:none}
+    #mba .rule .sd[open]>summary svg{transform:rotate(90deg)}
     #mba .steps.ed li{display:block;padding:6px 0;border-top:1px solid var(--line)} #mba .steps.ed li:first-child{border-top:0}
     #mba .steps.ed .fld{margin:0} #mba .steps.ed .sf{margin:5px 0 0 26px}
     #mba .steps.ed select{flex:1;width:auto}
@@ -3636,10 +3639,21 @@
               <button class="ib" data-a="sdel" data-r="${r.id}" data-i="${i}" title="Schritt löschen">${ico('x')}</button></div>
             ${f ? `<div class="sf">${f}</div>` : ''}</li>`;
     }
+    function stepGroups(steps) {
+        /* Ansicht kompakt: aufeinanderfolgende Haltepunkte (Aufnahme) zu einer Zeile zusammenfassen. */
+        const out = [];
+        steps.forEach((s, i) => {
+            const g = out[out.length - 1];
+            if (s.t === 'walk' && g && g.walk && g.map === String(s.map ?? '')) { g.b = i; g.n++; g.text = `Laufen über ${g.n} Punkte bis (${s.x}, ${s.y})`; return; }
+            out.push({ a: i, b: i, n: 1, walk: s.t === 'walk', map: String(s.map ?? ''), text: stepText(s) });
+        });
+        return out;
+    }
     function ruleView(r) {
         const c = COND[r.when.t] || {}, run = cfg.chain && cfg.chain.rid === r.id, done = c.once && r.done;
         if (editId === r.id) return `
             <div class="rule edit">
+              <div class="fld"><span class="wn">Name</span><input type="text" data-a="rname" data-r="${r.id}" value="${esc(r.name || '')}" placeholder="${esc(whenText(r.when))}" maxlength="40" style="flex:1"></div>
               <div class="fld"><span class="wn">Wenn</span>
                 <select data-a="wt" data-r="${r.id}">${Object.entries(COND).map(([k, v]) =>
                     `<option value="${k}" ${k === r.when.t ? 'selected' : ''}>${v.label}</option>`).join('')}</select>
@@ -3658,9 +3672,11 @@
                 <button class="ib" data-a="rrun" data-r="${r.id}" title="Jetzt ausführen">${ico('play')}</button>
                 <button class="ib" data-a="redit" data-r="${r.id}" title="Bearbeiten">${ico('edit')}</button>
               </div>
-              <ol class="steps">${r.steps.map((s, i) =>
-                  `<li class="${run && cfg.chain.i === i ? 'cur' : run && cfg.chain.i > i ? 'past' : ''}"><span class="no">${i + 1}</span>${esc(stepText(s))}</li>`).join('')
-                  || '<li class="past"><span class="no">–</span>noch keine Schritte</li>'}</ol>
+              <details class="sd" ${run ? 'open' : ''}><summary>${ico('chev')}${r.steps.length} ${r.steps.length === 1 ? 'Schritt' : 'Schritte'}${r.name ? ' · ' + esc(whenText(r.when)) : ''}${run ? ' · Schritt ' + (cfg.chain.i + 1) : ''}</summary>
+              <ol class="steps">${stepGroups(r.steps).map(g => {
+                  const cls = run && cfg.chain.i >= g.a && cfg.chain.i <= g.b ? 'cur' : run && cfg.chain.i > g.b ? 'past' : '';
+                  return `<li class="${cls}"><span class="no">${g.a === g.b ? g.a + 1 : (g.a + 1) + '–' + (g.b + 1)}</span>${esc(g.text)}</li>`; }).join('')
+                  || '<li class="past"><span class="no">–</span>noch keine Schritte</li>'}</ol></details>
               ${done ? `<button class="sub" data-a="rreset" data-r="${r.id}">wieder scharf schalten</button>` : ''}
             </div>`;
     }
@@ -3759,6 +3775,7 @@
         if (!r) return false;
         const i = +t.dataset.i;
         if (a === 'ron') { r.on = t.checked; delete lastCond[r.id]; }
+        else if (a === 'rname') { const n = t.value.trim().slice(0, 40); if (n) r.name = n; else delete r.name; }
         else if (a === 'wt') { r.when = { t: t.value, n: COND[t.value].def }; r.done = false; delete lastCond[r.id]; }
         else if (a === 'wn') { r.when.n = parseInt(t.value, 10) || 0; r.done = false; delete lastCond[r.id]; }
         else if (a === 'st') r.steps[i] = t.value === 'buy' ? { t: 'buy', n: 30, closeAfter: true } : t.value === 'wait' ? { t: 'wait', s: 2 } : t.value === 'sell' ? { t: 'sell', what: 'quick123' } : { t: t.value };
