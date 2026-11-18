@@ -57,21 +57,24 @@ hero.autoGoTo({ x: 19, y: 5 }); T(3);                               // Tür → 
 hero.autoGoTo({ x: 11, y: 8 }); T(10);
 Engine.hero.heroAtackRequest(70, true);
 W._g('takeitem&id=333');
+W._g(''); W._g('   ');
 const nr = t.recStop();
 const kinds = nr.steps.map(s => s.t + (s.name ? ':' + s.name : s.say ? ':' + s.say : s.cmd ? ':' + s.cmd : s.map && s.t === 'go' ? ':' + s.map : ''));
 if (process.env.LOG) console.log(kinds);
 assert.equal(nr.when.t, 'hand');
+assert.ok(!kinds.includes('cmd'), 'leere Befehle nicht aufgenommen');
+for (let i = 1; i < nr.steps.length; i++) assert.ok(!(nr.steps[i].t === 'walk' && nr.steps[i - 1].t === 'walk' && nr.steps[i].map === nr.steps[i - 1].map), 'Haltepunkte zusammengefasst');
 assert.deepEqual(kinds.filter(k => !k.startsWith('walk')), ['npc:Kowal', 'say:Daj mi zadanie', 'use:Mała mikstura', 'go:2', 'kill:Wilk', 'cmd:takeitem&id=333']);
-assert.ok(nr.steps[0].t === 'walk' && nr.steps[0].x === 10, 'Startpunkt zuerst');
+assert.ok(nr.steps[0].t === 'walk' && nr.steps[0].x === 5, 'Startpunkt mit folgendem Haltepunkt zusammengefasst');
 assert.ok(nr.steps.some(s => s.t === 'walk' && s.x === 5 && s.y === 6 && s.map === '1'), 'Haltepunkt vor dem NPC');
 assert.ok(!sent.slice(0, 0).length && !kinds.some(k => /chat|shop/.test(k)), 'Chat und Handel ausgelassen');
 assert.equal(t.cfg.flow, null);
-t.cfg.rules = [nr]; nr.steps.splice(1, 0, { t: 'walk', map: '1', x: 7, y: 7 });
+t.cfg.rules = [nr]; nr.steps.splice(0, 0, { t: 'walk', map: '1', x: 10, y: 10 }, { t: 'walk', map: '1', x: 7, y: 7 });
 const view = t.rulesTab();
 assert.match(view, /Laufen über 3 Punkte bis \(5, 6\)/, 'Haltepunkte zusammengefasst');
 assert.match(view, /<span class="no">1–3<\/span>/);
-assert.match(view, /10 Schritte/);
-nr.steps.splice(1, 1); nr.name = 'Questreihe Anfang';
+assert.match(view, new RegExp(nr.steps.length + ' Schritte'));
+nr.steps.splice(0, 2); nr.name = 'Questreihe Anfang';
 assert.match(t.rulesTab(), /<b>Questreihe Anfang<\/b>/);
 console.log('OK Aufnahme: Haltepunkte, NPC über Namen, Antworttext, Gegenstand, Kartenwechsel, Angriff über Mob-Namen, Rohbefehl; Chat/Handel ausgelassen');
 
