@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.25
+// @version      7.26
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -1366,7 +1366,12 @@
             }
             case 'npc': {
                 const q = fold(s.name), n = npcList().find(d => fold(d.nick) === q) || npcList().find(d => fold(d.nick).includes(q));
-                if (!n) return `NPC „${s.name}“ nicht auf dieser Karte`;
+                if (!n) {
+                    // Nach einem Kartenwechsel erscheinen NPCs erst nach und nach; Quest-NPCs verschwinden auch mal
+                    // ganz. Erst warten, dann überspringen statt den ganzen Ablauf abzubrechen.
+                    if (age < 10000) return 'run';
+                    log(`NPC „${s.name}“ nicht da – Schritt übersprungen`); return 'ok';
+                }
                 const [hx, hy] = heroXY();
                 if (Math.abs(n.x - hx) > 1 || Math.abs(n.y - hy) > 1) {
                     if (age > 60000) return `${n.nick} nicht erreicht`;
@@ -1606,10 +1611,10 @@
         if (ch) save();
     }
     let chainSt = null, chainHome = null, lastCond = {}, lastChainEnd = '';
-    function startRule(r, why) {
+    function startRule(r, why, from = 0) {
         if (!r.steps.length) return;
         chainHome = cfg.lastHome || { map: mapId(), name: mapName(), route: cfg.route || '', lvl: { lvlMin: cfg.lvlMin, lvlMax: cfg.lvlMax, lvlOn: cfg.lvlOn } };
-        cfg.chain = { rid: r.id, i: 0, wasOn: cfg.on }; chainSt = { t0: performance.now() }; lastChainEnd = '';
+        cfg.chain = { rid: r.id, i: Math.max(0, Math.min(r.steps.length - 1, +from || 0)), wasOn: cfg.on }; chainSt = { t0: performance.now() }; lastChainEnd = '';
         cfg.travel = null; goal = null; lastPlan = null;
         log('▸ Ablauf „' + (r.name || whenText(r.when)) + '“' + (why ? ' (' + why + ')' : ''));
         save(); lastStatic = '';
@@ -1664,6 +1669,10 @@
     const recPos = () => { const [x, y] = heroXY(); return { map: mapId(), x, y }; };
     function recAdd(step) {
         if (!cfg.flow) return;
+        // Das Spiel löst manche Aktionen doppelt aus (Klick + eigener Befehl): gleicher Schritt binnen 1,5 s zählt einmal.
+        const last = cfg.flow.steps[cfg.flow.steps.length - 1], now = Date.now();
+        if (last && step.t !== 'walk' && JSON.stringify({ ...last, at: 0 }) === JSON.stringify({ ...step, at: 0 }) && now - (last.at || 0) < 1500) return;
+        step.at = now;
         cfg.flow.steps.push(step);
         log('● ' + stepText(step));
         save(); lastStatic = '';
@@ -1741,6 +1750,11 @@
         for (const s of steps) {
             if (s.t === 'cmd' && junkCmd(s.cmd)) continue;
             const prev = out[out.length - 1];
+            // Doppelt aufgenommen: zweimal derselbe NPC/Befehl direkt hintereinander bzw. gleicher Schritt binnen 1,5 s.
+            if (prev && s.t === prev.t && s.t !== 'walk') {
+                const same = JSON.stringify({ ...s, at: 0 }) === JSON.stringify({ ...prev, at: 0 });
+                if (same && (s.t === 'npc' || s.t === 'cmd' || (s.at && prev.at && s.at - prev.at < 1500))) continue;
+            }
             if (s.t === 'walk' && prev && prev.t === 'walk' && String(prev.map ?? '') === String(s.map ?? '')) { out[out.length - 1] = s; continue; }
             out.push(s);
         }
@@ -3120,6 +3134,7 @@
     #mba .steps li.past{color:var(--dim)}
     #mba .rule .sd>summary{cursor:pointer;color:var(--mut);font-size:12px;list-style:none;display:flex;align-items:center;gap:4px;margin-top:4px}
     #mba .rule .sd>summary::-webkit-details-marker{display:none}
+    #mba .steps li.from{cursor:pointer;border-radius:6px} #mba .steps li.from:hover{background:var(--bg3,rgba(255,255,255,.05));color:var(--tx)}
     #mba .rule .sd[open]>summary svg{transform:rotate(90deg)}
     #mba .steps.ed li{display:block;padding:6px 0;border-top:1px solid var(--line)} #mba .steps.ed li:first-child{border-top:0}
     #mba .steps.ed .fld{margin:0} #mba .steps.ed .sf{margin:5px 0 0 26px}
@@ -3706,7 +3721,7 @@
               <details class="sd" ${run ? 'open' : ''}><summary>${ico('chev')}${r.steps.length} ${r.steps.length === 1 ? 'Schritt' : 'Schritte'}${r.name ? ' · ' + esc(whenText(r.when)) : ''}${run ? ' · Schritt ' + (cfg.chain.i + 1) : ''}</summary>
               <ol class="steps">${stepGroups(r.steps).map(g => {
                   const cls = run && cfg.chain.i >= g.a && cfg.chain.i <= g.b ? 'cur' : run && cfg.chain.i > g.b ? 'past' : '';
-                  return `<li class="${cls}"><span class="no">${g.a === g.b ? g.a + 1 : (g.a + 1) + '–' + (g.b + 1)}</span>${esc(g.text)}</li>`; }).join('')
+                  return `<li class="${cls} from" data-a="rfrom" data-r="${r.id}" data-i="${g.a}" title="Ab hier starten"><span class="no">${g.a === g.b ? g.a + 1 : (g.a + 1) + '–' + (g.b + 1)}</span>${esc(g.text)}</li>`; }).join('')
                   || '<li class="past"><span class="no">–</span>noch keine Schritte</li>'}</ol></details>
               ${done ? `<button class="sub" data-a="rreset" data-r="${r.id}">wieder scharf schalten</button>` : ''}
             </div>`;
@@ -3729,7 +3744,7 @@
             <h4>${rules.length ? 'Neu' : 'Vorlagen'}</h4>
             <div class="tpl">${TEMPLATES.map((t, i) => `<button class="tp" data-a="tpl" data-i="${i}"><b>${t.name}</b><span>${t.tip}</span></button>`).join('')}
               <button class="tp" data-a="radd"><b>Leerer Ablauf</b><span>Bedingung und Schritte selbst wählen</span></button></div>
-            <div class="hint">Läuft nur, solange der Bot jagt. Mit ${ico('play')} startest du einen Ablauf sofort.</div>
+            <div class="hint">Läuft nur, solange der Bot jagt. Mit ${ico('play')} startest du einen Ablauf sofort, ein Klick auf einen Schritt startet ab dort.</div>
             <details><summary>${ico('chev')}Spieldaten prüfen</summary><div class="log diag"></div></details>`;
     }
     function captchaDiag() {
@@ -3780,6 +3795,7 @@
             cfg.rules = (cfg.rules || []).concat([nr]); editId = nr.id;
         } else if (a === 'redit') editId = el.dataset.r || null;
         else if (a === 'rrun' && r) startRule(r, 'von Hand');
+        else if (a === 'rfrom' && r && !cfg.chain) { if (W.confirm(`Ablauf ab Schritt ${i + 1} starten?`)) startRule(r, 'ab Schritt ' + (i + 1), i); }
         else if (a === 'rreset' && r) { r.done = false; delete lastCond[r.id]; }
         else if (a === 'rdel' && r) { if (W.confirm('Ablauf „' + whenText(r.when) + '“ löschen?')) { cfg.rules = cfg.rules.filter(x => x !== r); editId = null; } }
         else if (a === 'sadd' && r) r.steps.push({ t: 'equip' });
@@ -4265,7 +4281,7 @@
         const el = ev.target.closest('[data-a]');
         if (!el || el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'LABEL') return;
         const a = el.dataset.a;
-        if (cfg.heros.on && ['quick', 'huntxp', 'runroute', 'goxp', 'e2go', 'rrun', 'go', 'skall', 'skone'].includes(a)) herosStop('Anderer Modus gestartet');
+        if (cfg.heros.on && ['quick', 'huntxp', 'runroute', 'goxp', 'e2go', 'rrun', 'rfrom', 'go', 'skall', 'skone'].includes(a)) herosStop('Anderer Modus gestartet');
         if (rulesClick(a, el) || e2Click(a, el)) { save(); lastStatic = ''; render(); return; }
         if (a === 'tscan') { startScan(); render(); return; }
         if (a === 'tstop') { stopScan('Scan gestoppt'); render(); return; }
