@@ -2,7 +2,7 @@
 const assert = require('assert/strict'), fs = require('fs'), path = require('path');
 const src = fs.readFileSync(path.join(__dirname, '..', 'margobot_auto.user.js'), 'utf8')
     .replace('function log(t) {', 'function log(t) { if (process.env.LOG) console.log("   log:", t);')
-    .replace(/\}\)\(\);\s*$/, 'W.test = { cfg, recStart, recStop, startRule, rulesTab }; })();');
+    .replace(/\}\)\(\);\s*$/, 'W.test = { cfg, recStart, recStop, startRule, rulesTab, flowClean }; })();');
 const NAMES = { 1: 'Town', 2: 'Forest' };
 const G = { 1: [[2, 19, 5]], 2: [[1, 0, 5]] };
 const world = {}; for (const id in G) world[id] = [20, 20, 'pl_' + NAMES[id], G[id], []];
@@ -57,7 +57,7 @@ hero.autoGoTo({ x: 19, y: 5 }); T(3);                               // Tür → 
 hero.autoGoTo({ x: 11, y: 8 }); T(10);
 Engine.hero.heroAtackRequest(70, true);
 W._g('takeitem&id=333');
-W._g(''); W._g('   ');
+W._g(''); W._g('   '); W._g('_'); W._g('_');
 const nr = t.recStop();
 const kinds = nr.steps.map(s => s.t + (s.name ? ':' + s.name : s.say ? ':' + s.say : s.cmd ? ':' + s.cmd : s.map && s.t === 'go' ? ':' + s.map : ''));
 if (process.env.LOG) console.log(kinds);
@@ -100,6 +100,13 @@ assert.equal(cur, 1, 'auf der aktuellen Karte geblieben'); assert.deepEqual([her
 assert.equal(t.cfg.chain, null);
 assert.match(t.rulesTab(), /„Name“ abgebrochen: Schritt 2: Karte „Nirgendwo“ unbekannt/);
 console.log('OK Kartenname der aktuellen Karte, Abbruchgrund im Tab');
+
+// ── „_“ aus alten Aufnahmen: nie senden, Aufräumen entfernt es
+const junk = { id: 'J', on: true, when: { t: 'hand' }, steps: [{ t: 'cmd', cmd: '_' }, { t: 'cmd', cmd: '_' }, { t: 'cmd', cmd: 'takeitem&id=5' }] };
+t.cfg.rules = [junk]; sent.length = 0; t.startRule(junk, 'Test'); T(20);
+assert.deepEqual(sent, ['takeitem&id=5'], '„_“ wird nicht gesendet');
+junk.steps = t.flowClean(junk.steps); assert.equal(junk.steps.length, 1);
+console.log('OK „_“-Abfragen: nicht aufgenommen, nicht gesendet, Aufräumen entfernt sie');
 
 // ── Laufender Bot: keine Aufnahme
 t.cfg.on = true; t.recStart(); assert.equal(t.cfg.flow, null, 'nicht während der Bot läuft'); t.cfg.on = false;

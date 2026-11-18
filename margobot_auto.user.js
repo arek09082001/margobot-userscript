@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.24
+// @version      7.25
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -1527,7 +1527,7 @@
                 walkTo(m.x, m.y, m.nick); return 'run';
             }
             case 'cmd': {
-                if (!String(s.cmd || '').trim()) return 'ok';                  // leere Befehle aus alten Aufnahmen
+                if (junkCmd(s.cmd)) return 'ok';                               // „_“/leer aus alten Aufnahmen nie senden
                 if (!st.sent) { send(s.cmd); st.sent = now; log('Spielbefehl: ' + s.cmd); }
                 return now - st.sent > 300 ? 'ok' : 'run';
             }
@@ -1679,7 +1679,7 @@
     function recCmd(cmd) {
         if (!cfg.flow || running()) return;
         cmd = String(cmd || '').trim();
-        if (!cmd) return;                                              // das Spiel ruft _g auch ohne Befehl auf
+        if (junkCmd(cmd)) return;                                      // Abfragen des Spiels („_“, leer), keine Handgriffe
         if (/^talk&/.test(cmd)) {
             if (/&c=/.test(cmd)) return;                              // Antwortklick: kommt als Text über den Klick
             const id = +((cmd.match(/[?&]id=(\d+)/) || [])[1]), n = npcList().find(d => +d.id === id);
@@ -1731,12 +1731,15 @@
         if (k !== recMove.k) { recMove = { k, t: now }; return; }
         if (now - recMove.t > 1500) recFlush(3);                         // stehen geblieben → Haltepunkt
     }
+    /* Kein echter Befehl: leer oder ohne Wort, z. B. „_“. Das Spiel schickt „_“ ständig als Abfrage an den Server;
+       wiederholt abgespielt bringt das die Sitzung durcheinander und das Spiel lädt die Seite neu. */
+    const junkCmd = c => !/[a-z]{2}/i.test(String(c || ''));
     function flowClean(steps) {
         /* Leere Befehle weg, mehrere Haltepunkte hintereinander auf derselben Karte auf den letzten kürzen:
            autoGoTo sucht den Weg selbst, Zwischenpunkte kosten beim Abspielen nur Zeit. */
         const out = [];
         for (const s of steps) {
-            if (s.t === 'cmd' && !String(s.cmd || '').trim()) continue;
+            if (s.t === 'cmd' && junkCmd(s.cmd)) continue;
             const prev = out[out.length - 1];
             if (s.t === 'walk' && prev && prev.t === 'walk' && String(prev.map ?? '') === String(s.map ?? '')) { out[out.length - 1] = s; continue; }
             out.push(s);
