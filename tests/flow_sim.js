@@ -89,6 +89,15 @@ assert.deepEqual(attacks, [71], 'Mob über Namen gefunden, neue ID');
 assert.equal(cur, 2);
 console.log('OK Abspielen: Laufen, NPC, Antwort, Trank, Tür, Angriff auf neue Mob-ID, Rohbefehl');
 
+// ── Kartenname der aktuellen Karte (gleichnamige Etagen) und Abbruchgrund im Tab
+go(1); hero.d.x = 15; hero.d.y = 15; T(3);
+const named = { id: 'N', on: true, name: 'Name', when: { t: 'hand' }, steps: [{ t: 'walk', map: 'Town', x: 4, y: 4 }, { t: 'go', map: 'Nirgendwo' }] };
+t.cfg.rules = [named]; t.startRule(named, 'Test'); T(30);
+assert.equal(cur, 1, 'auf der aktuellen Karte geblieben'); assert.deepEqual([hero.d.x, hero.d.y], [4, 4]);
+assert.equal(t.cfg.chain, null);
+assert.match(t.rulesTab(), /„Name“ abgebrochen: Schritt 2: Karte „Nirgendwo“ unbekannt/);
+console.log('OK Kartenname der aktuellen Karte, Abbruchgrund im Tab');
+
 // ── Laufender Bot: keine Aufnahme
 t.cfg.on = true; t.recStart(); assert.equal(t.cfg.flow, null, 'nicht während der Bot läuft'); t.cfg.on = false;
 t.recStart(); T(1); t.cfg.on = true; T(1); assert.equal(t.cfg.flow, null, 'Botstart beendet die Aufnahme'); t.cfg.on = false;

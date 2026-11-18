@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.22
+// @version      7.23
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -1295,6 +1295,14 @@
     function dialogOpen() { return document.querySelector('.dialogue-window.is-open'); }
     function shopOpen() { const g = document.querySelector('.shop-items'); return g && g.offsetWidth ? g : null; }
 
+    function stepMapIds(m) {
+        /* Karte eines Schritts: aufgenommene Spiel-ID direkt (auch ohne geladene Weltkarte), aktuelle Karte über den
+           Namen (mehrere Etagen heißen gleich – sonst würde der Bot zu einer anderen Etage reisen), sonst Suche. */
+        const v = String(m ?? '').trim();
+        if (/^\d+$/.test(v)) return [+v];
+        if (v && fold(v) === fold(mapName())) return [mapId()];
+        return findMaps(v);
+    }
     // ein Schritt: 'ok' (fertig) | 'run' (noch dran) | Fehlertext
     function doStep(s, st) {
         const now = performance.now(), age = now - st.t0;
@@ -1324,7 +1332,7 @@
             }
             case 'go': {
                 if (shopOpen()) { closeShop(); st.t0 = now; return 'run'; }
-                const ids = findMaps(s.map);
+                const ids = stepMapIds(s.map);
                 if (!ids.length) return `Karte „${s.map}“ unbekannt`;
                 const r = travelStep([ids[0]], wname(ids[0]));
                 return r === 'da' ? 'ok' : r === 'kein Weg' ? 'kein Weg nach ' + s.map : 'run';
@@ -1475,9 +1483,9 @@
             case 'walk': {
                 if (shopOpen()) { closeShop(); return 'run'; }
                 if (s.map != null && s.map !== '') {
-                    const ids = findMaps(s.map);
+                    const ids = stepMapIds(s.map);
                     if (!ids.length) return `Karte „${s.map}“ unbekannt`;
-                    if (mapId() !== ids[0]) {
+                    if (!ids.includes(mapId())) {
                         const r = travelStep([ids[0]], wname(ids[0]));
                         return r === 'kein Weg' ? 'kein Weg nach ' + wname(ids[0]) : 'run';
                     }
@@ -1596,11 +1604,11 @@
         }
         if (ch) save();
     }
-    let chainSt = null, chainHome = null, lastCond = {};
+    let chainSt = null, chainHome = null, lastCond = {}, lastChainEnd = '';
     function startRule(r, why) {
         if (!r.steps.length) return;
         chainHome = cfg.lastHome || { map: mapId(), name: mapName(), route: cfg.route || '', lvl: { lvlMin: cfg.lvlMin, lvlMax: cfg.lvlMax, lvlOn: cfg.lvlOn } };
-        cfg.chain = { rid: r.id, i: 0, wasOn: cfg.on }; chainSt = { t0: performance.now() };
+        cfg.chain = { rid: r.id, i: 0, wasOn: cfg.on }; chainSt = { t0: performance.now() }; lastChainEnd = '';
         cfg.travel = null; goal = null; lastPlan = null;
         log('▸ Ablauf „' + (r.name || whenText(r.when)) + '“' + (why ? ' (' + why + ')' : ''));
         save(); lastStatic = '';
@@ -1610,6 +1618,8 @@
         if (r && COND[r.when.t] && COND[r.when.t].once && !msg) r.done = true;
         if (shopOpen()) closeShop();
         log(msg ? '✕ Ablauf abgebrochen: ' + msg : '✓ Ablauf fertig');
+        // Im Tab sichtbar halten: der Verlauf zeigt nur die letzten Zeilen, der Grund rutscht sonst schnell heraus.
+        lastChainEnd = msg ? `„${r ? (r.name || whenText(r.when)) : '?'}“ abgebrochen: ${msg}` : '';
         cfg.chain = null; chainSt = null; goal = null; lastPlan = null; travelCache = null;
         save(); lastStatic = '';
     }
@@ -1661,7 +1671,7 @@
         if (!r || p.map !== r.map) return;
         if (r.x != null && Math.max(Math.abs(p.x - r.x), Math.abs(p.y - r.y)) < min) return;
         r.x = p.x; r.y = p.y;
-        recAdd({ t: 'walk', map: world ? String(p.map) : mapName(), x: p.x, y: p.y });
+        recAdd({ t: 'walk', map: String(p.map), x: p.x, y: p.y });
     }
     function recCmd(cmd) {
         if (!cfg.flow || running()) return;
@@ -1710,7 +1720,7 @@
         const p = recPos(), now = performance.now();
         if (p.map !== r.map) {                                         // Tür benutzt → Kartenwechsel merken
             r.map = p.map; r.x = p.x; r.y = p.y;
-            recAdd({ t: 'go', map: world ? String(p.map) : mapName() });
+            recAdd({ t: 'go', map: String(p.map) });
             return;
         }
         const k = p.x + ',' + p.y;
@@ -1722,7 +1732,7 @@
         const p = recPos();
         cfg.flow = { steps: [], map: p.map, x: p.x, y: p.y, t0: Date.now() };
         // Startpunkt gehört dazu: beim Abspielen läuft der Bot zuerst dorthin.
-        recAdd({ t: 'walk', map: world ? String(p.map) : mapName(), x: p.x, y: p.y });
+        recAdd({ t: 'walk', map: String(p.map), x: p.x, y: p.y });
         recHook(); log('Aufnahme läuft – spiele jetzt selbst');
     }
     function recStop() {
@@ -3683,6 +3693,7 @@
     function rulesTab() {
         const rules = cfg.rules || [];
         return `
+            ${!cfg.chain && lastChainEnd ? `<div class="hint" style="color:var(--bad,#e07a5f)">${esc(lastChainEnd)}</div>` : ''}
             ${cfg.chain ? `<div class="now"><div class="st"><span class="dot trv"></span>Ablauf läuft</div><div class="dt cdt"></div>
                 <button class="btn" data-a="cstop" style="margin-top:8px">${ico('stop')}Abbrechen</button></div>` : ''}
             <h4>Aufnahme</h4>
@@ -4355,7 +4366,7 @@
         const sel = t.parentElement.querySelector('select[data-f=map]');
         if (sel) { sel.innerHTML = mapOptions(r.steps[i], mapQ[r.id + ':' + i]); if (t.value.trim()) sel.size = 1; }
     });
-    box.addEventListener('toggle', ev => { if (ev.target.tagName === 'DETAILS') { cfg.logOpen = ev.target.open; save(); } }, true);
+    box.addEventListener('toggle', ev => { if (ev.target.tagName === 'DETAILS' && !ev.target.classList.contains('sd')) { cfg.logOpen = ev.target.open; save(); } }, true);
     box.addEventListener('change', ev => {
         const t = ev.target, a = t.dataset.a;
         if (a === 'tall' || a === 'tset' || a === 'ttempo') {
