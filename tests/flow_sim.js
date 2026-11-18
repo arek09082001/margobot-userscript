@@ -46,7 +46,7 @@ t.recStart(); T(2);
 assert.ok(t.cfg.flow, 'Aufnahme läuft');
 assert.match(t.rulesTab(), /Aufnahme beenden/);
 hero.autoGoTo({ x: 5, y: 6 }); T(10);                               // stehen bleiben → Haltepunkt
-W._g('talk&id=9');
+W._g('talk&id=9'); W._g('talk&id=9');
 const li = { closest: () => ({ querySelector: () => null, textContent: '1. Daj mi zadanie' }) };
 listeners.forEach(f => f({ target: li, isTrusted: true }));
 W._g('talk&id=9&c=12');                                             // Antwortklick selbst nicht doppelt
@@ -107,6 +107,13 @@ t.cfg.rules = [junk]; sent.length = 0; t.startRule(junk, 'Test'); T(20);
 assert.deepEqual(sent, ['takeitem&id=5'], '„_“ wird nicht gesendet');
 junk.steps = t.flowClean(junk.steps); assert.equal(junk.steps.length, 1);
 console.log('OK „_“-Abfragen: nicht aufgenommen, nicht gesendet, Aufräumen entfernt sie');
+
+// ── Ab Schritt starten, fehlender NPC wird übersprungen, alte Doppelte aufräumen
+const part = { id: 'P', on: true, when: { t: 'hand' }, steps: [{ t: 'cmd', cmd: 'first&x=1' }, { t: 'npc', name: 'Geist' }, { t: 'cmd', cmd: 'second&x=1' }] };
+t.cfg.rules = [part]; sent.length = 0; t.startRule(part, 'Test', 1); T(80);
+assert.equal(t.cfg.chain, null); assert.deepEqual(sent, ['second&x=1'], 'ab Schritt 2, NPC fehlt → übersprungen');
+assert.equal(t.flowClean([{ t: 'npc', name: 'Kowal' }, { t: 'npc', name: 'Kowal' }, { t: 'say', say: 'Dalej' }, { t: 'say', say: 'Dalej' }]).length, 3, 'doppelter NPC weg, zweimal „Dalej“ bleibt');
+console.log('OK Start ab Schritt, fehlender NPC übersprungen, Doppelte aufgeräumt');
 
 // ── Laufender Bot: keine Aufnahme
 t.cfg.on = true; t.recStart(); assert.equal(t.cfg.flow, null, 'nicht während der Bot läuft'); t.cfg.on = false;
