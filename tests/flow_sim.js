@@ -66,6 +66,13 @@ assert.ok(nr.steps[0].t === 'walk' && nr.steps[0].x === 10, 'Startpunkt zuerst')
 assert.ok(nr.steps.some(s => s.t === 'walk' && s.x === 5 && s.y === 6 && s.map === '1'), 'Haltepunkt vor dem NPC');
 assert.ok(!sent.slice(0, 0).length && !kinds.some(k => /chat|shop/.test(k)), 'Chat und Handel ausgelassen');
 assert.equal(t.cfg.flow, null);
+t.cfg.rules = [nr]; nr.steps.splice(1, 0, { t: 'walk', map: '1', x: 7, y: 7 });
+const view = t.rulesTab();
+assert.match(view, /Laufen über 3 Punkte bis \(5, 6\)/, 'Haltepunkte zusammengefasst');
+assert.match(view, /<span class="no">1–3<\/span>/);
+assert.match(view, /10 Schritte/);
+nr.steps.splice(1, 1); nr.name = 'Questreihe Anfang';
+assert.match(t.rulesTab(), /<b>Questreihe Anfang<\/b>/);
 console.log('OK Aufnahme: Haltepunkte, NPC über Namen, Antworttext, Gegenstand, Kartenwechsel, Angriff über Mob-Namen, Rohbefehl; Chat/Handel ausgelassen');
 
 // ── Abspielen: zurück in die Stadt, alles neu ausführen (andere Mob-ID nach Respawn)
