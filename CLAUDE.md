@@ -63,6 +63,8 @@ Panel und Zeitlimit (ab 7.28): Das Panel ist eine Spalte aus Kopf, festem Steuer
 
 Optionen als Kacheln (ab 7.29): Der Tab „Optionen“ zeigt oben Schnellschalter (`qt`: Nebel erkunden, Kampffenster zu, Zagadka-Ton, Zagadka auto) und darunter Kacheln aus `setSections()` mit Symbol, Name und aktuellem Wert. Ein Tipp setzt `setSec` (nur Anzeige, nicht gespeichert) und `setSheet(k)` zeigt nur diesen Bereich mit Zurück-Knopf; erneuter Tipp auf den Tab führt zurück zur Übersicht. Auswahl mit wenigen Werten als Umschalter `segc` (`setv`: optimal, humanize, fogPct, onDeath, pkMode, e2away). Lange Erklärungen stehen hinter `tipBtn(k)`/`tipTxt(k, text)` („i“ an der Überschrift, offen nur bis zum Neuladen), auch in Jagd, Abläufe, E2 und Heros. Der Kopf zeigt Heldenname und Level. Anregungen aus anderen Bot-Oberflächen: Modul-Kacheln mit eigenem Einstellungsbereich (vBot/nExBot), Einstellungen als eigene Ebene statt langer Seite (AdbAutoPlayer).
 
+Pfeile (ab 7.30): Mit angelegtem Bogen (`cl` 4) sind Pfeile (`cl` 21) ein eigener Platz in `gearUpgrades` (vorher fehlten sie, deshalb legte „Beste Ausrüstung“ nie Pfeile an). `arrowStep` prüft beim Jagen (`cfg.on`/E2, nicht während eines Ablaufs) höchstens alle 4 s: kein angelegter Stapel oder `amount` 0 → besten tragbaren Stapel aus der Tasche anlegen, sonst einmal „Keine Pfeile mehr“ melden. „Spieldaten prüfen“ zeigt angelegte Teile mit Platz/Klasse. Test: `tests/smart_sim.js`. Noch nicht im Spiel getestet, vor allem ob Pfeile im Spiel wirklich `cl` 21 haben.
+
 ## Im echten Spiel geprüfte Fakten
 
 - `Engine.hero.d` (x, y, lvl, exp, gold, `warrior_stats`), `hero.autoGoTo({x, y}, false)`, `hero.heroAtackRequest(id, true)`.

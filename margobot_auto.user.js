@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.29
+// @version      7.30
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -1286,7 +1286,27 @@
        passt (reqp). Wert = Level + Bonus für Seltenheit (geschätzt). Waffen nur derselben Klasse wie die angelegte –
        sonst würde z. B. eine Zweihandwaffe den Schild ablegen und der nächste Schritt ihn wieder anlegen. */
     const GEAR_SLOTS = { 9: 'Kopf', 13: 'Hals', 12: 'Ring', 11: 'Hände', 8: 'Rüstung', 10: 'Schuhe', 22: 'Talisman' };
-    const WEAPON_CL = new Set([1, 2, 3, 4, 6]), OFF_CL = new Set([5, 7, 14]);
+    const WEAPON_CL = new Set([1, 2, 3, 4, 6]), OFF_CL = new Set([5, 7, 14]), ARROW_CL = 21;
+    const amountOf = d => { const a = parseStat(d.stat).amount; return a == null ? 1 : +a || 0; };
+    /* Pfeile nachlegen: Mit Bogen verbraucht jeder Kampf Pfeile. Ist der Köcher leer (kein angelegter Stapel oder
+       Menge 0), den besten tragbaren Stapel aus der Tasche anlegen – sonst kämpft der Held ohne Munition weiter. */
+    let arrowAt = -Infinity, arrowWarn = false;
+    function arrowStep() {
+        const now = performance.now();
+        if (now - arrowAt < 4000) return false;
+        arrowAt = now;
+        const w = worn();
+        if (!w.some(d => +d.cl === 4)) return false;
+        const cur = w.find(d => +d.cl === ARROW_CL);
+        if (cur && amountOf(cur) > 0) { arrowWarn = false; return false; }
+        const next = bag().filter(d => +d.cl === ARROW_CL && canWear(d) && amountOf(d) > 0)
+            .sort((a, b) => gearScore(b) - gearScore(a) || amountOf(b) - amountOf(a))[0];
+        if (!next) { if (!arrowWarn) { arrowWarn = true; log('Keine Pfeile mehr in der Tasche'); } return false; }
+        send('moveitem&st=1&id=' + next.id); arrowWarn = false;
+        log(`Pfeile angelegt: ${next.name} (${amountOf(next)})`);
+        busyUntil = now + pause();
+        return true;
+    }
     const RAR_BONUS = { common: 0, unique: 5, upgraded: 8, heroic: 10, legendary: 20, artefact: 25 };
     function gearScore(d) { return (+parseStat(d.stat).lvl || 0) + (RAR_BONUS[rarity(d)] || 0); }
     function canWear(d) {
@@ -1300,6 +1320,8 @@
         const groups = Object.entries(GEAR_SLOTS).map(([cl, slot]) => ({ slot, ok: d => +d.cl === +cl, old: w.find(d => +d.cl === +cl) }));
         groups.push({ slot: 'Waffe', ok: d => weapon ? +d.cl === +weapon.cl : WEAPON_CL.has(+d.cl), old: weapon });
         if (!weapon || ![2, 4].includes(+weapon.cl)) groups.push({ slot: 'Zweithand', ok: d => off ? +d.cl === +off.cl : OFF_CL.has(+d.cl), old: off });
+        // Bogen (cl 4): Pfeile (cl 21) sind ein eigener Platz – fehlten vorher ganz, darum wurden sie nie angelegt
+        if (weapon && +weapon.cl === 4) groups.push({ slot: 'Pfeile', ok: d => +d.cl === ARROW_CL, old: w.find(d => +d.cl === ARROW_CL) });
         for (const g of groups) {
             const best = b.filter(g.ok).sort((x, y) => gearScore(y) - gearScore(x))[0];
             if (best && (!g.old || gearScore(best) > gearScore(g.old))) out.push({ item: best, slot: g.slot, old: g.old });
@@ -2555,6 +2577,7 @@
             return;
         }
         if (battleSeen) { battleSeen = false; atkTries = {}; pkTries = {}; committed = null; lastPlan = null; goal = null; busyUntil = performance.now() + pause(); return; }
+        if ((cfg.on || cfg.e2.on) && !cfg.chain && arrowStep()) return;
         // Ablauf läuft → nur der; sonst Auslöser prüfen (nur wenn der Bot jagt)
         if (cfg.chain) { runChain(); if (performance.now() - renderAt > 400) { renderAt = performance.now(); render(); } return; }
         if (cfg.on) {
@@ -4026,6 +4049,7 @@
             'Spielbefehl _g: ' + (typeof W._g === 'function' ? 'da' : 'FEHLT'),
             'Gegenstände gefunden: ' + it.length + ' (Tasche ' + bag().length + ', angelegt ' + worn().length + ')',
             'Heiltränke: ' + potionCount(),
+            'Angelegt (Platz/Klasse): ' + (worn().map(d => `${d.name} ${d.st}/${d.cl}${parseStat(d.stat).amount ? ' ×' + parseStat(d.stat).amount : ''}`).join(', ') || 'nichts'),
             'Zagadka: ' + (captchaOpen() ? 'offen' : capt.state === 'soon' ? 'kommt bald' : 'keine') + ' · Gerät: ' + (touchDev() ? 'Handy/Touch' : 'PC') +
                 ' · Klick-Art: ' + (cfg.captchaClick || 'noch keine') + ' · jQuery: ' + (typeof (W.jQuery || W.$) === 'function' ? 'da' : 'fehlt') + '\n' + captchaDiag() + '\n' +
                 ' · Elemente „captcha“ im Spiel: ' + (document.querySelectorAll('[class*="captcha"]').length),
