@@ -12,7 +12,7 @@ const g = WORLD['2'][3];
 const params = new URLSearchParams(location.search);
 const npcs = [['Szary wilk',15,'zwi/wilk_szary1.gif',40,55,2],['Szary wilk',15,'zwi/wilk_szary1.gif',44,58,2],['Zjawa',16,'pot/bestia26.gif',50,50,2],
   ['Uzdrowicielka Elena',0,'kob/x.gif',48,58,0]].map((n,i)=>({d:{id:i+1,nick:n[0],lvl:n[1],icon:n[2],x:n[3],y:n[4],type:n[5]}}));
-const items = [{id:601,name:'Rusty Ghoul Blade',loc:'g',st:0,cl:1,stat:'lvl=40'},{id:501,name:'Mała mikstura',loc:'g',st:0,stat:'leczy=150;amount=3'},{id:502,name:'Stalowy miecz',loc:'g',st:0,stat:'lvl=25'},
+const items = [{id:601,name:'Rusty Ghoul Blade',loc:'g',st:0,cl:1,stat:'lvl=40'},{id:501,name:'Mała mikstura',loc:'g',st:0,stat:'leczy=150;amount=3'},{id:502,name:'Stalowy miecz',loc:'g',st:0,cl:1,stat:'lvl=25'},
   {id:503,name:'Drewniana tarcza',loc:'g',st:4,stat:''}];
 window.sent = [];
 window._g = c => { sent.push(c); console.log('_g', c); const m = c.match(/moveitem&st=1&id=(\\d+)/); if (m) { const it = items.find(i=>i.id==m[1]); if (it && /lvl/.test(it.stat)) it.st = 1; } };

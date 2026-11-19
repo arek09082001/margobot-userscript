@@ -67,6 +67,8 @@ Pfeile (ab 7.30): Mit angelegtem Bogen (`cl` 4) sind Pfeile (`cl` 21) ein eigene
 
 Bindung bestätigen (ab 7.31, ausdrücklicher Wunsch des Nutzers): Manche Gegenstände fragen beim Anlegen, ob sie dauerhaft an den Helden gebunden werden. `send()` setzt bei `moveitem&st=1` ein 5-s-Fenster `bindUntil`; nur darin klickt `bindConfirm` im Spiel-Fenster mit Bindungstext (`BIND_Q`) den OK-Knopf (`.alert-accept-hotkey` bzw. Text Tak/OK/Potwierdź) bzw. beantwortet ein `confirm()` mit Bindungstext mit Ja. Andere Rückfragen und Fenster ohne eigenes Anlegen bleiben unberührt. Schalter `cfg.bindOk` (Standard an, Schnellschalter „Bindung bestätigen“ in Optionen). „Beste Ausrüstung“ wartet pro Teil bis 3 s. Test: `tests/smart_sim.js`. Noch nicht im Spiel getestet, vor allem Text und Knopf des echten Bindungsfensters.
 
+Keine Verbrauchsgegenstände anlegen (ab 7.32): `moveitem&st=1` auf einen Trank trinkt ihn. `isWearable` lässt nur Ausrüstung (`GEAR_CL`) und Pfeile zu; `isConsumable` sperrt Tränke/Heilung, Stapel mit `amount` (außer Pfeilen), Quest-, Segen-, Teleport- und zeitbegrenzte Teile sowie alle Klassen außerhalb `GEAR_CL`. Gilt für `gearUpgrades`, `arrowStep` und den Schritt „Ausrüsten“. `findItem` mit leerem Namen findet nichts mehr (vorher passte `''` auf jeden Gegenstand – alte Vorlage „Level-Aufstieg“ mit leerem Ausrüsten-Schritt konnte so einen Trank verbrauchen). „Ausrüsten“ mit leerem Namen oder einem Verbrauchsgegenstand bricht mit Meldung ab; „Benutzen“ verbraucht weiterhin absichtlich. Test: `tests/smart_sim.js`.
+
 ## Im echten Spiel geprüfte Fakten
 
 - `Engine.hero.d` (x, y, lvl, exp, gold, `warrior_stats`), `hero.autoGoTo({x, y}, false)`, `hero.heroAtackRequest(id, true)`.
