@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.30
+// @version      7.31
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -37,7 +37,7 @@
     const DEF = { on: false, picked: {}, lvlOn: false, lvlMin: 1, lvlMax: 300, pauseMin: 300, pauseMax: 900,
                   exits: {}, closeBattle: true, x: null, y: null, open: true,
                   routes: {}, route: '', routePos: 0, rec: null, flow: null, suggestAuto: true, expoAll: false,
-                  onDeath: 'stop', deaths: [], graph: {}, back: null, optimal: true, humanize: 2, limit: { mode: 'off', at: '03:00', hours: 4 }, limitEnd: 0,
+                  onDeath: 'stop', deaths: [], graph: {}, back: null, optimal: true, humanize: 2, limit: { mode: 'off', at: '03:00', hours: 4 }, limitEnd: 0, bindOk: true,
                   names: {}, travel: null, blocked: [], tab: 'xp', logOpen: false, tele: {},
                   rules: [], chain: null, autoCaptcha: false, autoCaptchaConfirm: false, captchaWarn: true,
                   pk: { mode: 'off', maxUp: 5, near: 6, sec: 5, never: '' } };
@@ -1203,7 +1203,9 @@
     const fmtN = n => Number(n || 0).toLocaleString('de-DE');
 
     // Spielzugriff (defensiv: mehrere bekannte Wege, Fehler landen im Verlauf)
+    let bindUntil = 0;                             // nach eigenem Anlegen: Bindungs-Rückfrage bestätigen (bis dann)
     function send(cmd) {
+        if (/^moveitem&st=1&/.test(cmd)) bindUntil = performance.now() + 5000;
         if (typeof W._g === 'function') return W._g(cmd);
         throw new Error('Spielbefehl _g nicht gefunden');
     }
@@ -1406,6 +1408,30 @@
         if (b) { press(b); return true; }
         return false;
     }
+    /* Bindung: Manche Gegenstände fragen beim Anlegen, ob sie dauerhaft an den Helden gebunden werden sollen. Der Nutzer
+       will das bestätigt haben (Einstellung „Bindung bestätigen“, Standard an). Nur in den 5 s nach einem eigenen
+       Anlege-Befehl des Bots und nur bei einem Fenster, dessen Text nach Bindung klingt – andere Rückfragen bleiben. */
+    const BIND_Q = /wiąz|związ|zwiaz|wiaza|bind|bound|gebunden|binden|na stałe|na stale|permanent/i;
+    const BIND_OK = /^\s*(tak|yes|ok|ja|potwierd\w*|akceptuj\w*|zatwierd\w*|accept)\s*[.!]?\s*$/i;
+    function bindConfirm() {
+        if (cfg.bindOk === false || !document.querySelectorAll) return false;
+        const near = el => { for (let w = el.parentElement, i = 0; w && w !== document.body && i < 8; w = w.parentElement, i++) {
+            const t = w.innerText || ''; if (t.length > 600) return false; if (BIND_Q.test(t)) return true; } return false; };
+        const cand = [...document.querySelectorAll('.alert-accept-hotkey, .alert-window button, .mAlert button, [class*="alert"] .button, [class*="confirm"] button, .question-wnd button')]
+            .filter(b => b.offsetWidth && !(b.closest && b.closest('#mba')));
+        const b = cand.find(x => /alert-accept-hotkey/.test(x.className || '') && near(x)) || cand.find(x => BIND_OK.test(x.innerText || '') && near(x));
+        if (!b) return false;
+        press(b); bindUntil = 0;
+        log('Bindung an den Helden bestätigt');
+        return true;
+    }
+    try {                                          // falls das Spiel dafür confirm() nutzt
+        const oc2 = W.confirm;
+        if (typeof oc2 === 'function') W.confirm = function (m) {
+            if (cfg.bindOk !== false && bindUntil > performance.now() && BIND_Q.test(String(m || ''))) { bindUntil = 0; log('Bindung an den Helden bestätigt'); return true; }
+            return oc2.apply(this, arguments);
+        };
+    } catch (e) { }
     function dialogOpen() { return document.querySelector('.dialogue-window.is-open'); }
     function shopOpen() { const g = document.querySelector('.shop-items'); return g && g.offsetWidth ? g : null; }
 
@@ -1425,7 +1451,7 @@
                 /* Pro Platz das stärkste tragbare Teil aus der Tasche anlegen, eins nach dem anderen. */
                 if (st.wait && now < st.wait) return 'run';
                 if (st.sentId != null) {
-                    if (!worn().some(d => d.id === st.sentId) && now - st.sentAt < 1500) return 'run';
+                    if (!worn().some(d => d.id === st.sentId) && now - st.sentAt < 3000) return 'run';   // Platz für Bindungs-Rückfrage
                     st.tried = (st.tried || []).concat([st.sentId]); st.sentId = null;
                 }
                 const up = gearUpgrades().filter(u => !(st.tried || []).includes(u.item.id));
@@ -2564,6 +2590,7 @@
         watchBattle();
         watchPlayers();
         if (watchCaptcha()) return;                                // Rätsel offen → nichts tun, bis es gelöst ist
+        if (bindUntil > performance.now() && bindConfirm()) return;
         if (!running() || performance.now() < busyUntil) return;
         const e = E();
         if (!loadCols()) return;                                       // Karte lädt noch
@@ -3767,7 +3794,7 @@
         const qc = (k, label, on) => `<button class="qc ${on ? 'on' : ''}" data-a="qt" data-k="${k}">${ico(on ? 'check' : 'x')}${label}</button>`;
         return `${heroNick ? `<div class="who">${ico('user')}<b>${esc(heroNick)}</b><span>eigene Einstellungen pro Held</span></div>` : ''}
             <div class="qchips">${qc('fogExplore', 'Nebel erkunden', cfg.fogExplore !== false)}${qc('closeBattle', 'Kampffenster zu', cfg.closeBattle)}
-              ${qc('captchaWarn', 'Zagadka-Ton', cfg.captchaWarn !== false)}${qc('autoCaptcha', 'Zagadka auto', cfg.autoCaptcha)}</div>
+              ${qc('captchaWarn', 'Zagadka-Ton', cfg.captchaWarn !== false)}${qc('autoCaptcha', 'Zagadka auto', cfg.autoCaptcha)}${qc('bindOk', 'Bindung bestätigen', cfg.bindOk !== false)}</div>
             <div class="tiles">${secs.map(([k, icon, name, val, warn]) => `<button class="tile ${warn ? 'warn' : ''}" data-a="sec" data-s="${k}">
               <span class="ti">${ico(icon)}</span><b>${name}</b><span class="tv">${esc(val)}</span></button>`).join('')}</div>
             <div class="hint perf" style="margin-top:12px"></div>`;
@@ -4635,7 +4662,7 @@
         if (a === 'sec') { setSec = el.dataset.s || null; lastStatic = ''; render(); const bd = box.querySelector('.bd'); if (bd) bd.scrollTop = 0; return; }
         if (a === 'tip') { const k = el.dataset.k; if (tips.has(k)) tips.delete(k); else tips.add(k); lastStatic = ''; render(); return; }
         if (a === 'qt') {
-            const k = el.dataset.k, on = k === 'fogExplore' || k === 'captchaWarn' ? cfg[k] !== false : !!cfg[k];
+            const k = el.dataset.k, on = k === 'fogExplore' || k === 'captchaWarn' || k === 'bindOk' ? cfg[k] !== false : !!cfg[k];
             cfg[k] = !on; if (k === 'fogExplore' && on) fog.on = false;
             save(); lastStatic = ''; render(); return;
         }

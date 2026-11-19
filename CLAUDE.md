@@ -65,6 +65,8 @@ Optionen als Kacheln (ab 7.29): Der Tab „Optionen“ zeigt oben Schnellschalte
 
 Pfeile (ab 7.30): Mit angelegtem Bogen (`cl` 4) sind Pfeile (`cl` 21) ein eigener Platz in `gearUpgrades` (vorher fehlten sie, deshalb legte „Beste Ausrüstung“ nie Pfeile an). `arrowStep` prüft beim Jagen (`cfg.on`/E2, nicht während eines Ablaufs) höchstens alle 4 s: kein angelegter Stapel oder `amount` 0 → besten tragbaren Stapel aus der Tasche anlegen, sonst einmal „Keine Pfeile mehr“ melden. „Spieldaten prüfen“ zeigt angelegte Teile mit Platz/Klasse. Test: `tests/smart_sim.js`. Noch nicht im Spiel getestet, vor allem ob Pfeile im Spiel wirklich `cl` 21 haben.
 
+Bindung bestätigen (ab 7.31, ausdrücklicher Wunsch des Nutzers): Manche Gegenstände fragen beim Anlegen, ob sie dauerhaft an den Helden gebunden werden. `send()` setzt bei `moveitem&st=1` ein 5-s-Fenster `bindUntil`; nur darin klickt `bindConfirm` im Spiel-Fenster mit Bindungstext (`BIND_Q`) den OK-Knopf (`.alert-accept-hotkey` bzw. Text Tak/OK/Potwierdź) bzw. beantwortet ein `confirm()` mit Bindungstext mit Ja. Andere Rückfragen und Fenster ohne eigenes Anlegen bleiben unberührt. Schalter `cfg.bindOk` (Standard an, Schnellschalter „Bindung bestätigen“ in Optionen). „Beste Ausrüstung“ wartet pro Teil bis 3 s. Test: `tests/smart_sim.js`. Noch nicht im Spiel getestet, vor allem Text und Knopf des echten Bindungsfensters.
+
 ## Im echten Spiel geprüfte Fakten
 
 - `Engine.hero.d` (x, y, lvl, exp, gold, `warrior_stats`), `hero.autoGoTo({x, y}, false)`, `hero.heroAtackRequest(id, true)`.

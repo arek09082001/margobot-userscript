@@ -9,7 +9,7 @@ const realNow = Date.now;
 let clock = new Date(2026, 10, 19, 22, 0, 0).getTime();
 Date.now = () => clock;
 
-function setup({ items = [], lvl = 25, prof = 'p', settings = {} } = {}) {
+function setup({ items = [], lvl = 25, prof = 'p', settings = {}, popupText = null } = {}) {
     let perf = 0;
     const sent = [], logs = [];
     const hero = { d: { x: 5, y: 5, lvl, prof, exp: 0, warrior_stats: { hp: 100, maxhp: 100 } }, autoGoTo() {}, heroAtackRequest() {} };
@@ -23,20 +23,27 @@ function setup({ items = [], lvl = 25, prof = 'p', settings = {} } = {}) {
         sent.push(c);
         const m = c.match(/^moveitem&st=1&id=(\d+)$/);
         if (!m) return;
-        const it = items.find(d => d.id === +m[1]), st = SLOT[it.cl];
-        for (const d of items) if (d.st === st) d.st = 0;
-        it.st = st;
+        const it = items.find(d => d.id === +m[1]);
+        if (it.bind) { popup = { it, text: popupText || 'Ten przedmiot zostanie związany z Twoją postacią na stałe.' }; return; }
+        wear(it);
     };
+    const wear = it => { const st = SLOT[it.cl]; for (const d of items) if (d.st === st) d.st = 0; it.st = st; };
+    let popup = null; const pressed = [];
+    const btn = () => ({ className: 'button alert-accept-hotkey', offsetWidth: 40, innerText: 'OK', closest: () => null,
+        parentElement: { innerText: popup.text + '\nOK  Anuluj', parentElement: null },
+        getBoundingClientRect: () => ({ left: 0, top: 0, width: 40, height: 20 }),
+        dispatchEvent(ev) { if (ev.type === 'click' && popup) { pressed.push(popup.text); wear(popup.it); popup = null; } } });
     const el = () => ({ style: {}, dataset: {}, addEventListener() {}, appendChild() {}, closest: () => null,
         querySelector: () => null, querySelectorAll: () => [], set innerHTML(s) {} });
     const W = { Engine, _g, prompt: () => null, confirm: () => true }, timers = [];
     const store = { mbauto: Object.assign({ humanize: 0, on: false, pauseMin: 0, pauseMax: 0 }, settings) };
     const sb = { unsafeWindow: W, GM_getValue: (k, d) => store[k] ?? d, GM_setValue: (k, v) => store[k] = v, GM_notification() {}, logs,
-        document: { createElement: el, head: el(), body: el(), addEventListener() {}, querySelector: () => null },
+        document: { createElement: el, head: el(), body: el(), addEventListener() {}, querySelector: () => null, querySelectorAll: () => popup ? [btn()] : [] },
+        MouseEvent: class { constructor(type) { this.type = type; } },
         innerWidth: 1400, innerHeight: 900, setInterval: f => timers.push(f), performance: { now: () => perf } };
     new Function(...Object.keys(sb), src)(...Object.values(sb));
     const tick = (n, ms = 200) => { for (let i = 0; i < n; i++) { perf += ms; clock += ms; timers[0](); } };
-    return { tick, sent, logs, hero, items, t: W.test };
+    return { tick, sent, logs, hero, items, t: W.test, pressed, showPopup: text => { popup = { it: items[0], text }; }, get popup() { return popup; } };
 }
 let fail = 0;
 const check = (name, ok, info) => { console.log((ok ? 'OK     ' : 'FEHLER ') + name + (info ? ' | ' + info : '')); if (!ok) fail = 1; };
@@ -139,6 +146,30 @@ const BOW = () => [
     const s = setup({ items, prof: 'h', settings: { on: true } });
     s.tick(30);
     check('Ohne Bogen: keine Pfeile anlegen', !s.sent.some(c => /moveitem/.test(c)) && !s.t.gearUpgrades().some(u => u.slot === 'Pfeile'));
+}
+// ── Bindung (ab 7.31): Rückfrage nach eigenem Anlegen bestätigen, sonst nichts anklicken
+{
+    const items = ITEMS(); items.find(d => d.id === 2).bind = 1;                    // besserer Helm fragt nach Bindung
+    const s = setup({ items, settings: { on: true, rules: [{ id: 'g', on: true, when: { t: 'lvlup', n: 1 }, steps: [{ t: 'gear' }] }] } });
+    s.tick(5); s.hero.d.lvl = 26; s.tick(60);
+    check('Bindungs-Rückfrage bestätigt, Helm angelegt', s.pressed.length === 1 && items.find(d => d.id === 2).st > 0 && s.logs.some(l => /Bindung/.test(l)));
+}
+{
+    const items = ITEMS(); items.find(d => d.id === 2).bind = 1;
+    const s = setup({ items, popupText: 'Czy na pewno chcesz sprzedać ten przedmiot?', settings: { on: true, rules: [{ id: 'g', on: true, when: { t: 'lvlup', n: 1 }, steps: [{ t: 'gear' }] }] } });
+    s.tick(5); s.hero.d.lvl = 26; s.tick(60);
+    check('Andere Rückfrage (Verkaufen) wird nicht angeklickt', s.pressed.length === 0);
+}
+{
+    const s = setup({ items: ITEMS(), settings: { on: true } });
+    s.tick(3); s.showPopup('Ten przedmiot zostanie związany z Twoją postacią.'); s.tick(20);
+    check('Ohne eigenes Anlegen: Bindungsfenster bleibt unberührt', s.pressed.length === 0 && s.popup);
+}
+{
+    const items = ITEMS(); items.find(d => d.id === 2).bind = 1;
+    const s = setup({ items, settings: { on: true, bindOk: false, rules: [{ id: 'g', on: true, when: { t: 'lvlup', n: 1 }, steps: [{ t: 'gear' }] }] } });
+    s.tick(5); s.hero.d.lvl = 26; s.tick(60);
+    check('Einstellung aus: nicht bestätigen', s.pressed.length === 0);
 }
 Date.now = realNow;
 process.exit(fail);
