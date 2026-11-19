@@ -171,5 +171,21 @@ const BOW = () => [
     s.tick(5); s.hero.d.lvl = 26; s.tick(60);
     check('Einstellung aus: nicht bestätigen', s.pressed.length === 0);
 }
+// ── Verbrauchsgegenstände (ab 7.32): nie „anlegen“ – moveitem auf einen Trank trinkt ihn
+{
+    const items = ITEMS().concat([
+        { id: 30, name: 'Trank mit Helmklasse', loc: 'g', st: 0, cl: 9, stat: 'lvl=24;leczy=500;amount=3' },
+        { id: 31, name: 'Schriftrolle', loc: 'g', st: 0, cl: 16, stat: 'lvl=24' },
+        { id: 32, name: 'Stapel Ringe', loc: 'g', st: 0, cl: 12, stat: 'lvl=24;amount=10' }]);
+    const s = setup({ items });
+    s.tick(1);
+    const up = s.t.gearUpgrades().map(u => u.item.id);
+    check('Beste Ausrüstung: keine Tränke, Verbrauchs- oder Stapelteile', !up.some(id => id >= 30) && !up.includes(11), JSON.stringify(up));
+}
+for (const [name, why] of [['', 'leerer Name'], ['Heiltrank', 'Trank als „Ausrüsten“']]) {
+    const s = setup({ items: ITEMS(), settings: { on: true, rules: [{ id: 'e', on: true, when: { t: 'hand' }, steps: [{ t: 'equip', name }] }] } });
+    s.tick(2); s.t.startRule(s.t.cfg.rules[0], 'Test'); s.tick(10);
+    check(`Schritt „Ausrüsten“ (${why}): nichts angelegt oder verbraucht`, !s.sent.some(c => /moveitem/.test(c)) && s.t.cfg.chain === null);
+}
 Date.now = realNow;
 process.exit(fail);

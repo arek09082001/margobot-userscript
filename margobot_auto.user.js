@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.31
+// @version      7.32
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -1260,7 +1260,7 @@
     }
     const bag = () => allItems().filter(d => (d.loc === 'g' || !d.loc) && !(+d.st > 0));
     const worn = () => allItems().filter(d => (d.loc === 'g' || !d.loc) && +d.st > 0);
-    const findItem = (list, name) => { const q = fold(name); return list.find(d => fold(d.name) === q) || list.find(d => fold(d.name).includes(q)); };
+    const findItem = (list, name) => { const q = fold(name); if (!q.trim()) return null; return list.find(d => fold(d.name) === q) || list.find(d => fold(d.name).includes(q)); };
     /* Verkaufen: nur Ausrüstung aus der Tasche (Waffen, Rüstung, Schmuck, Talismane – Klassen 1–14, 22),
        nie angelegte Sachen, Tränke, Quest-, Schlüssel- oder Verbrauchsgegenstände. Seltenheit aus dem Stat
        (rarity=… bzw. unique/heroic/legendary); „normal“ behält alles Seltene. */
@@ -1290,6 +1290,16 @@
     const GEAR_SLOTS = { 9: 'Kopf', 13: 'Hals', 12: 'Ring', 11: 'Hände', 8: 'Rüstung', 10: 'Schuhe', 22: 'Talisman' };
     const WEAPON_CL = new Set([1, 2, 3, 4, 6]), OFF_CL = new Set([5, 7, 14]), ARROW_CL = 21;
     const amountOf = d => { const a = parseStat(d.stat).amount; return a == null ? 1 : +a || 0; };
+    /* Anlegen nur, was am Helden bleibt: Rüstung, Schmuck, Waffen (GEAR_CL) und bei Bogen Pfeile. Alles, was beim
+       „Anlegen“ verbraucht würde (Tränke, Heilung, Stapel mit Menge, Bücher, Segen …), ist tabu – „moveitem&st=1“
+       auf einen Trank trinkt ihn. Pfeile sind die einzige Ausnahme mit Menge. */
+    function isConsumable(d) {
+        const p = parseStat(d.stat);
+        if (isPotion(d) || p.leczy || p.fullheal || p.perheal || p.timelimit || p.quest || p.bless || p.teleport) return true;
+        if (+d.cl === ARROW_CL) return false;
+        return p.amount != null || !GEAR_CL.has(+d.cl);
+    }
+    const isWearable = d => (GEAR_CL.has(+d.cl) || +d.cl === ARROW_CL) && !isConsumable(d);
     /* Pfeile nachlegen: Mit Bogen verbraucht jeder Kampf Pfeile. Ist der Köcher leer (kein angelegter Stapel oder
        Menge 0), den besten tragbaren Stapel aus der Tasche anlegen – sonst kämpft der Held ohne Munition weiter. */
     let arrowAt = -Infinity, arrowWarn = false;
@@ -1301,7 +1311,7 @@
         if (!w.some(d => +d.cl === 4)) return false;
         const cur = w.find(d => +d.cl === ARROW_CL);
         if (cur && amountOf(cur) > 0) { arrowWarn = false; return false; }
-        const next = bag().filter(d => +d.cl === ARROW_CL && canWear(d) && amountOf(d) > 0)
+        const next = bag().filter(d => +d.cl === ARROW_CL && isWearable(d) && canWear(d) && amountOf(d) > 0)
             .sort((a, b) => gearScore(b) - gearScore(a) || amountOf(b) - amountOf(a))[0];
         if (!next) { if (!arrowWarn) { arrowWarn = true; log('Keine Pfeile mehr in der Tasche'); } return false; }
         send('moveitem&st=1&id=' + next.id); arrowWarn = false;
@@ -1317,7 +1327,7 @@
         return !(p.reqp && prof && !String(p.reqp).includes(prof));
     }
     function gearUpgrades() {
-        const w = worn(), b = bag().filter(canWear), out = [];
+        const w = worn(), b = bag().filter(d => isWearable(d) && canWear(d)), out = [];
         const weapon = w.find(d => WEAPON_CL.has(+d.cl)), off = w.find(d => OFF_CL.has(+d.cl));
         const groups = Object.entries(GEAR_SLOTS).map(([cl, slot]) => ({ slot, ok: d => +d.cl === +cl, old: w.find(d => +d.cl === +cl) }));
         groups.push({ slot: 'Waffe', ok: d => weapon ? +d.cl === +weapon.cl : WEAPON_CL.has(+d.cl), old: weapon });
@@ -1463,7 +1473,9 @@
             }
             case 'equip': case 'use': {
                 if (!st.sent) {
-                    const d = findItem(bag(), s.name);
+                    if (!String(s.name || '').trim()) return 'kein Gegenstand gewählt';
+                    const d = findItem(s.t === 'equip' ? bag().filter(isWearable) : bag(), s.name);
+                    if (!d && s.t === 'equip' && findItem(bag(), s.name)) return `„${s.name}“ ist kein Ausrüstungsteil – würde verbraucht, nicht angelegt`;
                     if (!d) return s.t === 'equip' && findItem(worn(), s.name) ? 'ok' : `„${s.name}“ nicht in der Tasche`;
                     st.id = d.id; send('moveitem&st=1&id=' + d.id); st.sent = now;
                     log((s.t === 'equip' ? 'Rüste aus: ' : 'Benutze: ') + d.name);
