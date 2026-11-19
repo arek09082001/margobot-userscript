@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.28
+// @version      7.29
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -2462,7 +2462,7 @@
     }
     function herosTab() {
         const s = cfg.heros, h = heroChoice();
-        return `<h4>Heros suchen</h4>${!herosCatalog.length ? '<div class="empty">Noch keine belegte Spawnliste geladen. Hero-Daten fehlen in der Weltkarte. Importiere eine geprüfte Liste mit Karten und Koordinaten.</div>' :
+        return `<h4>Heros suchen ${tipBtn('heros')}</h4>${tipTxt('heros', 'Fasst Spawnpunkte pro Karte zusammen und verbessert die Kartenfolge. Sichtweite genügt zum Prüfen mehrerer Punkte. Beim sichtbaren Hero bis auf 1 Feld herangehen, stoppen und Ton abspielen. Der Hero wird nicht angegriffen. Unbekannte Wege werden als ungeprüft angezeigt.')}${!herosCatalog.length ? '<div class="empty">Noch keine belegte Spawnliste geladen. Hero-Daten fehlen in der Weltkarte. Importiere eine geprüfte Liste mit Karten und Koordinaten.</div>' :
             `<select data-a="herosSelect" ${s.on ? 'disabled' : ''}><option value="">Hero wählen …</option>${herosCatalog.map(h => `<option value="${esc(h.name)}" ${h.name === s.selected ? 'selected' : ''}>${esc(h.name)} · ${h.points.length} Spawnpunkte</option>`).join('')}</select>`}
             <button class="btn" data-a="herosImport" ${running() ? 'disabled' : ''}>Spawnliste importieren</button>
             <label class="chk"><input type="checkbox" data-a="herosRepeat" ${s.repeat ? 'checked' : ''} ${s.on ? 'disabled' : ''}>Suchrunde wiederholen</label>
@@ -2472,7 +2472,7 @@
             <div class="hint">${esc(s.status || 'Bereit')} · ${s.rounds} Runden · ${s.index}/${s.route.length} Routenpunkte · ${s.skipped.length} ungeprüft</div>
             ${s.soundError ? `<div class="hint">${esc(s.soundError)}</div>` : ''}
             <button class="btn" data-a="herosSound">Ton testen</button>
-            <div class="hint">Fasst Spawnpunkte pro Karte zusammen und verbessert die Kartenfolge. Sichtweite genügt zum Prüfen mehrerer Punkte. Beim sichtbaren Hero bis auf 1 Feld herangehen, stoppen und Ton abspielen. Der Hero wird nicht angegriffen. Unbekannte Wege werden als ungeprüft angezeigt.</div>`;
+            `;
     }
 
     function e2Notify(msg) {                       // Benachrichtigung, kurzer Ton, am Handy Vibration
@@ -3226,6 +3226,37 @@
     #mba .star{font-style:normal;color:var(--amb);font-size:11px;font-weight:600;margin-left:6px;white-space:nowrap}
     #mba .spot:disabled{opacity:.55;cursor:default}
     #mba .rule details.sd{margin-top:2px;border-top:0;padding-top:0}
+    /* Optionen: Schnellschalter, Kacheln, Detailansicht */
+    #mba .hn{font:600 12.5px/1 'Segoe UI',sans-serif;color:var(--dim);margin-left:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    #mba .who{display:flex;align-items:center;gap:7px;color:var(--mut);margin-bottom:12px;font-size:12.5px}
+    #mba .who b{color:var(--tx);font-weight:600} #mba .who span{color:var(--dim)}
+    #mba .qchips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+    #mba .qc{display:inline-flex;align-items:center;gap:5px;padding:7px 11px 7px 9px;border-radius:999px;background:var(--bg2);border:1px solid var(--line);color:var(--dim);font-size:12.5px;transition:all .15s}
+    #mba .qc svg{width:13px;height:13px;stroke-width:2.4} #mba .qc:hover{color:var(--mut)}
+    #mba .qc.on{background:rgba(232,169,60,.13);border-color:rgba(232,169,60,.7);color:var(--amb2)}
+    #mba .tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    #mba .tile{display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;column-gap:10px;align-items:center;text-align:left;
+         padding:11px 11px;border-radius:12px;background:var(--bg2);border:1px solid transparent;transition:background .15s,border-color .15s,transform .1s}
+    #mba .tile:hover{background:var(--bg3);border-color:var(--line)} #mba .tile:active{transform:scale(.98)}
+    #mba .tile .ti{grid-row:1/3;width:36px;height:36px;border-radius:10px;display:grid;place-items:center;background:rgba(232,169,60,.12);color:var(--amb2)}
+    #mba .tile .ti svg{width:19px;height:19px}
+    #mba .tile b{font:700 14px/1.2 var(--disp)} #mba .tile .tv{font-size:11.5px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+    #mba .tile.warn{border-color:rgba(236,122,106,.55)} #mba .tile.warn .ti{background:rgba(236,122,106,.14);color:var(--bad)} #mba .tile.warn .tv{color:var(--bad)}
+    #mba .shd{display:flex;align-items:center;gap:8px;margin:-2px 0 14px}
+    #mba .shd .back{display:inline-flex;align-items:center;gap:3px;color:var(--mut);padding:6px 9px 6px 4px;border-radius:8px;font-size:12.5px}
+    #mba .shd .back:hover{background:var(--bg2);color:var(--tx)}
+    #mba .shd .shi{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:rgba(232,169,60,.12);color:var(--amb2);margin-left:auto}
+    #mba .shd b{font:700 17px/1 var(--disp)}
+    #mba .segc{display:flex;padding:3px;gap:3px;border-radius:10px;background:var(--bg2);border:1px solid var(--line)}
+    #mba .segc button{flex:1;padding:8px 6px;border-radius:7px;color:var(--mut);font:600 13px/1 var(--disp);white-space:nowrap}
+    #mba .segc button:hover{color:var(--tx)} #mba .segc button.on{background:var(--amb);color:var(--ambtx)}
+    #mba .ii{display:inline-grid;place-items:center;width:17px;height:17px;border-radius:50%;border:1px solid var(--line);color:var(--dim);
+         font:italic 700 10.5px/1 Georgia,serif;margin-left:6px;vertical-align:1px;text-transform:none;letter-spacing:0}
+    #mba .ii:hover,#mba .ii.on{border-color:var(--amb);color:var(--amb2)}
+    #mba .tipx{background:var(--bg2);border-left:2px solid var(--amb);padding:7px 9px;border-radius:0 7px 7px 0;color:var(--mut)}
+    #mba .chk.big{padding:7px 0;font-size:14px} #mba .chk.big input{width:16px;height:16px}
+    #mba .big1{font:700 30px/1 var(--disp);color:var(--amb2);display:flex;align-items:baseline;gap:8px;margin:2px 0 10px}
+    #mba .big1 span{font:500 13px/1 'Segoe UI',sans-serif;color:var(--mut)}
     /* Handy/Tablet: Finger statt Maus – größere Tippflächen, Kopfzeile ist Griff, Inhalt scrollt per Wischen (siehe touch-Handler) */
     @media (pointer:coarse){
       #mba .ib{width:34px;height:34px}
@@ -3357,6 +3388,16 @@
         edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>',
         trash: '<path d="M5 7h14M10 7V4.5h4V7M7 7l1 13h8l1-13"/>',
         clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+        back: '<path d="m15 6-6 6 6 6"/>',
+        target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r=".6"/>',
+        door: '<path d="M6 21V4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21M4 21h16"/><circle cx="14.5" cy="12" r=".8"/>',
+        dice: '<rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r=".9"/><circle cx="15" cy="15" r=".9"/><circle cx="15" cy="9" r=".9"/><circle cx="9" cy="15" r=".9"/>',
+        cloud: '<path d="M7 18h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.2 9.5 4.3 4.3 0 0 0 7 18z"/>',
+        puzzle: '<circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.5a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.4v.6"/><circle cx="12" cy="16.8" r=".6"/>',
+        users: '<circle cx="9" cy="8.5" r="3.2"/><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"/><path d="M15.5 5.6a3.2 3.2 0 0 1 0 5.8M17 14.3c1.8.6 3 2.2 3.5 4.7"/>',
+        skull: '<path d="M12 3.5c-4.4 0-7.5 3-7.5 7 0 2.4 1.2 4 2.8 5v3h9.4v-3c1.6-1 2.8-2.6 2.8-5 0-4-3.1-7-7.5-7z"/><circle cx="9.2" cy="11" r="1.4"/><circle cx="14.8" cy="11" r="1.4"/><path d="M10.5 18.5v-2M13.5 18.5v-2"/>',
+        spark: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18"/>',
+        user: '<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.8-3.8 3.6-6 7-6s6.2 2.2 7 6"/>',
         x: '<path d="M6 6l12 12M18 6 6 18"/>', plus: '<path d="M12 5v14M5 12h14"/>', check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>'
     };
     const ico = n => `<svg viewBox="0 0 24 24">${I[n]}</svg>`;
@@ -3593,7 +3634,7 @@
     function suggestionsHtml() {
         refreshSug();
         const [lo, hi] = suggestionRange(), sg = sugList || [];
-        return `<h4>${cfg.expoAll ? 'Alle Forum-XP-Routen' : 'XP-Routen für Level ' + lo + '–' + hi}</h4>
+        return `<h4>${cfg.expoAll ? 'Alle Forum-XP-Routen' : 'XP-Routen für Level ' + lo + '–' + hi} ${tipBtn('sug')}</h4>
             <label class="chk"><input type="checkbox" data-a="suggestAuto" ${cfg.suggestAuto ? 'checked' : ''}>Automatisch passend zu meinem Level</label>
             <button class="sub" data-a="expoall">${cfg.expoAll ? 'Nur passende Vorschläge zeigen' : 'Alle ' + FORUM_EXPOWISKA.length + ' Forum-Gebiete anzeigen'}</button>` +
             (!world ? '<div class="hint">Erst die Weltkarte laden.</div>' : sg.length ?
@@ -3604,7 +3645,8 @@
                 <span class="ds">${!o.n ? 'Mob-Daten fehlen' : !Number.isFinite(o.d) ? 'Anreise nicht bekannt' : o.d < 1 ? 'hier' : Math.round(o.d) + ' Schr.'}</span>
                 <span class="mt">${o.cards} ${o.cards === 1 ? 'Karte' : 'Karten'} · ${o.n} Mobs${o.totalCards > o.cards ? ` · Teil (${o.cards}/${o.totalCards} Karten)` : ''} · ${o.source === 'forum' ? 'Forum' : 'berechnet'}</span>
                 <span class="mt xpl">${xpLine(o.r)}</span></button>`).join('')}</div>
-                <div class="hint">${sg.some(o => o.source === 'forum') ? 'Gebiete aus dem Forum (23.06.2026), Rundgänge anhand der Weltkarte berechnet. ~Level ist der Mob-Durchschnitt, keine Heldenempfehlung.' : 'Aus der Weltkarte berechnet.'} Antippen übernimmt den Rundgang und den Mob-Level-Bereich; gestartet wird erst mit „Route starten“. ${running() ? 'Zum Wechseln zuerst stoppen.' : ''}</div>` :
+                <div class="hint">${sg.some(o => o.source === 'forum') ? 'Forum (23.06.2026)' : 'Aus der Weltkarte berechnet'} · Antippen übernimmt, Start oben.</div>
+                ${tipTxt('sug', `${sg.some(o => o.source === 'forum') ? 'Gebiete aus dem Forum, Rundgänge anhand der Weltkarte berechnet. Level ist der Mob-Durchschnitt, keine Heldenempfehlung.' : ''} Antippen übernimmt den Rundgang und den Mob-Level-Bereich; gestartet wird erst mit „Route starten“. ${running() ? 'Zum Wechseln zuerst stoppen.' : ''}`)}` :
             '<div class="hint">Keine erreichbare Rundroute für diesen Bereich. Andere Level wählen oder einen einzelnen XP-Ort nutzen.</div>');
     }
 
@@ -3669,82 +3711,96 @@
             <details ${cfg.logOpen ? 'open' : ''}><summary>${ico('chev')}Verlauf</summary><div class="log"></div></details>`;
     }
 
+    /* Optionen: oben Schnellschalter, darunter Kacheln (Symbol, Name, aktueller Wert). Ein Tipp öffnet nur diesen
+       Bereich – wie die Modul-Kacheln anderer Bots, statt einer langen Seite voller Text. Erklärungen stehen hinter „i“. */
+    let setSec = null;
+    const tips = new Set();
+    const tipBtn = k => `<button class="ii ${tips.has(k) ? 'on' : ''}" data-a="tip" data-k="${k}" title="Erklärung">i</button>`;
+    const tipTxt = (k, text) => tips.has(k) ? `<div class="hint tipx">${text}</div>` : '';
+    const segc = (f, cur, list) => `<div class="segc">${list.map(([v, l]) =>
+        `<button class="${String(v) === String(cur) ? 'on' : ''}" data-a="setv" data-f="${f}" data-v="${v}">${l}</button>`).join('')}</div>`;
+    const HUM_L = ['aus', 'wenig', 'normal', 'viel'];
+    function setSections() {
+        const mn = mapName(), gw = gateways(), picked = Object.values(cfg.picked || {}).filter(Boolean).length;
+        const exitG = gw.find(g => String(g.id) === String(cfg.exits[mn]));
+        const teleN = Object.values(cfg.tele || {}).reduce((n, o) => n + Object.keys(o).length, 0);
+        return [
+            ['goal', 'target', 'Ziele', (cfg.lvlOn ? `Lvl ${cfg.lvlMin}–${cfg.lvlMax}` : 'nur Auswahl') + (picked ? ` + ${picked}` : '')],
+            cfg.route ? null : ['empty', 'door', 'Leere Karte', exitG ? '→ ' + exitG.name : 'warten'],
+            ['move', 'dice', 'Laufen', `Zufall ${HUM_L[cfg.humanize == null ? 2 : +cfg.humanize]} · ${cfg.optimal ? 'kurz' : 'nächster'}`],
+            ['fog', 'cloud', 'Nebel', cfg.fogExplore !== false ? `an · ${+cfg.fogPct || 100} %` : 'aus'],
+            ['capt', 'puzzle', 'Zagadka', (cfg.autoCaptcha ? 'automatisch' : 'von Hand') + (cfg.captchaWarn !== false ? ' · Ton' : '')],
+            ['pk', 'users', 'Andere Spieler', { off: 'ignorieren', follow: 'bei Verfolger', any: 'bei jedem' }[cfg.pk.mode] || cfg.pk.mode],
+            ['death', 'skull', 'Bei Tod', (cfg.onDeath === 'back' ? 'zurücklaufen' : 'stoppen') + ((cfg.deaths || []).length ? ` · ${cfg.deaths.length}×` : '')],
+            ['world', 'map', 'Weltkarte', world ? fmt(worldN()) + ' Karten' : 'fehlt', !world],
+            ['tele', 'spark', 'Teleporter', teleN ? teleN + ' bekannt' : 'keiner'],
+            ['goto', 'pin', 'Zu Karte', world ? 'Ziel suchen' : 'Weltkarte fehlt']
+        ].filter(Boolean);
+    }
     function setTab() {
-        const here = {};
-        for (const m of mobs()) {
-            const h = here[m.key] || (here[m.key] = { nick: m.nick, n: 0, lmin: m.lvl, lmax: m.lvl });
-            h.n++; h.lmin = Math.min(h.lmin, m.lvl); h.lmax = Math.max(h.lmax, m.lvl);
+        const secs = setSections(), sec = setSec && secs.find(x => x[0] === setSec);
+        if (sec) return `<div class="shd"><button class="back" data-a="sec" data-s="">${ico('back')}Optionen</button>
+            <span class="shi">${ico(sec[1])}</span><b>${sec[2]}</b></div>${setSheet(sec[0])}`;
+        const qc = (k, label, on) => `<button class="qc ${on ? 'on' : ''}" data-a="qt" data-k="${k}">${ico(on ? 'check' : 'x')}${label}</button>`;
+        return `${heroNick ? `<div class="who">${ico('user')}<b>${esc(heroNick)}</b><span>eigene Einstellungen pro Held</span></div>` : ''}
+            <div class="qchips">${qc('fogExplore', 'Nebel erkunden', cfg.fogExplore !== false)}${qc('closeBattle', 'Kampffenster zu', cfg.closeBattle)}
+              ${qc('captchaWarn', 'Zagadka-Ton', cfg.captchaWarn !== false)}${qc('autoCaptcha', 'Zagadka auto', cfg.autoCaptcha)}</div>
+            <div class="tiles">${secs.map(([k, icon, name, val, warn]) => `<button class="tile ${warn ? 'warn' : ''}" data-a="sec" data-s="${k}">
+              <span class="ti">${ico(icon)}</span><b>${name}</b><span class="tv">${esc(val)}</span></button>`).join('')}</div>
+            <div class="hint perf" style="margin-top:12px"></div>`;
+    }
+    function setSheet(k) {
+        const mn = mapName();
+        if (k === 'goal') {
+            const here = {};
+            for (const m of mobs()) {
+                const h = here[m.key] || (here[m.key] = { nick: m.nick, n: 0, lmin: m.lvl, lmax: m.lvl });
+                h.n++; h.lmin = Math.min(h.lmin, m.lvl); h.lmax = Math.max(h.lmax, m.lvl);
+            }
+            return `<label class="chk big"><input type="checkbox" data-a="lvlOn" ${cfg.lvlOn ? 'checked' : ''}>Alle Mobs Lvl ${cfg.lvlMin}–${cfg.lvlMax}</label>
+                <h4>Dazu auf ${esc(mn)}</h4>
+                ${Object.entries(here).sort((a, b) => a[1].lmin - b[1].lmin).map(([key, h]) =>
+                    `<label class="chk"><input type="checkbox" data-k="${esc(key)}" ${cfg.picked[key] ? 'checked' : ''}>${esc(h.nick)}
+                     <span class="lv">${h.lmin === h.lmax ? h.lmin : h.lmin + '–' + h.lmax} · ${h.n}×</span></label>`).join('') || '<div class="hint">Keine Mobs hier.</div>'}`;
         }
-        const gws = gateways(), mn = mapName();
-        return `
-            ${heroNick ? `<div class="hint" style="margin:0 0 6px">Einstellungen für <b>${esc(heroNick)}</b> – jeder Held hat eigene (Routen, Level, E2 …). Kartenwissen gilt für alle.</div>` : ''}
-            <h4>Ziele</h4>
-            <label class="chk"><input type="checkbox" data-a="lvlOn" ${cfg.lvlOn ? 'checked' : ''}>Alle Mobs im Level-Bereich ${cfg.lvlMin}–${cfg.lvlMax}</label>
-            <div class="hint">Zusätzlich einzelne Mobs auf ${esc(mn)}:</div>
-            ${Object.entries(here).sort((a, b) => a[1].lmin - b[1].lmin).map(([k, h]) =>
-                `<label class="chk"><input type="checkbox" data-k="${esc(k)}" ${cfg.picked[k] ? 'checked' : ''}>${esc(h.nick)}
-                 <span class="lv">${h.lmin === h.lmax ? h.lmin : h.lmin + '–' + h.lmax} · ${h.n}×</span></label>`).join('') || '<div class="hint">keine Mobs auf dieser Karte</div>'}
-
-            ${cfg.route ? '' : `<h4>Wenn die Karte leer ist</h4>
-              <select data-a="exit"><option value="">hier bleiben und warten</option>
-              ${gws.map(g => `<option value="${g.id}" ${String(cfg.exits[mn]) === String(g.id) ? 'selected' : ''}>weiter nach ${esc(g.name)}</option>`).join('')}</select>
-              <div class="hint">Gilt für ${esc(mn)}. Mit Route bestimmt die Route den Ausgang.</div>`}
-
-            <h4>Teleporter</h4>
-            ${Object.keys(cfg.tele || {}).length ? Object.entries(cfg.tele).map(([mid, npcs]) => Object.entries(npcs).map(([npc, t]) =>
-                `<div class="hint"><b style="color:var(--tx)">${esc(wname(+mid))}</b> · ${esc(npc)} → ${Object.keys(t.to).map(id => esc(wname(+id))).join(', ')}</div>`).join('')).join('') +
-                `<button class="btn" data-a="teleforget" style="margin-top:6px">${ico('trash')}Teleporter vergessen</button>`
-              : '<div class="hint">Noch keiner bekannt. Sprich in einer Stadt mit dem Teleport-NPC und öffne seine Zielliste (einfach anschauen, nicht reisen) – der Bot merkt sich die Ziele und nutzt sie ab dann für kürzere Wege.</div>'}
-
-            <h4>Zu einer Karte laufen</h4>
-            ${world ? `<div class="fld"><input type="text" data-a="dest" placeholder="Name, z. B. Torneg" value="${esc(destText)}">
-              <button class="btn pri" data-a="go">${ico('pin')}Hin</button></div>
-              <div class="hint">Unbekannte englische Namen: polnischen Namen eingeben (z. B. Stare Ruiny).</div>`
-              : '<div class="hint">Erst die Weltkarte laden.</div>'}
-
-            <h4>Verhalten</h4>
-            <div class="fld"><span>Reihenfolge</span></div>
-            <select data-a="optimal"><option value="1" ${cfg.optimal ? 'selected' : ''}>kürzeste Route über alle Mobs</option>
-              <option value="0" ${cfg.optimal ? '' : 'selected'}>immer den nächsten Mob</option></select>
-            <div class="fld"><span>Pause (ms)</span><input class="num" data-a="pauseMin" value="${cfg.pauseMin}">–<input class="num" data-a="pauseMax" value="${cfg.pauseMax}"></div>
-            <div class="fld"><span>Abwechslung</span><select data-a="humanize" style="width:auto">${['aus', 'wenig', 'normal', 'viel'].map((l, v) =>
-                `<option value="${v}" ${(cfg.humanize == null ? 2 : +cfg.humanize) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-            <div class="hint">Würfelt zwischen fast gleich guten Mobs, Anlauf-Seiten, Umwegen, Feldern neben NPCs und Wartezeiten – damit nicht jeder Durchgang gleich aussieht. „aus“ = immer der kürzeste Weg.</div>
-            <label class="chk"><input type="checkbox" data-a="closeBattle" ${cfg.closeBattle ? 'checked' : ''}>Kampffenster nach dem Kampf schließen</label>
-            <label class="chk"><input type="checkbox" data-a="fogExplore" ${cfg.fogExplore !== false ? 'checked' : ''}>Nebel-Karten erkunden</label>
-            <div class="fld"><span>Nebel: weiter nach</span><select data-a="fogPct" style="width:auto">${[100, 75, 50].map(v =>
-                `<option value="${v}" ${(+cfg.fogPct || 100) === v ? 'selected' : ''}>${v} % der Mob-Plätze</option>`).join('')}</select></div>
-            ${world && !worldHasPos() ? '<div class="hint">Deine Weltkarte kennt noch keine Mob-Plätze. Unten bei Weltkarte „Von GitHub“ tippen, dann sucht der Bot im Nebel gezielt.</div>' : ''}
-            <label class="chk"><input type="checkbox" data-a="autoCaptcha" ${cfg.autoCaptcha ? 'checked' : ''}>Zagadka: Antworten mit * automatisch anklicken</label>
-            <label class="chk"><input type="checkbox" data-a="autoCaptchaConfirm" ${cfg.autoCaptchaConfirm ? 'checked' : ''}>Zagadka: danach auch „Potwierdzam“ klicken</label>
-            <label class="chk"><input type="checkbox" data-a="captchaWarn" ${cfg.captchaWarn !== false ? 'checked' : ''}>Bei Zagadka Ton und Benachrichtigung</label>
-            <div class="hint">Vorwarnung (Zähler) → Bot jagt weiter. Sobald das Fenster da ist: Bot pausiert und klickt (wenn aktiv) alle *…*-Antworten. „Potwierdzam“ nur bei zweiter Option.</div>
-            <div class="hint">Nebel gibt es nur auf roten Karten: Dort sieht der Bot nur Mobs in seiner Nähe. Er läuft die bekannten Mob-Plätze nacheinander ab und geht weiter, wenn genug davon abgesucht sind. Mobs, die hinter der Sichtgrenze verschwinden, merkt er sich.</div>
-
-            <h4>Andere Spieler</h4>
-            <select data-a="pkMode"><option value="off" ${cfg.pk.mode === 'off' ? 'selected' : ''}>nicht beachten</option>
-              <option value="follow" ${cfg.pk.mode === 'follow' ? 'selected' : ''}>reagieren, wenn mir jemand folgt</option>
-              <option value="any" ${cfg.pk.mode === 'any' ? 'selected' : ''}>reagieren auf jeden Spieler auf der Karte</option></select>
+        if (k === 'empty') return `<select data-a="exit"><option value="">hier warten</option>
+              ${gateways().map(g => `<option value="${g.id}" ${String(cfg.exits[mn]) === String(g.id) ? 'selected' : ''}>weiter nach ${esc(g.name)}</option>`).join('')}</select>
+            <div class="hint">Nur für ${esc(mn)}.</div>`;
+        if (k === 'move') return `<h4>Reihenfolge</h4>${segc('optimal', cfg.optimal ? 1 : 0, [[1, 'kürzester Weg'], [0, 'nächster Mob']])}
+            <h4>Abwechslung ${tipBtn('hum')}</h4>${segc('humanize', cfg.humanize == null ? 2 : +cfg.humanize, HUM_L.map((l, v) => [v, l]))}
+            ${tipTxt('hum', 'Würfelt zwischen fast gleich guten Mobs, Anlauf-Seiten, Umwegen und Wartezeiten. „aus“ = immer exakt gleich.')}
+            <h4>Pause nach Aktionen</h4>
+            <div class="rg"><input class="num" data-a="pauseMin" value="${cfg.pauseMin}"><span class="to">bis</span><input class="num" data-a="pauseMax" value="${cfg.pauseMax}"><span class="to">ms</span></div>`;
+        if (k === 'fog') return `<label class="chk big"><input type="checkbox" data-a="fogExplore" ${cfg.fogExplore !== false ? 'checked' : ''}>Nebel-Karten erkunden ${tipBtn('fog')}</label>
+            ${tipTxt('fog', 'Nur auf roten Karten sieht der Bot bloß Mobs in seiner Nähe. Er läuft dann die bekannten Mob-Plätze ab.')}
+            <h4>Weiter nach</h4>${segc('fogPct', +cfg.fogPct || 100, [[100, '100 %'], [75, '75 %'], [50, '50 %']])}
+            ${world && !worldHasPos() ? '<div class="hint">Weltkarte ohne Mob-Plätze – neu laden unter „Weltkarte“.</div>' : ''}`;
+        if (k === 'capt') return `<label class="chk big"><input type="checkbox" data-a="captchaWarn" ${cfg.captchaWarn !== false ? 'checked' : ''}>Ton und Benachrichtigung</label>
+            <label class="chk big"><input type="checkbox" data-a="autoCaptcha" ${cfg.autoCaptcha ? 'checked' : ''}>*…*-Antworten anklicken</label>
+            <label class="chk big"><input type="checkbox" data-a="autoCaptchaConfirm" ${cfg.autoCaptchaConfirm ? 'checked' : ''}>danach „Potwierdzam“ ${tipBtn('capt')}</label>
+            ${tipTxt('capt', 'Bei offenem Rätsel pausiert der Bot und jagt danach weiter. Die Vorwarnung (Zähler) unterbricht nichts.')}`;
+        if (k === 'pk') return `${segc('pkMode', cfg.pk.mode, [['off', 'ignorieren'], ['follow', 'bei Verfolger'], ['any', 'bei jedem']])}
             ${cfg.pk.mode === 'off' ? '' : `
-            ${cfg.pk.mode === 'follow' ? `<div class="fld"><span>Folgt, wenn</span><input class="num" data-a="pk" data-f="near" value="${cfg.pk.near}">Felder ·
+            ${cfg.pk.mode === 'follow' ? `<div class="fld"><span>Verfolger ab</span><input class="num" data-a="pk" data-f="near" value="${cfg.pk.near}">Feldern ·
               <input class="num" data-a="pk" data-f="sec" value="${cfg.pk.sec}">s</div>` : ''}
-            <div class="fld"><span>Kämpfen bis</span><input class="num" data-a="pk" data-f="maxUp" value="${cfg.pk.maxUp}">Lvl über mir</div>
+            <div class="fld"><span>Kämpfen bis</span><input class="num" data-a="pk" data-f="maxUp" value="${cfg.pk.maxUp}">Lvl über mir ${tipBtn('pk')}</div>
+            ${tipTxt('pk', 'Rote Karte und Gegner höchstens so viel stärker: kämpfen. Gelbe Karte mit Verfolger und Route: zur nächsten Routenkarte. Sonst fliehen, bis er 30 s weg ist.')}
             <div class="fld"><span>Nie angreifen</span><input type="text" data-a="pkNever" value="${esc(cfg.pk.never || '')}" placeholder="Namen, mit Komma"></div>
-            <div class="hint">Rote Karte und höchstens so viele Level über dir: der Bot kämpft (schnelle Walka). Gelbe Karte, Verfolger im Levelbereich und aktive Route: direkt zur nächsten Routenkarte, dort weiterjagen. Sonst flieht er: durch Türen weg vom Spieler, bevorzugt in Höhlen, bis er ihn 30 s nicht mehr sieht. Danach zurück zum Jagdort.</div>
-            <div class="hint pkinfo">${pkInfo()}</div>`}
-
-            <h4>Bei Tod</h4>
-            <select data-a="onDeath"><option value="stop" ${cfg.onDeath === 'stop' ? 'selected' : ''}>Bot stoppen</option>
-              <option value="back" ${cfg.onDeath === 'back' ? 'selected' : ''}>zurücklaufen und weitermachen</option></select>
-            ${(cfg.deaths || []).length ? `<div class="deaths" style="margin-top:8px">${cfg.deaths.slice(0, 5).map(d =>
+            <div class="hint pkinfo">${pkInfo()}</div>`}`;
+        if (k === 'death') return `${segc('onDeath', cfg.onDeath === 'back' ? 'back' : 'stop', [['stop', 'stoppen'], ['back', 'zurücklaufen']])}
+            ${(cfg.deaths || []).length ? `<h4>Zuletzt gestorben</h4><div class="deaths">${cfg.deaths.slice(0, 5).map(d =>
                 `${esc(d.time)} · ${esc(d.map)}${d.target ? ' · ' + esc(d.target) : ''}`).join('<br>')}</div>
-                <button class="btn" data-a="clearDeaths" style="margin-top:6px">Liste leeren</button>` : ''}
-
-            <h4>Weltkarte</h4>
-            <div class="fld"><span>${world ? worldN() + ' Karten geladen' : 'nicht geladen'}</span>
-              <span style="display:flex;gap:6px"><button class="btn" data-a="loadworldgh">${ico('map')}${worldDl ? 'Lädt …' : 'Von GitHub'}</button>
-              <button class="btn" data-a="loadworld">Datei</button></span></div>
-            <div class="hint perf"></div>`;
+                <button class="btn" data-a="clearDeaths" style="margin-top:8px">${ico('trash')}Liste leeren</button>` : ''}`;
+        if (k === 'world') return `<div class="big1">${world ? fmt(worldN()) : '–'}<span>${world ? 'Karten geladen' : 'nicht geladen'}</span></div>
+            <div class="fld"><button class="btn pri" data-a="loadworldgh">${ico('map')}${worldDl ? 'Lädt …' : 'Von GitHub laden'}</button><button class="btn" data-a="loadworld">Datei wählen</button></div>`;
+        if (k === 'tele') return Object.keys(cfg.tele || {}).length ? Object.entries(cfg.tele).map(([mid, npcs]) => Object.entries(npcs).map(([npc, t]) =>
+                `<div class="spot"><span class="nm">${esc(wname(+mid))} · ${esc(npc)}</span><span class="mt">→ ${Object.keys(t.to).map(id => esc(wname(+id))).join(', ')}</span></div>`).join('')).join('') +
+                `<button class="btn" data-a="teleforget" style="margin-top:8px">${ico('trash')}Alle vergessen</button>`
+            : '<div class="hint">Noch keiner. Beim Teleport-NPC einmal die Zielliste öffnen – der Bot merkt sie sich.</div>';
+        if (k === 'goto') return world ? `<div class="fld"><input type="text" data-a="dest" placeholder="z. B. Torneg" value="${esc(destText)}">
+              <button class="btn pri" data-a="go">${ico('pin')}Hin</button></div><div class="hint">Englischer Name unbekannt? Polnisch eingeben.</div>`
+            : '<div class="hint">Erst die Weltkarte laden.</div>';
+        return '';
     }
 
     // ── Tab „Abläufe“ ──
@@ -3939,13 +3995,13 @@
             <h4>Neuer Ablauf</h4>
             <div class="tpl">${TEMPLATES.map((t, i) => `<button class="tp" data-a="tpl" data-i="${i}"><b>${t.name}${t.quick ? ' <span class="tag">1 Klick</span>' : ''}</b><span>${t.tip}</span></button>`).join('')}
               <button class="tp" data-a="radd"><b>Leerer Ablauf</b><span>Bedingung und Schritte selbst wählen</span></button></div>
-            <h4>Aufnahme</h4>
+            <h4>Aufnahme ${tipBtn('rec')}</h4>
             ${cfg.flow ? `<div class="now"><div class="st"><span class="dot trv"></span>Aufnahme läuft · ${cfg.flow.steps.length} Schritte</div>
                 <div class="dt">${esc(cfg.flow.steps.length ? stepText(cfg.flow.steps[cfg.flow.steps.length - 1]) : '')}</div>
                 <button class="btn" data-a="recstop" style="margin-top:8px">${ico('stop')}Aufnahme beenden</button></div>`
               : `<button class="btn" data-a="recstart" ${running() ? 'disabled' : ''}>${ico('rec')}Aufnahme starten</button>
-                <div class="hint">Spiel danach selbst: Laufen, Türen, NPCs, Antworten, Angriffe, Gegenstände. Beim Beenden entsteht ein Ablauf „Nur von Hand“, den du bearbeiten und mit ${ico('play')} abspielen kannst. Handel wird nicht aufgenommen.</div>`}
-            <div class="hint">Läuft nur, solange der Bot jagt. Mit ${ico('play')} startest du einen Ablauf sofort, ein Klick auf einen Schritt startet ab dort.</div>
+                ${tipTxt('rec', `Spiel danach selbst: Laufen, Türen, NPCs, Antworten, Angriffe, Gegenstände. Beim Beenden entsteht ein Ablauf „Nur von Hand“, den du bearbeiten und mit ${ico('play')} abspielen kannst. Handel wird nicht aufgenommen.`)}`}
+            <div class="hint">Läuft, solange der Bot jagt. ${ico('play')} startet sofort.</div>
             <details><summary>${ico('chev')}Spieldaten prüfen</summary><div class="log diag"></div></details>`;
     }
     function captchaDiag() {
@@ -4076,7 +4132,7 @@
               <span class="mt xpl">${t.lastKill ? `Zuletzt tot ${clock(t.lastKill)}${t.by === 'other' ? ' (anderer Spieler)' : ''} · Respawn ${clock(w.start)}–${clock(w.end)}` : 'Noch kein Tod gesehen – Timer startet beim ersten Kill'}</span>
               ${(t.meas || []).length ? `<span class="mt">Gemessen: ${t.meas.map(x => String(x).replace('.', ',')).join(' · ')} min</span>` : ''}
             </div>
-            <div class="hint" style="margin-top:10px">Respawn nach (Minuten)</div>
+            <h4>Respawn (min)</h4>
             <div class="rg">${stp('respMin', t.respMin, 1, 600)}<span class="to">bis</span>${stp('respMax', t.respMax, 1, 600)}</div>
             <div class="hint">Richtwert für Lvl ${t.lvl || '?'}: ~${e2Resp(t.lvl).toFixed(1).replace('.', ',')} min${+E2.speed > 1 ? ' (Welt ×' + E2.speed + ')' : ''}
               ${t.respAuto ? '· eingestellt' : `· <button class="chip" data-a="e2auto" style="margin:0;padding:2px 6px">übernehmen</button>`}</div>
@@ -4084,14 +4140,13 @@
             <div class="fld"><button class="btn" data-a="e2kill">${ico('check')}Gerade getötet</button>
               ${mapId() === t.map ? `<button class="btn" data-a="e2here">${ico('pin')}Spawn = hier</button>` : ''}
               <span></span><button class="btn bad" data-a="e2del" title="E2 entfernen">${ico('trash')}</button></div>
-            <div class="hint">„Gerade getötet“ startet den Timer von Hand, z. B. wenn du sie selbst erlegt hast.</div>` : ''}
+` : ''}
 
-            <div class="fld"><span>Respawn-Tempo der Welt</span><select data-a="e2speed" style="width:auto">${[1, 2, 3, 4, 5].map(v => `<option value="${v}" ${+E2.speed === v ? 'selected' : ''}>×${v}${v === 1 ? ' (normal)' : ''}</option>`).join('')}</select></div>
-            <div class="hint" style="margin-top:10px">Reaktionszeit, wenn sie erscheint (Sekunden, zufällig dazwischen)</div>
+            <div class="fld"><span>Respawn-Tempo</span><select data-a="e2speed" style="width:auto">${[1, 2, 3, 4, 5].map(v => `<option value="${v}" ${+E2.speed === v ? 'selected' : ''}>×${v}${v === 1 ? ' (normal)' : ''}</option>`).join('')}</select></div>
+            <h4>Reaktion (s) ${tipBtn('react')}</h4>${tipTxt('react', 'Wartet zufällig so lange, bevor er angreift, wenn sie erscheint.')}
             <div class="rg">${stp('reactMin', E2.reactMin, 0, 60)}<span class="to">bis</span>${stp('reactMax', E2.reactMax, 0, 60)}</div>
-            <h4>Wartezeit</h4>
-            <select data-a="e2away"><option value="stay" ${E2.away === 'stay' ? 'selected' : ''}>am Spawnpunkt online bleiben</option>
-              <option value="leave" ${E2.away === 'leave' ? 'selected' : ''}>Spiel verlassen und vor dem Respawn erinnern</option></select>
+            <h4>Wartezeit ${tipBtn('e2away')}</h4>
+            ${segc('e2away', E2.away === 'leave' ? 'leave' : 'stay', [['stay', 'online warten'], ['leave', 'offline gehen']])}
             ${E2.away === 'leave' ? `
             <div class="fld"><span>Nur wenn länger als (min)</span>${stp('leaveMin', E2.leaveMin, 3, 600)}</div>
             <div class="hint" style="margin-top:8px">Erinnern vor dem Respawn (Minuten, zufällig dazwischen)</div>
@@ -4100,10 +4155,10 @@
             <div class="fld"><span>Seite zum Verlassen</span><input type="text" data-a="e2leaveUrl" value="${esc(E2.leaveUrl || '')}" placeholder="${esc(e2LeaveUrl())}"></div>
             ${Date.now() < (E2.noLeaveUntil || 0) ? `<div class="hint" style="color:var(--bad)">Verlassen hat nicht geklappt, die Spielseite kam gleich wieder – der Bot versucht es ab ${clock(E2.noLeaveUntil)} erneut (2 min Pause).
               Seitenfolge: ${esc((E2.trace || []).join(' → ') || 'keine andere Seite geladen')}</div>` : ''}
-            <div class="hint">Beim Online-Warten entscheidet der Bot ungefähr jede Minute mit 50 % Chance über eine kurze Bewegung in Spawnnähe. E2 und Logout haben Vorrang.<br>Der Bot geht vom Spawnpunkt offline: von der Spielseite (z. B. classic.margonem.pl) auf www.margonem.pl.
+            ${tipTxt('e2away', `Beim Online-Warten entscheidet der Bot ungefähr jede Minute mit 50 % Chance über eine kurze Bewegung in Spawnnähe. E2 und Logout haben Vorrang.<br>Der Bot geht vom Spawnpunkt offline: von der Spielseite (z. B. classic.margonem.pl) auf www.margonem.pl.
               Dort zählt er herunter und öffnet zufällig im eingestellten Abstand vor dem Respawn wieder die Spielseite – mit deiner
               bestehenden Sitzung. Passwörter gibt er nie ein: Ist die Sitzung abgelaufen, meldet er sich (Benachrichtigung, Ton,
-              Vibration) und du loggst dich selbst ein. Die Seite muss offen bleiben.</div>` : ''}
+              Vibration) und du loggst dich selbst ein. Die Seite muss offen bleiben.`)}` : ''}
 
 
             <h4>E2 suchen</h4>
@@ -4423,7 +4478,7 @@
             if (same) box.querySelectorAll('.bd details').forEach((d, i) => { opened[d.dataset.k || 'i' + i] = d.open; });
             const fk = focusKey();
             const tb = (t, label) => `<button class="tab ${tab === t ? 'on' : ''}" data-a="tab" data-t="${t}">${label}</button>`;
-            box.innerHTML = `<div class="hd"><div class="brand"><span class="dot"></span>MargoBot</div>
+            box.innerHTML = `<div class="hd"><div class="brand"><span class="dot"></span>MargoBot${heroNick ? `<span class="hn">${esc(heroNick)}${heroLvl() ? ' · ' + heroLvl() : ''}</span>` : ''}</div>
                 <button class="ib" data-a="fold" title="${cfg.open ? 'Einklappen' : 'Ausklappen'}">${ico(cfg.open ? 'min' : 'max')}</button></div>` +
                 (capt.state ? `<div class="capt ${capt.state}"><b>${capt.state === 'open' ? (cfg.autoCaptcha ? (capt.solving ? 'Zagadka – klicke *…*-Antworten…' : (cfg.autoCaptchaConfirm ? 'Zagadka – Auto-Lösen aktiv' : 'Zagadka – bitte Potwierdzam tippen')) : 'Zagadka – bitte selbst lösen') : 'Zagadka kommt bald'}</b><span class="ct"></span></div>` : '') +
                 dockHtml(run) +
@@ -4553,7 +4608,24 @@
             input.onchange = () => { const f = input.files[0]; if (f) f.text().then(useHeros).catch(e => log('Spawnliste: ' + e.message)); };
             input.click(); return;
         }
-        if (a === 'tab') cfg.tab = el.dataset.t;
+        if (a === 'sec') { setSec = el.dataset.s || null; lastStatic = ''; render(); const bd = box.querySelector('.bd'); if (bd) bd.scrollTop = 0; return; }
+        if (a === 'tip') { const k = el.dataset.k; if (tips.has(k)) tips.delete(k); else tips.add(k); lastStatic = ''; render(); return; }
+        if (a === 'qt') {
+            const k = el.dataset.k, on = k === 'fogExplore' || k === 'captchaWarn' ? cfg[k] !== false : !!cfg[k];
+            cfg[k] = !on; if (k === 'fogExplore' && on) fog.on = false;
+            save(); lastStatic = ''; render(); return;
+        }
+        if (a === 'setv') {
+            const f = el.dataset.f, v = el.dataset.v;
+            if (f === 'optimal') cfg.optimal = v === '1';
+            else if (f === 'humanize') cfg.humanize = Math.max(0, Math.min(3, +v || 0));
+            else if (f === 'fogPct') cfg.fogPct = +v || 100;
+            else if (f === 'onDeath') cfg.onDeath = v;
+            else if (f === 'pkMode') { cfg.pk.mode = v; pkEsc = null; }
+            else if (f === 'e2away') cfg.e2.away = v === 'leave' ? 'leave' : 'stay';
+            save(); lastStatic = ''; render(); return;
+        }
+        if (a === 'tab') { if (el.dataset.t === cfg.tab && el.dataset.t === 'set') setSec = null; cfg.tab = el.dataset.t; }
         else if (a === 'fold') cfg.open = !cfg.open;
         else if (a === 'stopall') stopAll();
         else if (a === 'quick') { cfg.on = true; goal = null; startSession(); log('Gestartet'); }
