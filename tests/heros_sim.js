@@ -26,7 +26,7 @@ function setup(real = false, wall = false) {
     }
     const el = () => ({ style: {}, dataset: {}, addEventListener() {}, appendChild() {}, querySelector: () => null,
         querySelectorAll: () => [], closest: () => null, set innerHTML(v) {} });
-    const W = { Engine, AudioContext: Audio }, store = { mbworld: world, mbauto: {} };
+    const W = { Engine, AudioContext: Audio }, store = { mbworld: world, mbauto: { humanize: 0 } };
     const sandbox = { unsafeWindow: W, GM_getValue: (k, d) => store[k] ?? d, GM_setValue: (k, v) => store[k] = v,
         GM_notification: n => notifications.push(n), document: { createElement: el, head: el(), body: el(), addEventListener() {}, querySelector: () => null },
         innerWidth: 1400, innerHeight: 900, setInterval: f => timers.push(f), performance: { now: () => now } };

@@ -19,7 +19,7 @@ const Engine = { hero, battle: { show: false }, npcs: { getDrawableList: () => [
     map: { d: { id: 1, name: 'Test' }, size: { x: 10, y: 10 }, col: { check: () => 0 }, getGateways: () => ({ townnames: {}, getList: () => [] }) } };
 const listeners = {};
 const el = () => ({ style: {}, dataset: {}, addEventListener(t, f) { listeners[t] = f; }, appendChild() {}, querySelector: () => null, querySelectorAll: () => [], closest: () => null, set innerHTML(v) { if (v) html = v; }, get innerHTML() { return html; } });
-const store = { mbauto: { open: true, tab: 'skills', on: false, pauseMin: 0, pauseMax: 0 } };
+const store = { mbauto: { humanize: 0, open: true, tab: 'skills', on: false, pauseMin: 0, pauseMax: 0 } };
 const timers = [];
 const doc = { createElement: el, head: el(), body: el(), addEventListener() {}, querySelector: () => null, querySelectorAll: () => [] };
 const W = { Engine, _g: c => sent.push(c), confirm: () => true, prompt: () => null };

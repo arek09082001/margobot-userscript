@@ -28,7 +28,7 @@ const W = { Engine, _g: c => { const m = c.match(/^fight&a=attack&ff=1&id=(\d+)$
 let K = 0;                                  // eigener ID-Bereich je Szenario (der Bot merkt sich übersprungene Mobs)
 const el = () => ({ style: {}, dataset: {}, addEventListener() {}, appendChild() {}, querySelector: () => null, querySelectorAll: () => [], set innerHTML(v) {}, closest: () => null });
 const world = {}; for (const id in G) world[id] = [20, 20, NAMES[id], G[id], []];
-const store = { mbworld: world, mbauto: { on: false, pauseMin: 1000, pauseMax: 1000 } };   // jede Aktion ~1 s wie im Spiel
+const store = { mbworld: world, mbauto: { humanize: 0, on: false, pauseMin: 1000, pauseMax: 1000 } };   // jede Aktion ~1 s wie im Spiel
 const timers = [];
 const doc = { createElement: el, head: el(), body: el(), addEventListener() {}, querySelector: () => null };
 const sb = { unsafeWindow: W, GM_getValue: (k, d) => store[k] || d, GM_setValue: (k, v) => store[k] = v,

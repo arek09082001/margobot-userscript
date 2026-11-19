@@ -12,7 +12,7 @@ const Engine = { hero, battle: { show: false }, npcs: { getDrawableList: () => n
   map: { d: { id: 12, name: 'Old Ruins' }, size: { x: W, y: H }, col: { check: (x, y) => wall.has(x + ',' + y) ? 1 : 0 },
     getGateways: () => ({ townnames: { 2: 'Torneg' }, getList: () => [{ d: { id: 2, x: 47, y: 0 } }] }) } };
 const el = () => ({ style: {}, dataset: {}, addEventListener() {}, appendChild() {}, querySelector: () => null, querySelectorAll: () => [], set innerHTML(v) {}, closest: () => null });
-const store = { mbauto: { on: true, pauseMin: 0, pauseMax: 0, picked: { wilk: true }, exits: { 'Old Ruins': 2 } } };
+const store = { mbauto: { humanize: 0, on: true, pauseMin: 0, pauseMax: 0, picked: { wilk: true }, exits: { 'Old Ruins': 2 } } };
 const timers = []; let now = 0;
 const doc = { createElement: el, head: el(), body: el(), addEventListener() {}, querySelector: () => null };
 const sb = { unsafeWindow: { Engine }, GM_getValue: (k, d) => store[k] || d, GM_setValue: (k, v) => store[k] = v,

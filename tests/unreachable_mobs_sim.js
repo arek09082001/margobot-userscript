@@ -42,7 +42,7 @@ function setup({ wall = false, rejected = false, blockedTile = false, route = tr
     const element = () => ({ style: {}, dataset: {}, addEventListener() {}, appendChild() {}, closest: () => null,
         querySelector: () => null, querySelectorAll: () => [], set innerHTML(s) {} });
     const W = { Engine }, timers = [];
-    const store = { mbauto: { on: true, pauseMin: 0, pauseMax: 0, lvlOn: true, lvlMin: 35, lvlMax: 45,
+    const store = { mbauto: { humanize: 0, on: true, pauseMin: 0, pauseMax: 0, lvlOn: true, lvlMin: 35, lvlMax: 45,
         fogExplore: false, routes: route ? { R: { maps: [1, 2], mode: 'loop' } } : {}, route: route ? 'R' : '' } };
     const sandbox = { unsafeWindow: W, GM_getValue: (k, d) => store[k] ?? d, GM_setValue: (k, v) => store[k] = v,
         document: { createElement: element, head: element(), body: element(), addEventListener() {}, querySelector: () => null },

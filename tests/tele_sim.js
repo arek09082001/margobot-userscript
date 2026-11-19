@@ -25,7 +25,7 @@ const el = () => ({ style: {}, dataset: {}, addEventListener() {}, appendChild()
 const listeners = [];
 const doc = { createElement: el, head: el(), body: el(), addEventListener: (t, f) => listeners.push([t, f]),
   querySelector: s => s === '.dialogue-window.is-open' && dlg ? dialogEl() : null, querySelectorAll: () => [] };
-const store = { mbworld: world, mbauto: { on: false, pauseMin: 0, pauseMax: 0 } };
+const store = { mbworld: world, mbauto: { humanize: 0, on: false, pauseMin: 0, pauseMax: 0 } };
 const timers = [];
 const sb = { unsafeWindow: { Engine, _g, confirm: () => true, prompt: () => null }, GM_getValue: (k, d) => store[k] || d, GM_setValue: (k, v) => store[k] = v,
   document: doc, innerWidth: 1400, innerHeight: 900, setInterval: f => timers.push(f), performance: { now: () => now } };

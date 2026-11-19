@@ -13,7 +13,7 @@ const Engine = { hero, battle: { show: false }, npcs: { getDrawableList: near },
     getGateways: () => ({ townnames: {}, getList: () => [] }) } };
 const world = { 500: [W, H, 'Grobowiec', [], [['Ghul', 41, 20]]] };
 const el = () => ({ style: {}, dataset: {}, addEventListener() {}, appendChild() {}, querySelector: () => null, querySelectorAll: () => [], set innerHTML(v) {}, closest: () => null });
-const store = { mbworld: world, mbauto: { on: true, pauseMin: 0, pauseMax: 0, lvlOn: true, lvlMin: 40, lvlMax: 42 } };
+const store = { mbworld: world, mbauto: { humanize: 0, on: true, pauseMin: 0, pauseMax: 0, lvlOn: true, lvlMin: 40, lvlMax: 42 } };
 const timers = [];
 const doc = { createElement: el, head: el(), body: el(), addEventListener() {}, querySelector: () => null };
 const sb = { unsafeWindow: { Engine }, GM_getValue: (k, d) => store[k] || d, GM_setValue: (k, v) => store[k] = v,

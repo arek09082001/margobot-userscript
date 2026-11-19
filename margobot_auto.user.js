@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.26
+// @version      7.27
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -37,7 +37,7 @@
     const DEF = { on: false, picked: {}, lvlOn: false, lvlMin: 1, lvlMax: 300, pauseMin: 300, pauseMax: 900,
                   exits: {}, closeBattle: true, x: null, y: null, open: true,
                   routes: {}, route: '', routePos: 0, rec: null, flow: null, suggestAuto: true, expoAll: false,
-                  onDeath: 'stop', deaths: [], graph: {}, back: null, optimal: true,
+                  onDeath: 'stop', deaths: [], graph: {}, back: null, optimal: true, humanize: 2,
                   names: {}, travel: null, blocked: [], tab: 'xp', logOpen: false, tele: {},
                   rules: [], chain: null, autoCaptcha: false, autoCaptchaConfirm: false, captchaWarn: true,
                   pk: { mode: 'off', maxUp: 5, near: 6, sec: 5, never: '' } };
@@ -95,7 +95,15 @@
     const running = () => !!(cfg.on || cfg.travel || cfg.chain || cfg.e2.on || cfg.heros.on);
     const save = () => { GM_setValue('mbauto', cfg); if (heroKey) GM_setValue('mbhero:' + heroKey, heroPart()); };
     const rnd = (a, b) => a + Math.random() * Math.max(0, b - a);
-    const pause = () => rnd(cfg.pauseMin, cfg.pauseMax);
+    /* Abwechslung (Einstellung „Abwechslung“: 0 aus, 1 wenig, 2 normal, 3 viel). Wunsch: nicht jedes Mal derselbe
+       Weg, derselbe Mob, dasselbe Feld neben dem NPC und derselbe Takt. Gewürfelt wird nur zwischen fast gleich guten
+       Möglichkeiten und bei Wartezeiten – Türen, Spielbefehle und Sicherheitsfristen bleiben, wie sie sind. */
+    const HUM = [0, 0.5, 1, 1.6];
+    const hum = () => { const h = HUM[+cfg.humanize]; return h == null ? 1 : h; };
+    const jit = ms => ms * (1 + hum() * 0.4 * Math.random());
+    const anyOf = a => a[Math.floor(Math.random() * a.length)];
+    // ab und zu ein kurzes Zögern (wie beim Spielen von Hand), sonst die eingestellte Pause
+    const pause = () => rnd(cfg.pauseMin, cfg.pauseMax) + (Math.random() < 0.04 * hum() ? rnd(800, 2500 * hum()) : 0);
 
     // ── Spieldaten ──────────────────────────────────────────────
     const E = () => W.Engine;
@@ -702,7 +710,7 @@
             }
             const g = fog.goal != null && open.find(p => p.y * MW + p.x === fog.goal);
             if (g) { walkTo(g.x, g.y, 'Mob-Platz'); return true; }
-            const best = open.map(p => [p, cost(d, p.x, p.y)]).sort((a, b) => a[1] - b[1])[0][0];
+            const best = open.map(p => [p, cost(d, p.x, p.y) * (1 + 0.3 * hum() * Math.random())]).sort((a, b) => a[1] - b[1])[0][0];
             return go(best.y * MW + best.x, `Mob-Platz (${fog.pct} % abgesucht)`);
         }
         if (fog.doneAt) {
@@ -712,7 +720,7 @@
             if (!due.length) return false;
             if (fog.goal != null && now - fog.goalAt < 15000 && due.some(p => p.y * MW + p.x === fog.goal)) { walkTo(fog.goal % MW, (fog.goal / MW) | 0, 'Fundstelle'); return true; }
             const d = bfs(hx, hy);
-            const best = due.map(p => [p, cost(d, p.x, p.y)]).filter(t => t[1] < Infinity).sort((a, b) => a[1] - b[1])[0];
+            const best = due.map(p => [p, cost(d, p.x, p.y) * (1 + 0.3 * hum() * Math.random())]).filter(t => t[1] < Infinity).sort((a, b) => a[1] - b[1])[0];
             if (!best) return false;
             return go(best[0].y * MW + best[0].x, 'Fundstelle');
         }
@@ -747,7 +755,7 @@
             if (d[i] < 0 || walls[i]) continue;
             const g = area(x, y);
             if (g < 6) continue;
-            const sc = g / (d[i] + 10);
+            const sc = g / (d[i] + 10) * (1 + 0.25 * hum() * Math.random());   // Abwechslung beim Erkunden
             if (sc > bs) { bs = sc; best = i; bg = g; }
         }
         if (best < 0) {                            // nur noch kleine Reste (Ecken, Ränder): nächstes ungesehenes Feld
@@ -809,6 +817,15 @@
         let first;
         if (cfg.optimal) first = idx.sort((a, b) => totals[a] - totals[b] || d0[a] - d0[b])[0];
         else first = idx.filter(i => totals[i] <= best * 1.15 || totals[i] <= best + 3).sort((a, b) => d0[a] - d0[b] || totals[a] - totals[b])[0];
+        const H = hum();
+        if (H > 0 && n > 1) {
+            /* Abwechslung: unter fast gleich guten Startzielen würfeln (nähere wahrscheinlicher). Gewählt wird nur,
+               wenn kein Ziel festgehalten ist – danach bleibt der Held bei seinem Mob (kein Hin und Her). */
+            const lim = totals[first] * (1 + 0.12 * H) + 2 * H, near = d0[first] + 4 * H + 2;
+            const alt = idx.filter(i => totals[i] <= lim && d0[i] <= near);
+            let w = alt.reduce((s, i) => s + 1 / (2 + d0[i]), 0) * Math.random();
+            for (const i of alt) { w -= 1 / (2 + d0[i]); if (w <= 0) { first = i; break; } }
+        }
         // schon angelaufenes Ziel behalten, wenn es kaum schlechter ist – sonst pendelt der Held zwischen zwei Zielen
         const keep = targets.findIndex(m => m.id === committed);
         if (keep >= 0 && keep !== first && totals[keep] <= totals[first] + 2) first = keep;
@@ -864,7 +881,7 @@
         lastMap = mn;
         // neue Karte: alte Laufziele vergessen, kurz warten, bis das Spiel die Karte geladen hat
         mapAt = performance.now(); goal = null; committed = null; lastPlan = null; travelDoor = null;
-        skipUntil = {}; atkTries = {}; chaseAt = mapAt; herosCoverage.clear();
+        skipUntil = {}; atkTries = {}; approach = null; via = null; chaseAt = mapAt; herosCoverage.clear();
         if (prev) busyUntil = Math.max(busyUntil, mapAt + 900);
         if (cfg.rec) {
             if (cfg.rec[cfg.rec.length - 1] !== mn) { cfg.rec.push(mn); save(); log('Aufnahme: ' + cfg.rec.join(' → ')); }
@@ -878,7 +895,7 @@
 
     // ── Ablauf ──────────────────────────────────────────────────
     let chaseAt = 0;                           // Laufauftrag zum aktuellen Mob, getrennt vom letzten Heldenschritt
-    let committed = null, planAt = 0, renderAt = 0, offRoute = null, offRouteLog = null, atkTries = {}, skipUntil = {};                          // Ziel, zu dem der Held gerade läuft
+    let committed = null, planAt = 0, renderAt = 0, offRoute = null, offRouteLog = null, atkTries = {}, skipUntil = {}, approach = null;                          // Ziel, zu dem der Held gerade läuft
     let busyUntil = 0, goal = null, goalSince = 0, lastHero = '', heroStill = 0, lastPlan = null, battleSeen = false;
     /* Andere Spieler beobachten: wer seit sec Sekunden höchstens near Felder entfernt ist und dabei selbst
        mindestens 3 Felder gelaufen ist, folgt uns (ein Spieler, der nur nebenan steht und jagt, zählt nicht). */
@@ -1021,7 +1038,53 @@
         try { fn(); } catch (e) { log('Fehler bei ' + what + ': ' + e.message); }
         busyUntil = performance.now() + pause();
     }
+    let via = null;                                // Umweg-Zwischenziel zum aktuellen Laufziel: {key, x, y, at, done}
     function walkTo(x, y, why) {
+        /* Längere Wege gehen manchmal über einen zufälligen Zwischenpunkt (höchstens ~20–30 % länger): Das Spiel
+           sucht sonst immer exakt denselben kürzesten Weg. Pro Laufziel wird nur einmal gewürfelt. */
+        const key = x + ',' + y;
+        if (via && via.key !== key && cheb(x, y, via.tx, via.ty) <= 3) { via.key = key; via.tx = x; via.ty = y; }   // Mob ein paar Felder weiter: gleiche Entscheidung
+        if (!via || via.key !== key) { const v = pickVia(x, y); via = { key, tx: x, ty: y, x: v ? v[0] : x, y: v ? v[1] : y, at: performance.now(), done: !v }; }
+        if (!via.done) {
+            const [hx, hy] = heroXY();
+            if (cheb(hx, hy, via.x, via.y) <= 1 || performance.now() - via.at > 20000) via.done = true;
+            else return walkRaw(via.x, via.y, why + ' (Umweg)');
+        }
+        walkRaw(x, y, why);
+    }
+    function pickVia(x, y) {
+        const H = hum();
+        if (!H || !walls || pkEsc || pkRouteSkip || Math.random() >= 0.22 * H) return null;   // Flucht: kein Umweg
+        const [hx, hy] = heroXY(), d = bfs(hx, hy), D = cost(d, x, y);
+        if (!(D >= 14) || D === Infinity) return null;
+        const f = field(x, y), gw = gateways(), c = [], max = D * (1 + 0.15 * H) + 4;
+        for (let i = 0; i < d.length; i++) {
+            if (walls[i] || d[i] < D * 0.25 || f[i] < D * 0.25) continue;
+            const s = d[i] + f[i];
+            if (s < D + 2 || s > max) continue;                     // echter Umweg, aber nicht weit
+            const vx = i % MW, vy = (i / MW) | 0;
+            if (gw.some(g => cheb(g.x, g.y, vx, vy) <= 1)) continue; // nie über/neben eine Tür (Kartenwechsel)
+            c.push([vx, vy]);
+        }
+        return c.length ? anyOf(c) : null;
+    }
+    function nearSpot(x, y, r, avoidCenter) {
+        /* Zufälliges erreichbares Feld höchstens r Felder um (x, y), keine Tür. Ohne Abwechslung: (x, y) selbst. */
+        if (!hum() || !walls) return [x, y];
+        const [hx, hy] = heroXY(), d = bfs(hx, hy), gw = new Set(gateways().map(g => g.x + ',' + g.y)), c = [];
+        for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+            const nx = x + dx, ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= MW || ny >= MH || (avoidCenter && !dx && !dy)) continue;
+            const i = ny * MW + nx;
+            if (walls[i] || d[i] < 0 || gw.has(nx + ',' + ny)) continue;
+            c.push([nx, ny, d[i]]);
+        }
+        if (!c.length) return null;
+        const m = Math.min(...c.map(o => o[2])) + 3 + Math.round(3 * hum());   // keine weiten Umwege ums Hindernis
+        const o = anyOf(c.filter(o => o[2] <= m));
+        return [o[0], o[1]];
+    }
+    function walkRaw(x, y, why) {
         const key = x + ',' + y;
         // läuft schon dorthin: nicht neu anstoßen (das Spiel würde den Weg neu starten → Stocken),
         // außer der Held steht seit über 1,2 s
@@ -1375,9 +1438,15 @@
                 const [hx, hy] = heroXY();
                 if (Math.abs(n.x - hx) > 1 || Math.abs(n.y - hy) > 1) {
                     if (age > 60000) return `${n.nick} nicht erreicht`;
-                    walkTo(n.x, n.y + 1, n.nick); return 'run';
+                    // Abwechslung: jedes Mal ein anderes freies Feld neben dem NPC (sonst immer darunter)
+                    if (!st.spot || st.npcAt !== n.x + ',' + n.y) { st.npcAt = n.x + ',' + n.y; st.spot = (hum() && nearSpot(n.x, n.y, 1, true)) || [n.x, n.y + 1]; }
+                    walkTo(st.spot[0], st.spot[1], n.nick); return 'run';
                 }
-                if (!st.talk) { send('talk&id=' + n.id); st.talk = now; log('Spreche mit ' + n.nick); return 'run'; }
+                if (!st.talk) {
+                    if (st.near == null) st.near = now + rnd(0, 700 * hum());   // kurz ankommen, dann ansprechen
+                    if (now < st.near) return 'run';
+                    send('talk&id=' + n.id); st.talk = now; log('Spreche mit ' + n.nick); return 'run';
+                }
                 if (shopOpen()) return 'ok';                               // Laden offen → Dialog ist zu, Schritt erledigt
                 if (!s.say) return now - st.talk > 1200 ? 'ok' : 'run';
                 const d = dialogOpen();
@@ -1407,15 +1476,15 @@
                             const btn = sb.bag[bn];
                             if (!btn) return `Knopf für Tasche ${bn} nicht gefunden – „Spieldaten prüfen“ bei offenem Laden`;
                             st.before = bag().length; st.re = 0;
-                            press(btn); st.ph = 'accept'; st.wait = now + 450;
+                            press(btn); st.ph = 'accept'; st.wait = now + jit(450);
                             return 'run';
                         }
                         if (st.ph === 'accept') {
                             if (!sb.accept) return '„Accept“-Knopf im Laden nicht gefunden';
-                            press(sb.accept); st.ph = 'confirm'; st.wait = now + 600;
+                            press(sb.accept); st.ph = 'confirm'; st.wait = now + jit(600);
                             return 'run';
                         }
-                        if (st.ph === 'confirm') { confirmPopup(); st.ph = 'check'; st.wait = now + 900; return 'run'; }
+                        if (st.ph === 'confirm') { confirmPopup(); st.ph = 'check'; st.wait = now + jit(900); return 'run'; }
                         const diff = st.before - bag().length;
                         if (diff <= 0 && st.re < 2) { st.re++; st.wait = now + 700; return 'run'; }   // Tasche evtl. noch nicht aktualisiert
                         if (diff > 0 && ++st.round < 25) {
@@ -1434,7 +1503,7 @@
                         if (st.k < st.list.length) {
                             const el = bagItemEl(st.list[st.k]), before = basketCount();
                             if (el) { press(el); st.check = before; }
-                            st.k++; st.wait = now + 160;
+                            st.k++; st.wait = now + jit(160);
                             return 'run';
                         }
                     }
@@ -1444,7 +1513,7 @@
                 if (!st.acc) {
                     if (!qs && basketCount() === 0) return 'Gegenstände kamen nicht in den Verkaufskorb (Klick auf Tasche wirkt nicht) – Schnellverkauf nutzen';
                     if (!sb.accept) return '„Accept“-Knopf im Laden nicht gefunden';
-                    press(sb.accept); st.acc = now; st.wait = now + 700; log('Verkauf bestätigt');
+                    press(sb.accept); st.acc = now; st.wait = now + jit(700); log('Verkauf bestätigt');
                     return 'run';
                 }
                 confirmPopup();
@@ -1465,13 +1534,13 @@
                 }
                 if (st.k < st.clicks) {
                     const el = shopEntries().find(x => x.id === st.it.id) || st.it;
-                    press(el.el); st.k++; st.wait = now + 180;
+                    press(el.el); st.k++; st.wait = now + jit(180);
                     return 'run';
                 }
                 if (!st.acc) {
                     const sb = shopButtons();
                     if (!sb.accept) return '„Accept“-Knopf im Laden nicht gefunden';
-                    press(sb.accept); st.acc = now; st.wait = now + 600;
+                    press(sb.accept); st.acc = now; st.wait = now + jit(600);
                     return 'run';
                 }
                 confirmPopup();
@@ -1498,7 +1567,10 @@
                 const [hx, hy] = heroXY();
                 if (Math.abs(hx - s.x) <= 1 && Math.abs(hy - s.y) <= 1) return 'ok';
                 if (age > 45000) return `Feld (${s.x}, ${s.y}) nicht erreicht`;
-                walkTo(+s.x, +s.y, 'aufgenommenem Feld'); return 'run';
+                /* Abwechslung: Haltepunkt ±1 Feld (zählt ohnehin als erreicht). Vor einem Rohbefehl genau hin –
+                   der könnte das Feld selbst brauchen. */
+                if (!st.spot) st.spot = (st.next && st.next.t === 'cmd' ? null : nearSpot(+s.x, +s.y, 1)) || [+s.x, +s.y];
+                walkTo(st.spot[0], st.spot[1], 'aufgenommenem Feld'); return 'run';
             }
             case 'say': {
                 // Antworten der Aufnahme: der Dialog muss vom vorherigen Schritt (NPC ansprechen) offen sein.
@@ -1635,6 +1707,7 @@
         const s = r.steps[cfg.chain.i];
         if (!s) return endChain();
         if (!chainSt) chainSt = { t0: performance.now() };
+        chainSt.next = r.steps[cfg.chain.i + 1];
         let res;
         try { res = doStep(s, chainSt); } catch (e) { res = e.message; }
         if (res === 'run') return;
@@ -1642,7 +1715,8 @@
         if ((s.t === 'sell' || s.t === 'buy') && s.closeAfter && shopOpen()) { closeShop(); log('Laden geschlossen'); }
         cfg.chain.i++; chainSt = { t0: performance.now() };
         // Laufen und Rohbefehle ohne Denkpause: sonst dauern lange Aufnahmen mit vielen Haltepunkten ewig.
-        busyUntil = performance.now() + (['walk', 'go', 'cmd', 'say'].includes(s.t) ? 0 : pause());
+        // Abwechslung: dort nur ein kleines, zufälliges Zögern.
+        busyUntil = performance.now() + (['walk', 'go', 'cmd', 'say'].includes(s.t) ? rnd(0, 250 * hum()) : pause());
         save(); lastStatic = '';
     }
     function checkRules(justRevived) {
@@ -2537,10 +2611,10 @@
         const adj = Math.abs(t.x - hx) <= 1 && Math.abs(t.y - hy) <= 1;
         if (adj && t.ghost) { fog.mem.delete(t.id); committed = null; lastPlan = null; return; }   // dort, aber nicht mehr da
         if (adj) {
-            if (still < 150) return;                                  // erst stehen bleiben
             // Angriff ohne Kampf (Mob läuft weiter, anderer Spieler …): beim selben Mob bleiben und nochmal versuchen,
             // nach 3 Versuchen 30 s überspringen – nicht zum nächsten Mob wechseln und zurück (Hin und Her).
-            const tr = atkTries[t.id] || (atkTries[t.id] = { n: 0, at: 0 });
+            const tr = atkTries[t.id] || (atkTries[t.id] = { n: 0, at: 0, wait: 150 + Math.random() * 450 * hum() });
+            if (still < tr.wait) return;                              // erst stehen bleiben (unterschiedlich lange)
             if (tNow - tr.at < 2500) return;                          // letzter Versuch läuft noch
             if (tr.n >= 3) {
                 skipUntil[t.id] = tNow + 30000; delete atkTries[t.id]; committed = null; lastPlan = null;
@@ -2557,17 +2631,29 @@
             committed = t.id;
             // Besetzte/gesperrte Mob-Kachel muss nicht betreten werden: von einem erreichbaren
             // Nachbarfeld aus angreifen. Das Spiel kann den Auftrag zur Mob-Kachel ablehnen.
+            // Abwechslung: von einer zufälligen (nahen) Seite an den Mob heran statt immer auf seine Kachel.
             let tx = t.x, ty = t.y;
-            if (walls[t.y * MW + t.x]) {
-                const d = bfs(hx, hy), near = [];
+            const ap = approach && approach.id === t.id ? approach : null;
+            if (ap && ap.mx === t.x && ap.my === t.y) { tx = ap.x; ty = ap.y; }
+            else if (walls[t.y * MW + t.x] || hum() > 0) {
+                const d = bfs(hx, hy), gw = new Set(gateways().map(g => g.x + ',' + g.y)), near = [];
                 for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
                     const x = t.x + dx, y = t.y + dy;
-                    if ((!dx && !dy) || x < 0 || y < 0 || x >= MW || y >= MH) continue;
+                    if ((!dx && !dy) || x < 0 || y < 0 || x >= MW || y >= MH || gw.has(x + ',' + y)) continue;
                     const n = d[y * MW + x];
-                    if (n >= 0) near.push({ x, y, n });
+                    if (n >= 0) near.push({ x, y, n, dx, dy });
                 }
                 near.sort((a, b) => a.n - b.n);
-                if (near.length) { tx = near[0].x; ty = near[0].y; }
+                if (near.length) {
+                    let c = near[0];
+                    if (hum() > 0) {
+                        // Mob ist ein Feld weitergelaufen: dieselbe Seite behalten (kein Zickzack), sonst würfeln
+                        const same = ap && near.find(o => o.dx === ap.dx && o.dy === ap.dy && o.n <= near[0].n + 3);
+                        c = same || anyOf(near.filter(o => o.n <= near[0].n + Math.round(2 * hum())));
+                    }
+                    tx = c.x; ty = c.y;
+                    approach = { id: t.id, mx: t.x, my: t.y, x: tx, y: ty, dx: c.dx, dy: c.dy };
+                }
             }
             walkTo(tx, ty, t.nick + (t.ghost ? ' (zuletzt gesehen)' : ''));
         }
@@ -3513,6 +3599,9 @@
             <select data-a="optimal"><option value="1" ${cfg.optimal ? 'selected' : ''}>kürzeste Route über alle Mobs</option>
               <option value="0" ${cfg.optimal ? '' : 'selected'}>immer den nächsten Mob</option></select>
             <div class="fld"><span>Pause (ms)</span><input class="num" data-a="pauseMin" value="${cfg.pauseMin}">–<input class="num" data-a="pauseMax" value="${cfg.pauseMax}"></div>
+            <div class="fld"><span>Abwechslung</span><select data-a="humanize" style="width:auto">${['aus', 'wenig', 'normal', 'viel'].map((l, v) =>
+                `<option value="${v}" ${(cfg.humanize == null ? 2 : +cfg.humanize) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+            <div class="hint">Würfelt zwischen fast gleich guten Mobs, Anlauf-Seiten, Umwegen, Feldern neben NPCs und Wartezeiten – damit nicht jeder Durchgang gleich aussieht. „aus“ = immer der kürzeste Weg.</div>
             <label class="chk"><input type="checkbox" data-a="closeBattle" ${cfg.closeBattle ? 'checked' : ''}>Kampffenster nach dem Kampf schließen</label>
             <label class="chk"><input type="checkbox" data-a="fogExplore" ${cfg.fogExplore !== false ? 'checked' : ''}>Nebel-Karten erkunden</label>
             <div class="fld"><span>Nebel: weiter nach</span><select data-a="fogPct" style="width:auto">${[100, 75, 50].map(v =>
@@ -4210,7 +4299,7 @@
                                      cfg.routes[cfg.route] && routeMode(cfg.routes[cfg.route]), worldN(), xpList && xpList.map(o => o.id), xpSel, cfg.lvlMin, cfg.lvlMax, heroLvl(),
             tab === 'e2' ? [JSON.stringify(cfg.e2), mapId(), mobs().map(m => m.id).sort().join()] : 0,
             tab === 'set' ? [JSON.stringify(cfg.tele || {}).length, cfg.routes[cfg.route] && routeMode(cfg.routes[cfg.route]), mobs().map(m => m.key).sort(), gateways().map(g => g.id), cfg.route, cfg.rec && cfg.rec.length, Object.keys(cfg.routes),
-                             cfg.picked, cfg.lvlOn, (cfg.deaths || []).length, cfg.onDeath, cfg.optimal, cfg.pk.mode, cfg.fogPct] : 0]);
+                             cfg.picked, cfg.lvlOn, (cfg.deaths || []).length, cfg.onDeath, cfg.optimal, cfg.humanize, cfg.pk.mode, cfg.fogPct] : 0]);
         if (sKey !== lastStatic) {
             lastStatic = sKey;
             box.innerHTML = `<div class="hd"><div class="brand"><span class="dot"></span>MargoBot</div>
@@ -4442,6 +4531,7 @@
         else if (a === 'rmode' && cfg.routes[cfg.route]) { cfg.routes[cfg.route].mode = t.value; cfg.routePos = 0; }
         else if (a === 'dest') { destText = t.value; return; }
         else if (a === 'optimal') cfg.optimal = t.value === '1';
+        else if (a === 'humanize') cfg.humanize = Math.max(0, Math.min(3, +t.value || 0));
         else if (a === 'route') selectRoute(t.value);
         else if (a === 'lvlMin' || a === 'lvlMax') { cfg[a] = parseInt(t.value, 10) || 1; fixRange(a); }
         else if (a === 'pauseMin' || a === 'pauseMax') cfg[a] = Math.max(0, parseInt(t.value, 10) || 0);

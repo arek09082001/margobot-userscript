@@ -33,7 +33,7 @@ const listeners = [];
 const doc = { createElement: el, head: el(), body: el(), addEventListener: (t, f) => t === 'click' && listeners.push(f),
     querySelector: q => q === '.dialogue-window.is-open' ? dlg : null };
 const W = { Engine, _g, prompt: () => null, confirm: () => true };
-const store = { mbworld: world, mbauto: { on: false, pauseMin: 0, pauseMax: 0 } }, timers = [];
+const store = { mbworld: world, mbauto: { humanize: 0, on: false, pauseMin: 0, pauseMax: 0 } }, timers = [];
 const sb = { unsafeWindow: W, GM_getValue: (k, d) => store[k] ?? d, GM_setValue: (k, v) => store[k] = v,
   document: doc, innerWidth: 1400, setInterval: f => timers.push(f), performance: { now: () => now } };
 new Function(...Object.keys(sb), src)(...Object.values(sb));

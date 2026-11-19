@@ -11,7 +11,7 @@ function setup(world, settings = {}) {
         map: { d: { id: 1, name: 'Start' }, size: { x: 20, y: 20 }, col: { check: () => 0 },
             getGateways: () => ({ townnames: {}, getList: () => [] }) } };
     const W = { Engine };
-    const store = { mbworld: world, mbauto: settings };
+    const store = { mbworld: world, mbauto: Object.assign({ humanize: 0 }, settings) };
     const sandbox = { unsafeWindow: W, GM_getValue: (k, d) => store[k] ?? d, GM_setValue: (k, v) => store[k] = v,
         document: { createElement: element, head: element(), body: element(), addEventListener() {}, querySelector: () => null },
         innerWidth: 1400, innerHeight: 900, setInterval: () => 0, performance: { now: () => 0 } };

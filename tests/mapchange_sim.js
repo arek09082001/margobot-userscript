@@ -23,7 +23,7 @@ const Engine = { hero, battle: { show: false }, npcs: { getDrawableList: () => n
   map: { d: { id: 1, name: 'Town' }, size: { x: 20, y: 20 }, col: { check: () => (now - changedAt < 1000 ? 1 : 0) },
     getGateways: () => ({ townnames: Object.fromEntries(G[cur].map(g => [g[0], NAMES[g[0]]])), getList: () => G[cur].map(g => ({ d: { id: g[0], x: g[1], y: g[2] } })) }) } };
 const el = () => ({ style: {}, dataset: {}, addEventListener() {}, appendChild() {}, querySelector: () => null, querySelectorAll: () => [], set innerHTML(v) {}, closest: () => null });
-const store = { mbworld: world, mbauto: { on: false, pauseMin: 0, pauseMax: 0 } };
+const store = { mbworld: world, mbauto: { humanize: 0, on: false, pauseMin: 0, pauseMax: 0 } };
 const timers = []; var now = 0;
 const doc = { createElement: el, head: el(), body: el(), addEventListener() {}, querySelector: () => null };
 const sb = { unsafeWindow: { Engine }, GM_getValue: (k, d) => store[k] || d, GM_setValue: (k, v) => store[k] = v,

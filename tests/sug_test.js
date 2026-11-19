@@ -6,7 +6,7 @@ const Engine = { hero: { d: { x: 47, y: 60, lvl: 41 } }, battle: { show: false }
   map: { d: { id: 2, name: 'Torneg' }, size: { x: 96, y: 64 }, col: { check: () => 0 }, getGateways: () => ({ townnames: {}, getList: () => [] }) } };
 const el = () => ({ style: {}, dataset: {}, addEventListener() {}, appendChild() {}, querySelector: () => null, querySelectorAll: () => [], set innerHTML(v) {}, closest: () => null });
 const W = { Engine };
-const store = { mbworld: world, mbauto: {} };
+const store = { mbworld: world, mbauto: { humanize: 0 } };
 const doc = { createElement: el, head: el(), body: el(), addEventListener() {}, querySelector: () => null };
 const sb = { unsafeWindow: W, GM_getValue: (k, d) => store[k] || d, GM_setValue: (k, v) => store[k] = v,
   document: doc, innerWidth: 1400, innerHeight: 900, setInterval: () => 0, performance: { now: () => Date.now() } };

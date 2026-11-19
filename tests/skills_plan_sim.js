@@ -28,7 +28,7 @@ function setup({ lvl = 60, used = 26, total = 36, gold = 1e7, windowOpen = true,
     const doc = { createElement: el, head: el(), body: el(), addEventListener() {}, querySelectorAll: () => [],
         querySelector: q => q === '.skills_learnt' ? (win.open ? { offsetWidth: 50, textContent: String(used) } : null) : q === '.skills_total' ? (win.open ? { textContent: String(total) } : null) : null };
     const timers = [];
-    const store = { mbauto: { open: true, tab: 'skills', on: false, pauseMin: 0, pauseMax: 0 } };
+    const store = { mbauto: { humanize: 0, open: true, tab: 'skills', on: false, pauseMin: 0, pauseMax: 0 } };
     const sb = { unsafeWindow: W, GM_getValue: (k, d) => store[k] || d, GM_setValue: (k, v) => store[k] = v, document: doc, innerWidth: 1400, innerHeight: 900,
         setInterval: f => timers.push(f), performance: { now: () => now } };
     new Function(...Object.keys(sb), src.replace('function log(t) {', 'function log(t) { W.__logs = (W.__logs || []).concat(t);'))(...Object.values(sb));

@@ -12,7 +12,7 @@ const Engine = { hero, battle: { show: false }, deadController: {}, npcs: { getD
     map: { d: { id: 2308, name: 'Old Merchant Trail' }, size: { x: 96, y: 100 }, col: { check: () => 0 }, getGateways: () => ({ townnames: {}, getList: () => [] }) } };
 const el = () => ({ style: {}, dataset: {}, addEventListener() {}, appendChild() {}, querySelector: () => null, querySelectorAll: () => [], closest: () => null, set innerHTML(v) {} });
 const W = { Engine }, store = { mbworld: { 2308: [96, 100, 'Stary Kupiecki Trakt', [], [['Szczęt alias Gładki', 47, 1, [12, 76], 'e2/zbir-szczet.gif']]] },
-    mbauto: { e2: E2, pauseMin: 0, pauseMax: 0 } };
+    mbauto: { humanize: 0, e2: E2, pauseMin: 0, pauseMax: 0 } };
 const sandbox = { unsafeWindow: W, GM_getValue: (k, d) => store[k] ?? d, GM_setValue: (k, v) => store[k] = v,
     document: { createElement: el, head: el(), body: el(), addEventListener() {}, querySelector: () => null },
     innerWidth: 1400, innerHeight: 900, setInterval: f => timers.push(f), performance: { now: () => now } };
