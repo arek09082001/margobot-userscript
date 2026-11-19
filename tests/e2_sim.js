@@ -29,7 +29,7 @@ const Engine = { hero, battle: { show: false }, npcs: { getDrawableList: () => c
 const W = { Engine, _g: () => {} };
 const el = () => ({ style: {}, dataset: {}, addEventListener() {}, appendChild() {}, querySelector: () => null, querySelectorAll: () => [], set innerHTML(v) {}, closest: () => null });
 const world = { 1: [20, 20, 'A', G[1], []], 2: [20, 20, 'B', G[2], [['Mushita', 23, 1, [15, 15], 'e2/st-puma.gif']]] };
-const store = { mbworld: world, mbauto: { on: false, pauseMin: 300, pauseMax: 300 } };
+const store = { mbworld: world, mbauto: { humanize: 0, on: false, pauseMin: 300, pauseMax: 300 } };
 const timers = [], later = [];
 let left = false;                              // Seitenwechsel: ab dann läuft das Spiel nicht mehr
 const loc = { _h: 'https://jaruna.margonem.pl/', get href() { return this._h; }, set href(v) { pageLeaves.push(BASE + now); this._h = v; left = true; W.Engine = undefined; },

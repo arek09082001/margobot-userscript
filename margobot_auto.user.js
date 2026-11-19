@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.26
+// @version      7.28
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -37,7 +37,7 @@
     const DEF = { on: false, picked: {}, lvlOn: false, lvlMin: 1, lvlMax: 300, pauseMin: 300, pauseMax: 900,
                   exits: {}, closeBattle: true, x: null, y: null, open: true,
                   routes: {}, route: '', routePos: 0, rec: null, flow: null, suggestAuto: true, expoAll: false,
-                  onDeath: 'stop', deaths: [], graph: {}, back: null, optimal: true,
+                  onDeath: 'stop', deaths: [], graph: {}, back: null, optimal: true, humanize: 2, limit: { mode: 'off', at: '03:00', hours: 4 }, limitEnd: 0,
                   names: {}, travel: null, blocked: [], tab: 'xp', logOpen: false, tele: {},
                   rules: [], chain: null, autoCaptcha: false, autoCaptchaConfirm: false, captchaWarn: true,
                   pk: { mode: 'off', maxUp: 5, near: 6, sec: 5, never: '' } };
@@ -51,6 +51,7 @@
         .filter((x, i, a) => !i || String(x).trim().toLowerCase() !== String(a[i - 1]).trim().toLowerCase());
     function normCfg() {                            // Unterobjekte mit Standardwerten auffüllen (nach Laden/Heldwechsel)
         cfg.pk = Object.assign({}, DEF.pk, cfg.pk || {});
+        cfg.limit = Object.assign({}, DEF.limit, cfg.limit || {});
         cfg.heros = Object.assign({ on: false, selected: '', repeat: false, sight: 5, seen: {}, rounds: 0, index: 0, checked: 0, route: [], skipped: [], status: '', found: null }, cfg.heros || {});
         cfg.e2 = Object.assign({}, E2DEF, cfg.e2 || {});
         // Alte Logout-Sperren (Rückkehrzeit + 30 min) auf höchstens zwei Minuten Restzeit kürzen.
@@ -95,7 +96,15 @@
     const running = () => !!(cfg.on || cfg.travel || cfg.chain || cfg.e2.on || cfg.heros.on);
     const save = () => { GM_setValue('mbauto', cfg); if (heroKey) GM_setValue('mbhero:' + heroKey, heroPart()); };
     const rnd = (a, b) => a + Math.random() * Math.max(0, b - a);
-    const pause = () => rnd(cfg.pauseMin, cfg.pauseMax);
+    /* Abwechslung (Einstellung „Abwechslung“: 0 aus, 1 wenig, 2 normal, 3 viel). Wunsch: nicht jedes Mal derselbe
+       Weg, derselbe Mob, dasselbe Feld neben dem NPC und derselbe Takt. Gewürfelt wird nur zwischen fast gleich guten
+       Möglichkeiten und bei Wartezeiten – Türen, Spielbefehle und Sicherheitsfristen bleiben, wie sie sind. */
+    const HUM = [0, 0.5, 1, 1.6];
+    const hum = () => { const h = HUM[+cfg.humanize]; return h == null ? 1 : h; };
+    const jit = ms => ms * (1 + hum() * 0.4 * Math.random());
+    const anyOf = a => a[Math.floor(Math.random() * a.length)];
+    // ab und zu ein kurzes Zögern (wie beim Spielen von Hand), sonst die eingestellte Pause
+    const pause = () => rnd(cfg.pauseMin, cfg.pauseMax) + (Math.random() < 0.04 * hum() ? rnd(800, 2500 * hum()) : 0);
 
     // ── Spieldaten ──────────────────────────────────────────────
     const E = () => W.Engine;
@@ -702,7 +711,7 @@
             }
             const g = fog.goal != null && open.find(p => p.y * MW + p.x === fog.goal);
             if (g) { walkTo(g.x, g.y, 'Mob-Platz'); return true; }
-            const best = open.map(p => [p, cost(d, p.x, p.y)]).sort((a, b) => a[1] - b[1])[0][0];
+            const best = open.map(p => [p, cost(d, p.x, p.y) * (1 + 0.3 * hum() * Math.random())]).sort((a, b) => a[1] - b[1])[0][0];
             return go(best.y * MW + best.x, `Mob-Platz (${fog.pct} % abgesucht)`);
         }
         if (fog.doneAt) {
@@ -712,7 +721,7 @@
             if (!due.length) return false;
             if (fog.goal != null && now - fog.goalAt < 15000 && due.some(p => p.y * MW + p.x === fog.goal)) { walkTo(fog.goal % MW, (fog.goal / MW) | 0, 'Fundstelle'); return true; }
             const d = bfs(hx, hy);
-            const best = due.map(p => [p, cost(d, p.x, p.y)]).filter(t => t[1] < Infinity).sort((a, b) => a[1] - b[1])[0];
+            const best = due.map(p => [p, cost(d, p.x, p.y) * (1 + 0.3 * hum() * Math.random())]).filter(t => t[1] < Infinity).sort((a, b) => a[1] - b[1])[0];
             if (!best) return false;
             return go(best[0].y * MW + best[0].x, 'Fundstelle');
         }
@@ -747,7 +756,7 @@
             if (d[i] < 0 || walls[i]) continue;
             const g = area(x, y);
             if (g < 6) continue;
-            const sc = g / (d[i] + 10);
+            const sc = g / (d[i] + 10) * (1 + 0.25 * hum() * Math.random());   // Abwechslung beim Erkunden
             if (sc > bs) { bs = sc; best = i; bg = g; }
         }
         if (best < 0) {                            // nur noch kleine Reste (Ecken, Ränder): nächstes ungesehenes Feld
@@ -809,6 +818,15 @@
         let first;
         if (cfg.optimal) first = idx.sort((a, b) => totals[a] - totals[b] || d0[a] - d0[b])[0];
         else first = idx.filter(i => totals[i] <= best * 1.15 || totals[i] <= best + 3).sort((a, b) => d0[a] - d0[b] || totals[a] - totals[b])[0];
+        const H = hum();
+        if (H > 0 && n > 1) {
+            /* Abwechslung: unter fast gleich guten Startzielen würfeln (nähere wahrscheinlicher). Gewählt wird nur,
+               wenn kein Ziel festgehalten ist – danach bleibt der Held bei seinem Mob (kein Hin und Her). */
+            const lim = totals[first] * (1 + 0.12 * H) + 2 * H, near = d0[first] + 4 * H + 2;
+            const alt = idx.filter(i => totals[i] <= lim && d0[i] <= near);
+            let w = alt.reduce((s, i) => s + 1 / (2 + d0[i]), 0) * Math.random();
+            for (const i of alt) { w -= 1 / (2 + d0[i]); if (w <= 0) { first = i; break; } }
+        }
         // schon angelaufenes Ziel behalten, wenn es kaum schlechter ist – sonst pendelt der Held zwischen zwei Zielen
         const keep = targets.findIndex(m => m.id === committed);
         if (keep >= 0 && keep !== first && totals[keep] <= totals[first] + 2) first = keep;
@@ -864,7 +882,7 @@
         lastMap = mn;
         // neue Karte: alte Laufziele vergessen, kurz warten, bis das Spiel die Karte geladen hat
         mapAt = performance.now(); goal = null; committed = null; lastPlan = null; travelDoor = null;
-        skipUntil = {}; atkTries = {}; chaseAt = mapAt; herosCoverage.clear();
+        skipUntil = {}; atkTries = {}; approach = null; via = null; chaseAt = mapAt; herosCoverage.clear();
         if (prev) busyUntil = Math.max(busyUntil, mapAt + 900);
         if (cfg.rec) {
             if (cfg.rec[cfg.rec.length - 1] !== mn) { cfg.rec.push(mn); save(); log('Aufnahme: ' + cfg.rec.join(' → ')); }
@@ -878,7 +896,7 @@
 
     // ── Ablauf ──────────────────────────────────────────────────
     let chaseAt = 0;                           // Laufauftrag zum aktuellen Mob, getrennt vom letzten Heldenschritt
-    let committed = null, planAt = 0, renderAt = 0, offRoute = null, offRouteLog = null, atkTries = {}, skipUntil = {};                          // Ziel, zu dem der Held gerade läuft
+    let committed = null, planAt = 0, renderAt = 0, offRoute = null, offRouteLog = null, atkTries = {}, skipUntil = {}, approach = null;                          // Ziel, zu dem der Held gerade läuft
     let busyUntil = 0, goal = null, goalSince = 0, lastHero = '', heroStill = 0, lastPlan = null, battleSeen = false;
     /* Andere Spieler beobachten: wer seit sec Sekunden höchstens near Felder entfernt ist und dabei selbst
        mindestens 3 Felder gelaufen ist, folgt uns (ein Spieler, der nur nebenan steht und jagt, zählt nicht). */
@@ -1021,7 +1039,53 @@
         try { fn(); } catch (e) { log('Fehler bei ' + what + ': ' + e.message); }
         busyUntil = performance.now() + pause();
     }
+    let via = null;                                // Umweg-Zwischenziel zum aktuellen Laufziel: {key, x, y, at, done}
     function walkTo(x, y, why) {
+        /* Längere Wege gehen manchmal über einen zufälligen Zwischenpunkt (höchstens ~20–30 % länger): Das Spiel
+           sucht sonst immer exakt denselben kürzesten Weg. Pro Laufziel wird nur einmal gewürfelt. */
+        const key = x + ',' + y;
+        if (via && via.key !== key && cheb(x, y, via.tx, via.ty) <= 3) { via.key = key; via.tx = x; via.ty = y; }   // Mob ein paar Felder weiter: gleiche Entscheidung
+        if (!via || via.key !== key) { const v = pickVia(x, y); via = { key, tx: x, ty: y, x: v ? v[0] : x, y: v ? v[1] : y, at: performance.now(), done: !v }; }
+        if (!via.done) {
+            const [hx, hy] = heroXY();
+            if (cheb(hx, hy, via.x, via.y) <= 1 || performance.now() - via.at > 20000) via.done = true;
+            else return walkRaw(via.x, via.y, why + ' (Umweg)');
+        }
+        walkRaw(x, y, why);
+    }
+    function pickVia(x, y) {
+        const H = hum();
+        if (!H || !walls || pkEsc || pkRouteSkip || Math.random() >= 0.22 * H) return null;   // Flucht: kein Umweg
+        const [hx, hy] = heroXY(), d = bfs(hx, hy), D = cost(d, x, y);
+        if (!(D >= 14) || D === Infinity) return null;
+        const f = field(x, y), gw = gateways(), c = [], max = D * (1 + 0.15 * H) + 4;
+        for (let i = 0; i < d.length; i++) {
+            if (walls[i] || d[i] < D * 0.25 || f[i] < D * 0.25) continue;
+            const s = d[i] + f[i];
+            if (s < D + 2 || s > max) continue;                     // echter Umweg, aber nicht weit
+            const vx = i % MW, vy = (i / MW) | 0;
+            if (gw.some(g => cheb(g.x, g.y, vx, vy) <= 1)) continue; // nie über/neben eine Tür (Kartenwechsel)
+            c.push([vx, vy]);
+        }
+        return c.length ? anyOf(c) : null;
+    }
+    function nearSpot(x, y, r, avoidCenter) {
+        /* Zufälliges erreichbares Feld höchstens r Felder um (x, y), keine Tür. Ohne Abwechslung: (x, y) selbst. */
+        if (!hum() || !walls) return [x, y];
+        const [hx, hy] = heroXY(), d = bfs(hx, hy), gw = new Set(gateways().map(g => g.x + ',' + g.y)), c = [];
+        for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+            const nx = x + dx, ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= MW || ny >= MH || (avoidCenter && !dx && !dy)) continue;
+            const i = ny * MW + nx;
+            if (walls[i] || d[i] < 0 || gw.has(nx + ',' + ny)) continue;
+            c.push([nx, ny, d[i]]);
+        }
+        if (!c.length) return null;
+        const m = Math.min(...c.map(o => o[2])) + 3 + Math.round(3 * hum());   // keine weiten Umwege ums Hindernis
+        const o = anyOf(c.filter(o => o[2] <= m));
+        return [o[0], o[1]];
+    }
+    function walkRaw(x, y, why) {
         const key = x + ',' + y;
         // läuft schon dorthin: nicht neu anstoßen (das Spiel würde den Weg neu starten → Stocken),
         // außer der Held steht seit über 1,2 s
@@ -1086,6 +1150,7 @@
        geht es weiter. Spielbefehle über _g (wie das Spiel selbst), Dialog/Shop über das HTML-Fenster. */
     const COND = {
         lvl:   { label: 'Level erreicht', unit: '', def: 25, test: n => heroLvl() >= n, once: true },
+        lvlup: { label: 'Level-Aufstieg, alle', unit: 'Level', def: 1, test: () => false },   // eigene Prüfung in checkRules
         heal:  { label: 'Heiltränke unter', unit: 'Stk.', def: 5, test: n => potionCount() < n },
         hp:    { label: 'Leben unter', unit: '%', def: 30, test: n => hpPct() < n },
         gold:  { label: 'Gold mindestens', unit: '', def: 10000, test: n => ((E().hero.d || {}).gold || 0) >= n },
@@ -1093,6 +1158,7 @@
         hand:  { label: 'Nur von Hand', unit: null, test: () => false }
     };
     const STEP = {
+        gear:  { label: 'Beste Ausrüstung anlegen', f: [] },
         equip: { label: 'Ausrüsten', f: [['name', 'Gegenstand']] },
         use:   { label: 'Benutzen', f: [['name', 'Gegenstand']] },
         fill:  { label: 'Heilen bis voll', f: [] },
@@ -1131,6 +1197,7 @@
     function whenText(w) {
         const c = COND[w.t];
         if (!c) return '?';
+        if (w.t === 'lvlup') return +w.n > 1 ? `Alle ${w.n} Level` : 'Bei jedem Level-Aufstieg';
         return c.unit === null ? c.label : c.label + ' ' + fmtN(w.n) + (c.unit ? ' ' + c.unit : '');
     }
     const fmtN = n => Number(n || 0).toLocaleString('de-DE');
@@ -1213,6 +1280,31 @@
         if (SELL[what] && SELL[what].bags) return [];
         const rule = (SELL[what] || SELL.gear).ok;
         return bag().filter(d => GEAR_CL.has(+d.cl) && !isPotion(d) && !parseStat(d.stat).quest && !parseStat(d.stat).soulbound && rule(d));
+    }
+    /* Beste Ausrüstung: Platz über die Gegenstandsklasse (cl, im Spiel gesehen: Kopf 9, Ring 12, Hals 13, Hände 11,
+       Rüstung 8, Schuhe 10, Talisman 22, Einhand 1, Schild 14). Tragbar = Level-Anforderung erreicht und Profession
+       passt (reqp). Wert = Level + Bonus für Seltenheit (geschätzt). Waffen nur derselben Klasse wie die angelegte –
+       sonst würde z. B. eine Zweihandwaffe den Schild ablegen und der nächste Schritt ihn wieder anlegen. */
+    const GEAR_SLOTS = { 9: 'Kopf', 13: 'Hals', 12: 'Ring', 11: 'Hände', 8: 'Rüstung', 10: 'Schuhe', 22: 'Talisman' };
+    const WEAPON_CL = new Set([1, 2, 3, 4, 6]), OFF_CL = new Set([5, 7, 14]);
+    const RAR_BONUS = { common: 0, unique: 5, upgraded: 8, heroic: 10, legendary: 20, artefact: 25 };
+    function gearScore(d) { return (+parseStat(d.stat).lvl || 0) + (RAR_BONUS[rarity(d)] || 0); }
+    function canWear(d) {
+        const p = parseStat(d.stat), prof = (E().hero.d || {}).prof;
+        if (p.quest || +p.lvl > heroLvl()) return false;
+        return !(p.reqp && prof && !String(p.reqp).includes(prof));
+    }
+    function gearUpgrades() {
+        const w = worn(), b = bag().filter(canWear), out = [];
+        const weapon = w.find(d => WEAPON_CL.has(+d.cl)), off = w.find(d => OFF_CL.has(+d.cl));
+        const groups = Object.entries(GEAR_SLOTS).map(([cl, slot]) => ({ slot, ok: d => +d.cl === +cl, old: w.find(d => +d.cl === +cl) }));
+        groups.push({ slot: 'Waffe', ok: d => weapon ? +d.cl === +weapon.cl : WEAPON_CL.has(+d.cl), old: weapon });
+        if (!weapon || ![2, 4].includes(+weapon.cl)) groups.push({ slot: 'Zweithand', ok: d => off ? +d.cl === +off.cl : OFF_CL.has(+d.cl), old: off });
+        for (const g of groups) {
+            const best = b.filter(g.ok).sort((x, y) => gearScore(y) - gearScore(x))[0];
+            if (best && (!g.old || gearScore(best) > gearScore(g.old))) out.push({ item: best, slot: g.slot, old: g.old });
+        }
+        return out;
     }
     function isPotion(d) { const s = parseStat(d.stat); return !!(s.leczy || s.fullheal || s.perheal); }
     function potionCount() { return bag().filter(isPotion).reduce((n, d) => n + (+parseStat(d.stat).amount || 1), 0); }
@@ -1307,6 +1399,20 @@
     function doStep(s, st) {
         const now = performance.now(), age = now - st.t0;
         switch (s.t) {
+            case 'gear': {
+                /* Pro Platz das stärkste tragbare Teil aus der Tasche anlegen, eins nach dem anderen. */
+                if (st.wait && now < st.wait) return 'run';
+                if (st.sentId != null) {
+                    if (!worn().some(d => d.id === st.sentId) && now - st.sentAt < 1500) return 'run';
+                    st.tried = (st.tried || []).concat([st.sentId]); st.sentId = null;
+                }
+                const up = gearUpgrades().filter(u => !(st.tried || []).includes(u.item.id));
+                if (!up.length || (st.n || 0) >= 12) { log(st.n ? `Ausrüstung: ${st.n} ${st.n === 1 ? 'Teil' : 'Teile'} angelegt` : 'Ausrüstung: nichts Besseres in der Tasche'); return 'ok'; }
+                const u = up[0];
+                send('moveitem&st=1&id=' + u.item.id); st.sentId = u.item.id; st.sentAt = now; st.n = (st.n || 0) + 1; st.wait = now + jit(400);
+                log(`Lege an (${u.slot}): ${u.item.name}${u.old ? ' statt ' + u.old.name : ''}`);
+                return 'run';
+            }
             case 'equip': case 'use': {
                 if (!st.sent) {
                     const d = findItem(bag(), s.name);
@@ -1375,9 +1481,15 @@
                 const [hx, hy] = heroXY();
                 if (Math.abs(n.x - hx) > 1 || Math.abs(n.y - hy) > 1) {
                     if (age > 60000) return `${n.nick} nicht erreicht`;
-                    walkTo(n.x, n.y + 1, n.nick); return 'run';
+                    // Abwechslung: jedes Mal ein anderes freies Feld neben dem NPC (sonst immer darunter)
+                    if (!st.spot || st.npcAt !== n.x + ',' + n.y) { st.npcAt = n.x + ',' + n.y; st.spot = (hum() && nearSpot(n.x, n.y, 1, true)) || [n.x, n.y + 1]; }
+                    walkTo(st.spot[0], st.spot[1], n.nick); return 'run';
                 }
-                if (!st.talk) { send('talk&id=' + n.id); st.talk = now; log('Spreche mit ' + n.nick); return 'run'; }
+                if (!st.talk) {
+                    if (st.near == null) st.near = now + rnd(0, 700 * hum());   // kurz ankommen, dann ansprechen
+                    if (now < st.near) return 'run';
+                    send('talk&id=' + n.id); st.talk = now; log('Spreche mit ' + n.nick); return 'run';
+                }
                 if (shopOpen()) return 'ok';                               // Laden offen → Dialog ist zu, Schritt erledigt
                 if (!s.say) return now - st.talk > 1200 ? 'ok' : 'run';
                 const d = dialogOpen();
@@ -1407,15 +1519,15 @@
                             const btn = sb.bag[bn];
                             if (!btn) return `Knopf für Tasche ${bn} nicht gefunden – „Spieldaten prüfen“ bei offenem Laden`;
                             st.before = bag().length; st.re = 0;
-                            press(btn); st.ph = 'accept'; st.wait = now + 450;
+                            press(btn); st.ph = 'accept'; st.wait = now + jit(450);
                             return 'run';
                         }
                         if (st.ph === 'accept') {
                             if (!sb.accept) return '„Accept“-Knopf im Laden nicht gefunden';
-                            press(sb.accept); st.ph = 'confirm'; st.wait = now + 600;
+                            press(sb.accept); st.ph = 'confirm'; st.wait = now + jit(600);
                             return 'run';
                         }
-                        if (st.ph === 'confirm') { confirmPopup(); st.ph = 'check'; st.wait = now + 900; return 'run'; }
+                        if (st.ph === 'confirm') { confirmPopup(); st.ph = 'check'; st.wait = now + jit(900); return 'run'; }
                         const diff = st.before - bag().length;
                         if (diff <= 0 && st.re < 2) { st.re++; st.wait = now + 700; return 'run'; }   // Tasche evtl. noch nicht aktualisiert
                         if (diff > 0 && ++st.round < 25) {
@@ -1434,7 +1546,7 @@
                         if (st.k < st.list.length) {
                             const el = bagItemEl(st.list[st.k]), before = basketCount();
                             if (el) { press(el); st.check = before; }
-                            st.k++; st.wait = now + 160;
+                            st.k++; st.wait = now + jit(160);
                             return 'run';
                         }
                     }
@@ -1444,7 +1556,7 @@
                 if (!st.acc) {
                     if (!qs && basketCount() === 0) return 'Gegenstände kamen nicht in den Verkaufskorb (Klick auf Tasche wirkt nicht) – Schnellverkauf nutzen';
                     if (!sb.accept) return '„Accept“-Knopf im Laden nicht gefunden';
-                    press(sb.accept); st.acc = now; st.wait = now + 700; log('Verkauf bestätigt');
+                    press(sb.accept); st.acc = now; st.wait = now + jit(700); log('Verkauf bestätigt');
                     return 'run';
                 }
                 confirmPopup();
@@ -1465,13 +1577,13 @@
                 }
                 if (st.k < st.clicks) {
                     const el = shopEntries().find(x => x.id === st.it.id) || st.it;
-                    press(el.el); st.k++; st.wait = now + 180;
+                    press(el.el); st.k++; st.wait = now + jit(180);
                     return 'run';
                 }
                 if (!st.acc) {
                     const sb = shopButtons();
                     if (!sb.accept) return '„Accept“-Knopf im Laden nicht gefunden';
-                    press(sb.accept); st.acc = now; st.wait = now + 600;
+                    press(sb.accept); st.acc = now; st.wait = now + jit(600);
                     return 'run';
                 }
                 confirmPopup();
@@ -1498,7 +1610,10 @@
                 const [hx, hy] = heroXY();
                 if (Math.abs(hx - s.x) <= 1 && Math.abs(hy - s.y) <= 1) return 'ok';
                 if (age > 45000) return `Feld (${s.x}, ${s.y}) nicht erreicht`;
-                walkTo(+s.x, +s.y, 'aufgenommenem Feld'); return 'run';
+                /* Abwechslung: Haltepunkt ±1 Feld (zählt ohnehin als erreicht). Vor einem Rohbefehl genau hin –
+                   der könnte das Feld selbst brauchen. */
+                if (!st.spot) st.spot = (st.next && st.next.t === 'cmd' ? null : nearSpot(+s.x, +s.y, 1)) || [+s.x, +s.y];
+                walkTo(st.spot[0], st.spot[1], 'aufgenommenem Feld'); return 'run';
             }
             case 'say': {
                 // Antworten der Aufnahme: der Dialog muss vom vorherigen Schritt (NPC ansprechen) offen sein.
@@ -1635,6 +1750,7 @@
         const s = r.steps[cfg.chain.i];
         if (!s) return endChain();
         if (!chainSt) chainSt = { t0: performance.now() };
+        chainSt.next = r.steps[cfg.chain.i + 1];
         let res;
         try { res = doStep(s, chainSt); } catch (e) { res = e.message; }
         if (res === 'run') return;
@@ -1642,7 +1758,8 @@
         if ((s.t === 'sell' || s.t === 'buy') && s.closeAfter && shopOpen()) { closeShop(); log('Laden geschlossen'); }
         cfg.chain.i++; chainSt = { t0: performance.now() };
         // Laufen und Rohbefehle ohne Denkpause: sonst dauern lange Aufnahmen mit vielen Haltepunkten ewig.
-        busyUntil = performance.now() + (['walk', 'go', 'cmd', 'say'].includes(s.t) ? 0 : pause());
+        // Abwechslung: dort nur ein kleines, zufälliges Zögern.
+        busyUntil = performance.now() + (['walk', 'go', 'cmd', 'say'].includes(s.t) ? rnd(0, 250 * hum()) : pause());
         save(); lastStatic = '';
     }
     function checkRules(justRevived) {
@@ -1650,7 +1767,17 @@
         for (const r of cfg.rules || []) {
             const c = COND[r.when.t];
             if (!r.on || !c || !r.steps.length || (c.once && r.done)) continue;
-            const now = r.when.t === 'death' ? !!justRevived : !!c.test(+r.when.n);
+            let now;
+            if (r.when.t === 'lvlup') {
+                /* Ab dem Level beim Anlegen (bzw. beim letzten Auslösen) zählen: alle n Level genau einmal. */
+                const L = heroLvl();
+                if (!L) continue;
+                if (r.from == null || r.from > L) { r.from = L; save(); }
+                now = L >= r.from + Math.max(1, +r.when.n || 1);
+                if (now) { r.from = L; delete lastCond[r.id]; startRule(r, whenText(r.when) + ' · Level ' + L); return true; }
+                continue;
+            }
+            now = r.when.t === 'death' ? !!justRevived : !!c.test(+r.when.n);
             const was = lastCond[r.id];
             lastCond[r.id] = now;
             if (now && !was) { startRule(r, whenText(r.when)); return true; }
@@ -2344,8 +2471,7 @@
             ${h ? `<div class="spots">${h.points.map(p => `<div class="spot"><span class="nm">${esc(wname(p.map))}</span><span class="mt">(${p.x}, ${p.y})</span></div>`).join('')}</div><div class="hint">Quelle: ${esc(h.source || 'im Import nicht angegeben')}</div>` : ''}
             <div class="hint">${esc(s.status || 'Bereit')} · ${s.rounds} Runden · ${s.index}/${s.route.length} Routenpunkte · ${s.skipped.length} ungeprüft</div>
             ${s.soundError ? `<div class="hint">${esc(s.soundError)}</div>` : ''}
-            ${s.on ? '<button class="cta stop" data-a="herosStop">Suche stoppen</button>' : `<button class="cta" data-a="herosStart" ${!h || !world || running() ? 'disabled' : ''}>${s.repeat ? 'Suchrunden starten' : 'Einmal absuchen'}</button>`}
-            <button class="sub" data-a="herosSound">Ton testen</button>
+            <button class="btn" data-a="herosSound">Ton testen</button>
             <div class="hint">Fasst Spawnpunkte pro Karte zusammen und verbessert die Kartenfolge. Sichtweite genügt zum Prüfen mehrerer Punkte. Beim sichtbaren Hero bis auf 1 Feld herangehen, stoppen und Ton abspielen. Der Hero wird nicht angegriffen. Unbekannte Wege werden als ungeprüft angezeigt.</div>`;
     }
 
@@ -2373,7 +2499,38 @@
         if (box.dataset.away !== html) { box.dataset.away = html; box.innerHTML = html; }
     }
 
+    function stopAll(msg) {
+        herosStop('Suche gestoppt'); pkRouteSkip = null;
+        if (sess.t0 && !sess.end) { sess.end = Date.now(); saveSess(); }
+        if (cfg.chain) endChain('von Hand');
+        if (cfg.e2.on) e2Stop();
+        cfg.on = false; cfg.travel = null; lastTravel = null; goal = null; cfg.limitEnd = 0;
+        log(msg || 'Gestoppt');
+        save(); lastStatic = '';
+    }
+    /* Zeitlimit: „bis 03:00“ (nächstes Vorkommen der Uhrzeit) oder „für 4 h“, gezählt ab dem Start. Gilt für alles,
+       was läuft (Jagd, Route, Reise, Ablauf, E2, Heros). Das Ende steht gespeichert, damit es ein Neuladen übersteht. */
+    function limitEndFrom(now) {
+        const L = cfg.limit || {};
+        if (L.mode === 'for') return now + Math.max(0.1, +L.hours || 4) * 3600000;
+        if (L.mode !== 'until') return 0;
+        const m = String(L.at || '').match(/^(\d{1,2}):(\d{2})/);
+        if (!m) return 0;
+        const d = new Date(now); d.setHours(+m[1], +m[2], 0, 0);
+        if (d.getTime() <= now) d.setDate(d.getDate() + 1);
+        return d.getTime();
+    }
+    function limitTick() {
+        if (!running() || !cfg.limit || cfg.limit.mode === 'off') { if (cfg.limitEnd) { cfg.limitEnd = 0; save(); } return false; }
+        const now = Date.now();
+        if (!cfg.limitEnd) { cfg.limitEnd = limitEndFrom(now); save(); if (cfg.limitEnd) log('Zeitlimit: stoppt um ' + clock(cfg.limitEnd)); return false; }
+        if (now < cfg.limitEnd) return false;
+        stopAll('⏱ Zeitlimit erreicht – Bot gestoppt');
+        try { GM_notification({ title: 'MargoBot', text: 'Zeitlimit erreicht – Bot gestoppt', silent: true, onclick: () => W.focus() }); } catch (e) {}
+        return true;
+    }
     function tick() {
+        if (limitTick()) return;
         e2Away();
         if (ok()) {
             bindHero();
@@ -2537,10 +2694,10 @@
         const adj = Math.abs(t.x - hx) <= 1 && Math.abs(t.y - hy) <= 1;
         if (adj && t.ghost) { fog.mem.delete(t.id); committed = null; lastPlan = null; return; }   // dort, aber nicht mehr da
         if (adj) {
-            if (still < 150) return;                                  // erst stehen bleiben
             // Angriff ohne Kampf (Mob läuft weiter, anderer Spieler …): beim selben Mob bleiben und nochmal versuchen,
             // nach 3 Versuchen 30 s überspringen – nicht zum nächsten Mob wechseln und zurück (Hin und Her).
-            const tr = atkTries[t.id] || (atkTries[t.id] = { n: 0, at: 0 });
+            const tr = atkTries[t.id] || (atkTries[t.id] = { n: 0, at: 0, wait: 150 + Math.random() * 450 * hum() });
+            if (still < tr.wait) return;                              // erst stehen bleiben (unterschiedlich lange)
             if (tNow - tr.at < 2500) return;                          // letzter Versuch läuft noch
             if (tr.n >= 3) {
                 skipUntil[t.id] = tNow + 30000; delete atkTries[t.id]; committed = null; lastPlan = null;
@@ -2557,17 +2714,29 @@
             committed = t.id;
             // Besetzte/gesperrte Mob-Kachel muss nicht betreten werden: von einem erreichbaren
             // Nachbarfeld aus angreifen. Das Spiel kann den Auftrag zur Mob-Kachel ablehnen.
+            // Abwechslung: von einer zufälligen (nahen) Seite an den Mob heran statt immer auf seine Kachel.
             let tx = t.x, ty = t.y;
-            if (walls[t.y * MW + t.x]) {
-                const d = bfs(hx, hy), near = [];
+            const ap = approach && approach.id === t.id ? approach : null;
+            if (ap && ap.mx === t.x && ap.my === t.y) { tx = ap.x; ty = ap.y; }
+            else if (walls[t.y * MW + t.x] || hum() > 0) {
+                const d = bfs(hx, hy), gw = new Set(gateways().map(g => g.x + ',' + g.y)), near = [];
                 for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
                     const x = t.x + dx, y = t.y + dy;
-                    if ((!dx && !dy) || x < 0 || y < 0 || x >= MW || y >= MH) continue;
+                    if ((!dx && !dy) || x < 0 || y < 0 || x >= MW || y >= MH || gw.has(x + ',' + y)) continue;
                     const n = d[y * MW + x];
-                    if (n >= 0) near.push({ x, y, n });
+                    if (n >= 0) near.push({ x, y, n, dx, dy });
                 }
                 near.sort((a, b) => a.n - b.n);
-                if (near.length) { tx = near[0].x; ty = near[0].y; }
+                if (near.length) {
+                    let c = near[0];
+                    if (hum() > 0) {
+                        // Mob ist ein Feld weitergelaufen: dieselbe Seite behalten (kein Zickzack), sonst würfeln
+                        const same = ap && near.find(o => o.dx === ap.dx && o.dy === ap.dy && o.n <= near[0].n + 3);
+                        c = same || anyOf(near.filter(o => o.n <= near[0].n + Math.round(2 * hum())));
+                    }
+                    tx = c.x; ty = c.y;
+                    approach = { id: t.id, mx: t.x, my: t.y, x: tx, y: ty, dx: c.dx, dy: c.dy };
+                }
             }
             walkTo(tx, ty, t.nick + (t.ghost ? ' (zuletzt gesehen)' : ''));
         }
@@ -2977,22 +3146,24 @@
     #mba{--bg:#16130f;--bg2:#1f1b15;--bg3:#2a241c;--line:#3a3227;--tx:#efe8da;--mut:#b3a892;--dim:#857a66;
          --amb:#e8a93c;--amb2:#f4c46a;--ambtx:#1d1408;--ok:#7fcf8a;--bad:#ec7a6a;--blue:#8fb4ef;
          --disp:'Barlow Semi Condensed','Segoe UI',system-ui,sans-serif;
-         position:fixed;z-index:100000;width:min(360px,calc(100vw - 16px));background:var(--bg);color:var(--tx);
-         font:12.5px/1.4 'Segoe UI',system-ui,sans-serif;border:1px solid var(--line);border-radius:12px;
-         box-shadow:0 12px 32px -8px rgba(0,0,0,.65),0 2px 6px rgba(0,0,0,.4);user-select:none;overflow:hidden}
+         position:fixed;z-index:100000;width:min(410px,calc(100vw - 16px));background:var(--bg);color:var(--tx);
+         font:13.5px/1.45 'Segoe UI',system-ui,sans-serif;border:1px solid var(--line);border-radius:14px;
+         box-shadow:0 14px 36px -8px rgba(0,0,0,.7),0 2px 6px rgba(0,0,0,.4);user-select:none;overflow:hidden;
+         display:flex;flex-direction:column}
+    #mba > *{flex:none}
     #mba *{box-sizing:border-box}
-    #mba svg{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+    #mba svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
     #mba button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
     #mba button:focus-visible,#mba input:focus-visible,#mba select:focus-visible{outline:2px solid var(--amb);outline-offset:1px}
 
-    #mba .hd{display:flex;align-items:center;gap:8px;padding:9px 10px 9px 12px;cursor:move;background:var(--bg2);touch-action:none}
-    #mba .brand{font:700 15px/1 var(--disp);letter-spacing:.01em;flex:1;display:flex;align-items:center;gap:8px}
+    #mba .hd{display:flex;align-items:center;gap:8px;padding:10px 10px 10px 14px;cursor:move;background:var(--bg2);touch-action:none}
+    #mba .brand{font:700 16px/1 var(--disp);letter-spacing:.01em;flex:1;display:flex;align-items:center;gap:8px}
     #mba .dot{width:8px;height:8px;border-radius:50%;background:var(--dim)}
     #mba .dot.run{background:var(--ok);animation:mbaPulse 2.4s cubic-bezier(.16,1,.3,1) infinite}
     #mba .dot.trv{background:var(--blue)} #mba .dot.dead{background:var(--bad)}
     @keyframes mbaPulse{0%{box-shadow:0 0 0 0 rgba(127,207,138,.55)}70%{box-shadow:0 0 0 7px rgba(127,207,138,0)}100%{box-shadow:0 0 0 0 rgba(127,207,138,0)}}
     @media (prefers-reduced-motion:reduce){#mba .dot.run{animation:none}}
-    #mba .ib{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;color:var(--mut)}
+    #mba .ib{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--mut)}
     #mba .ib:hover{background:var(--bg3);color:var(--tx)}
     #mba .mini{font:600 12.5px/1 var(--disp);padding:6px 10px;border-radius:7px;background:var(--amb);color:var(--ambtx);display:inline-flex;align-items:center;gap:5px}
     #mba .mini svg{width:12px;height:12px;stroke-width:2.4}
@@ -3029,24 +3200,44 @@
     #mba .skd table{width:100%;border-collapse:collapse;margin-top:6px;font-variant-numeric:tabular-nums}
     #mba .skd th{text-align:right;font-weight:500;color:var(--dim);padding:2px 0 2px 8px} #mba .skd th:first-child,#mba .skd td:first-child{text-align:left;padding-left:0;overflow-wrap:anywhere}
     #mba .skd td{text-align:right;padding:2px 0 2px 8px;color:var(--tx)} #mba .skd td:first-child{color:var(--mut)}
-    #mba .tabs{display:flex;gap:2px;padding:0 10px;overflow-x:auto;scrollbar-width:none;background:var(--bg2);border-bottom:1px solid var(--line)}
-    #mba .tab{white-space:nowrap;flex:none;font:600 13px/1 var(--disp);letter-spacing:.02em;color:var(--dim);padding:8px 7px 9px;border-bottom:2px solid transparent;margin-bottom:-1px}
+    #mba .tabs{display:flex;gap:0;padding:0 6px;overflow-x:auto;scrollbar-width:none;background:var(--bg2);border-bottom:1px solid var(--line);border-top:1px solid var(--line)}
+    #mba .tab{white-space:nowrap;flex:1 0 auto;text-align:center;font:600 13.5px/1 var(--disp);letter-spacing:.01em;color:var(--dim);padding:11px 5px 12px;border-bottom:2px solid transparent;margin-bottom:-1px}
     #mba .tab:hover{color:var(--mut)} #mba .tab.on{color:var(--tx);border-bottom-color:var(--amb)}
 
-    #mba .bd{padding:12px;max-height:68vh;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--line) transparent;overscroll-behavior:contain}
+    #mba .bd{flex:1 1 auto;min-height:60px;padding:14px;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--line) transparent;overscroll-behavior:contain}
+    /* Fester Steuerbereich: Status, großer Start/Stopp und Zeitlimit – immer sichtbar, scrollt nie mit */
+    #mba .dock{padding:12px 14px 12px;background:var(--bg);display:flex;flex-direction:column;gap:10px}
+    #mba .dock .now{padding:10px 12px}
+    #mba .act{display:flex;gap:6px}
+    #mba .act .cta{margin:0;flex:1;min-width:0}
+    #mba .act .cta span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    #mba .act .cta:disabled{opacity:.5;cursor:default;box-shadow:none}
+    #mba .sub2{flex:none;padding:0 14px;border-radius:10px;background:var(--bg3);color:var(--tx);font:600 14px/1 var(--disp)}
+    #mba .sub2:hover{background:#352d23}
+    #mba .lim{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;color:var(--mut)}
+    #mba .lim select{width:auto;flex:none} #mba .lim input[type=time]{background:var(--bg2);color:var(--tx);border:1px solid var(--line);border-radius:7px;padding:5px 7px;font:inherit;color-scheme:dark}
+    #mba .lim .num{width:52px} #mba .limr{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--amb2);font-size:12.5px;white-space:nowrap}
+    #mba .spot.lv{grid-template-columns:auto 1fr auto;align-items:center;column-gap:10px;padding:9px 10px}
+    #mba .spot.lv .lvb{grid-row:1/3;min-width:52px;text-align:center;padding:6px 6px;border-radius:8px;background:var(--bg3);
+         font:700 14px/1.1 var(--disp);color:var(--amb2);font-variant-numeric:tabular-nums}
+    #mba .spot.lv .lvb small{display:block;font:600 10px/1.2 'Segoe UI',sans-serif;color:var(--dim);letter-spacing:.04em}
+    #mba .spot.lv .mt{grid-column:2/4}
+    #mba .spot.lv .nm{white-space:normal;line-height:1.25}
+    #mba .star{font-style:normal;color:var(--amb);font-size:11px;font-weight:600;margin-left:6px;white-space:nowrap}
+    #mba .spot:disabled{opacity:.55;cursor:default}
+    #mba .rule details.sd{margin-top:2px;border-top:0;padding-top:0}
     /* Handy/Tablet: Finger statt Maus – größere Tippflächen, Kopfzeile ist Griff, Inhalt scrollt per Wischen (siehe touch-Handler) */
     @media (pointer:coarse){
       #mba .ib{width:34px;height:34px}
       #mba .mini{padding:9px 12px}
       #mba .tab{padding:11px 10px 12px}
-      #mba .bd{max-height:60vh;touch-action:none}
+      #mba .bd{touch-action:none}
     }
-    @media (max-height:500px){#mba .bd{max-height:calc(100vh - 140px)}}
-    #mba h4{font:600 12px/1 var(--disp);letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin:18px 0 8px}
+    #mba h4{font:600 13px/1 var(--disp);letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin:20px 0 9px}
     #mba h4:first-child{margin-top:2px}
 
     #mba .now{background:var(--bg2);border-radius:10px;padding:10px 11px}
-    #mba .now .st{font:700 17px/1.15 var(--disp);display:flex;align-items:center;gap:7px}
+    #mba .now .st{font:700 18px/1.15 var(--disp);display:flex;align-items:center;gap:7px}
     #mba .now .dt2{color:var(--mut);margin-top:3px;min-height:17px}
     #mba .now .dt{color:var(--mut);margin-top:3px;min-height:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     #mba .now .kp{display:flex;gap:14px;margin-top:8px;padding-top:8px;border-top:1px solid var(--line);color:var(--mut);font-size:11.5px}
@@ -3059,8 +3250,8 @@
 
     #mba .rg{display:flex;align-items:center;gap:6px}
     #mba .stp{display:flex;align-items:center;background:var(--bg2);border:1px solid var(--line);border-radius:8px;overflow:hidden}
-    #mba .stp button{width:24px;height:30px;color:var(--mut);font:600 15px/1 var(--disp)} #mba .stp button:hover{background:var(--bg3);color:var(--tx)}
-    #mba .stp input{width:36px;height:30px;text-align:center;background:none;border:0;color:var(--tx);font:700 16px/1 var(--disp);
+    #mba .stp button{width:30px;height:34px;color:var(--mut);font:600 15px/1 var(--disp)} #mba .stp button:hover{background:var(--bg3);color:var(--tx)}
+    #mba .stp input{width:40px;height:34px;text-align:center;background:none;border:0;color:var(--tx);font:700 16px/1 var(--disp);
          font-variant-numeric:tabular-nums;-moz-appearance:textfield}
     #mba .stp input::-webkit-inner-spin-button{-webkit-appearance:none}
     #mba .rg .to{color:var(--dim)}
@@ -3068,9 +3259,10 @@
     #mba .chip:hover{background:var(--bg3)}
 
     #mba .spots{display:flex;flex-direction:column;gap:3px}
-    #mba .spot{display:grid;grid-template-columns:1fr auto;gap:1px 8px;text-align:left;padding:8px 10px;border-radius:9px;
-         border:1px solid transparent;transition:background .15s,border-color .15s}
-    #mba .spot:hover{background:var(--bg2)}
+    #mba .spot{display:grid;grid-template-columns:1fr auto;gap:2px 8px;text-align:left;padding:10px 11px;border-radius:10px;
+         background:var(--bg2);border:1px solid transparent;transition:background .15s,border-color .15s}
+    #mba .spots{gap:5px}
+    #mba .spot:hover{background:var(--bg3)}
     #mba .spot.sel{background:var(--bg3);border-color:rgba(232,169,60,.55)}
     #mba .spot .nm{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     #mba .spot .ds{font:600 12.5px/1.4 var(--disp);color:var(--mut);font-variant-numeric:tabular-nums;text-align:right}
@@ -3085,12 +3277,12 @@
     #mba .spot .xpl{color:var(--amb2);opacity:.85;font-variant-numeric:tabular-nums} #mba .spot .rprog{color:var(--blue)}
     #mba .spot .mt{grid-column:1/-1;color:var(--dim);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-    #mba .cta{width:100%;margin-top:12px;display:flex;align-items:center;justify-content:center;gap:8px;padding:11px 12px;border-radius:10px;
-         background:var(--amb);color:var(--ambtx);font:700 15px/1.1 var(--disp);letter-spacing:.01em;
+    #mba .cta{width:100%;margin-top:12px;display:flex;align-items:center;justify-content:center;gap:8px;padding:13px 14px;border-radius:11px;
+         background:var(--amb);color:var(--ambtx);font:700 17px/1.1 var(--disp);letter-spacing:.01em;
          box-shadow:0 4px 12px -4px rgba(232,169,60,.45);transition:background .15s,transform .1s}
     #mba .cta:hover{background:var(--amb2)} #mba .cta:active{transform:translateY(1px)}
     #mba .cta.stop{background:var(--bad);color:#2a0d08;box-shadow:0 4px 12px -4px rgba(236,122,106,.45)}
-    #mba .cta svg{width:16px;height:16px;stroke-width:2.2}
+    #mba .cta svg{width:18px;height:18px;stroke-width:2.2}
     #mba .sub{display:block;margin:7px auto 0;color:var(--mut);font-size:12px;padding:4px 8px;border-radius:6px}
     #mba .sub:hover{color:var(--tx);background:var(--bg2)}
     #mba .empty{color:var(--mut);padding:4px 2px 2px}
@@ -3103,9 +3295,9 @@
 
     #mba .fld{display:flex;align-items:center;gap:8px;margin:6px 0}
     #mba .fld > span{flex:1;color:var(--mut)}
-    #mba select,#mba input[type=text],#mba .num{background:var(--bg2);color:var(--tx);border:1px solid var(--line);border-radius:7px;padding:5px 7px;font:inherit}
+    #mba select,#mba input[type=text],#mba .num{background:var(--bg2);color:var(--tx);border:1px solid var(--line);border-radius:8px;padding:7px 9px;font:inherit}
     #mba select{width:100%} #mba input[type=text]{flex:1;min-width:0} #mba .num{width:58px;text-align:right;font-variant-numeric:tabular-nums}
-    #mba .btn{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:7px;background:var(--bg3);color:var(--tx);white-space:nowrap}
+    #mba .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:8px;background:var(--bg3);color:var(--tx);white-space:nowrap}
     #mba .btn:hover{background:#352d23} #mba .btn.rec{color:var(--bad)} #mba .btn.pri{background:var(--amb);color:var(--ambtx);font-weight:600}
     #mba .chk{display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer}
     #mba .chk input{accent-color:var(--amb);width:14px;height:14px;margin:0}
@@ -3164,6 +3356,7 @@
         up: '<path d="M12 19V5M6 11l6-6 6 6"/>',
         edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>',
         trash: '<path d="M5 7h14M10 7V4.5h4V7M7 7l1 13h8l1-13"/>',
+        clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
         x: '<path d="M6 6l12 12M18 6 6 18"/>', plus: '<path d="M12 5v14M5 12h14"/>', check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>'
     };
     const ico = n => `<svg viewBox="0 0 24 24">${I[n]}</svg>`;
@@ -3195,9 +3388,12 @@
     /* Panel im sichtbaren Bereich halten: auf dem Handy ist der Bildschirm schmaler als 390 px,
        und beim Drehen ins Hoch-/Querformat würde eine gespeicherte Position sonst draußen liegen */
     const clampBox = (x, y) => [Math.min(innerWidth - Math.min(60, box.offsetWidth || 60), Math.max(0, x)), Math.min(innerHeight - 40, Math.max(0, y))];
+    // Panel nie über den unteren Rand hinaus: der Inhalt scrollt, Kopf und Start-Knopf bleiben sichtbar
+    const fitBox = () => { if (typeof innerHeight === 'number') box.style.maxHeight = Math.max(240, innerHeight - box.offsetTop - 10) + 'px'; };
     const placeBox = () => {
         const [x, y] = clampBox(box.offsetLeft, box.offsetTop);
         box.style.left = Math.min(x, Math.max(0, innerWidth - box.offsetWidth - 8)) + 'px'; box.style.top = y + 'px';
+        fitBox();
     };
     if (cfg.x == null) box.style.left = Math.max(8, innerWidth - box.offsetWidth - 30) + 'px';
     if (typeof addEventListener === 'function') {   // fehlt nur in den Node-Simulationen
@@ -3217,7 +3413,7 @@
     box.addEventListener('pointermove', ev => {
         if (!dragging || ev.pointerId !== dragging[2]) return;
         const [x, y] = clampBox(ev.clientX - dragging[0], ev.clientY - dragging[1]);
-        box.style.left = x + 'px'; box.style.top = y + 'px';
+        box.style.left = x + 'px'; box.style.top = y + 'px'; fitBox();
         ev.preventDefault();
     });
     const dragEnd = () => {
@@ -3314,7 +3510,13 @@
         const k = [cfg.lvlMin, cfg.lvlMax, mapId(), worldN(), heroLvl()].join('|');
         if (k === xpKey) return;
         xpKey = k; xpSel = 0;
-        xpList = world ? xpMaps(cfg.lvlMin, cfg.lvlMax, 5) : null;
+        xpList = world ? xpMaps(cfg.lvlMin, cfg.lvlMax, 10) : null;
+        if (xpList && xpList.length) {
+            // nach Mob-Level sortiert anzeigen; der Ort mit den meisten XP ist markiert und vorausgewählt
+            const best = xpList[0]; best.best = true;
+            xpList.sort((a, b) => a.lv[0] - b.lv[0] || a.lv[1] - b.lv[1] || b.score - a.score);
+            xpSel = xpList.indexOf(best);
+        }
     }
 
     function state() {
@@ -3395,12 +3597,12 @@
             <label class="chk"><input type="checkbox" data-a="suggestAuto" ${cfg.suggestAuto ? 'checked' : ''}>Automatisch passend zu meinem Level</label>
             <button class="sub" data-a="expoall">${cfg.expoAll ? 'Nur passende Vorschläge zeigen' : 'Alle ' + FORUM_EXPOWISKA.length + ' Forum-Gebiete anzeigen'}</button>` +
             (!world ? '<div class="hint">Erst die Weltkarte laden.</div>' : sg.length ?
-            `<div class="spots">${sg.map((o, i) => `<button class="spot" data-a="sugtake" data-i="${i}" ${running() || !o.n || !Number.isFinite(o.d) ? 'disabled' : ''}>
-                <span class="nm">${esc(o.name)}</span>
-                <span class="ds">${!o.n ? 'Mob-Daten fehlen' : !Number.isFinite(o.d) ? 'Anreise nicht bekannt' : o.d < 1 ? 'hier' : Math.round(o.d) + ' Schritte'}</span>
-                <span class="mt">${o.source === 'forum' ? (o.recommended ? 'Im Forum empfohlen · ' : 'Forum · ') : 'Berechnet · '}Mob-Level ${o.lv[0]}–${o.lv[1]} · ${o.cards} Karten · ${o.n} Mobs · ${o.maps.length > 1 ? o.maps.length : 0} Kartenwechsel pro Runde</span>
-                ${o.totalCards > o.cards ? `<span class="mt">Teilroute: ${o.cards} von ${o.totalCards} Gebietskarten; weitere Teile separat.</span>` : ''}
-                <span class="mt">Karten: ${esc([...new Set(o.maps)].map(wname).join(' · '))}</span>
+            `<div class="spots">${sg.map((o, i) => [o, i]).sort((a, b) => a[0].lv[0] - b[0].lv[0] || a[0].lv[1] - b[0].lv[1]).map(([o, i]) => `<button class="spot lv" data-a="sugtake" data-i="${i}" ${running() || !o.n || !Number.isFinite(o.d) ? 'disabled' : ''}
+                title="Karten: ${esc([...new Set(o.maps)].map(wname).join(' · '))}">
+                <span class="lvb"><small>LVL</small>${o.lv[0] === o.lv[1] ? o.lv[0] : o.lv[0] + '–' + o.lv[1]}</span>
+                <span class="nm">${esc(o.name)}${o.recommended ? '<i class="star">★ empfohlen</i>' : ''}</span>
+                <span class="ds">${!o.n ? 'Mob-Daten fehlen' : !Number.isFinite(o.d) ? 'Anreise nicht bekannt' : o.d < 1 ? 'hier' : Math.round(o.d) + ' Schr.'}</span>
+                <span class="mt">${o.cards} ${o.cards === 1 ? 'Karte' : 'Karten'} · ${o.n} Mobs${o.totalCards > o.cards ? ` · Teil (${o.cards}/${o.totalCards} Karten)` : ''} · ${o.source === 'forum' ? 'Forum' : 'berechnet'}</span>
                 <span class="mt xpl">${xpLine(o.r)}</span></button>`).join('')}</div>
                 <div class="hint">${sg.some(o => o.source === 'forum') ? 'Gebiete aus dem Forum (23.06.2026), Rundgänge anhand der Weltkarte berechnet. ~Level ist der Mob-Durchschnitt, keine Heldenempfehlung.' : 'Aus der Weltkarte berechnet.'} Antippen übernimmt den Rundgang und den Mob-Level-Bereich; gestartet wird erst mit „Route starten“. ${running() ? 'Zum Wechseln zuerst stoppen.' : ''}</div>` :
             '<div class="hint">Keine erreichbare Rundroute für diesen Bereich. Andere Level wählen oder einen einzelnen XP-Ort nutzen.</div>');
@@ -3417,19 +3619,15 @@
                                  Sie kommt direkt aus dem GitHub-Repo, alternativ als Datei <b>margobot_world.json</b>.</div>`;
             else if (!xpList.length) body = `<div class="empty">Kein XP-Ort für Level ${cfg.lvlMin}–${cfg.lvlMax} erreichbar. Bereich größer machen?</div>`;
             else body = `<div class="spots">${xpList.map((o, i) => `
-                <button class="spot ${i === xpSel ? 'sel' : ''} ${o.id === here ? 'here' : ''}" data-a="xpsel" data-i="${i}">
-                  <span class="nm">${esc(wname(o.id))}</span>
-                  <span class="ds">${o.id === here ? 'hier' : Math.round(o.d) + ' Schritte'}</span>
-                  <span class="mt">Lvl ${o.lv[0] === o.lv[1] ? o.lv[0] : o.lv[0] + '–' + o.lv[1]} · ${o.n} Mobs · ${esc(o.mobs.join(', '))}</span>
+                <button class="spot lv ${i === xpSel ? 'sel' : ''} ${o.id === here ? 'here' : ''}" data-a="xpsel" data-i="${i}">
+                  <span class="lvb"><small>LVL</small>${o.lv[0] === o.lv[1] ? o.lv[0] : o.lv[0] + '–' + o.lv[1]}</span>
+                  <span class="nm">${esc(wname(o.id))}${o.best ? '<i class="star">★ meiste XP</i>' : ''}</span>
+                  <span class="ds">${o.id === here ? 'hier' : Math.round(o.d) + ' Schr.'}</span>
+                  <span class="mt">${o.n} Mobs · ${esc(o.mobs.join(', '))}</span>
                   <span class="mt xpl">${xpLine(o.r)}</span>
-                </button>`).join('')}</div>`;
-            if (run) cta = `<button class="cta stop" data-a="stopall">${ico('stop')}Stopp</button>`;
-            else if (!world) cta = `<button class="cta" data-a="loadworldgh">${ico('map')}${worldDl ? 'Lädt …' : 'Weltkarte von GitHub laden'}</button>
-                                    <button class="sub" data-a="loadworld">oder Datei wählen</button>`;
-            else if (sel && sel.id === here) cta = `<button class="cta" data-a="huntxp">${ico('play')}Hier jagen</button>`;
-            else if (sel) cta = `<button class="cta" data-a="goxp">${ico('play')}Hinlaufen & jagen</button>
-                                 <button class="sub" data-a="huntxp">oder gleich hier jagen</button>`;
-            else cta = `<button class="cta" data-a="huntxp">${ico('play')}Hier jagen</button>`;
+                </button>`).join('')}</div>
+                <div class="hint">Antippen wählt den Ort, gestartet wird oben.</div>`;
+            cta = '';
         } else {
             const rec = cfg.rec ? `<button class="btn rec" data-a="rec">${ico('stop')}Aufnahme beenden (${cfg.rec.length} Karten)</button>`
                                 : `<button class="btn" data-a="rec">${ico('rec')}Neue Route aufnehmen</button>`;
@@ -3450,14 +3648,10 @@
                         <option value="loop" ${routeMode(ro) === 'loop' ? 'selected' : ''}>im Kreis: ${esc(z)} → ${esc(m[0])}</option></select>` : ''}` : ''}
                     <div class="fld">${rec}${ro && !cfg.rec ? `<button class="btn" data-a="delroute">${ico('trash')}Löschen</button>` : ''}</div>`;
             }
-            if (run) cta = `<button class="cta stop" data-a="stopall">${ico('stop')}Stopp</button>`;
-            else if (ro) cta = `<button class="cta" data-a="runroute">${ico('play')}Route „${esc(cfg.route)}“ starten</button>`;
-            else cta = '';
+            cta = '';
         }
         return `
-            <div class="now"><div class="st"><span class="dot"></span><span class="stl"></span></div>
-              <div class="dt"></div><div class="kp"></div></div>
-            <div class="seg">
+            <div class="seg" style="margin-top:0">
               <button class="${mode === 'xp' ? 'on' : ''}" data-a="mode" data-m="xp"><b>XP-Ort suchen</b><span>bester Ort für dein Level</span></button>
               <button class="${mode === 'route' ? 'on' : ''}" data-a="mode" data-m="route"><b>Route laufen</b><span>fertige oder eigene Strecke</span></button>
             </div>
@@ -3468,7 +3662,7 @@
               <div class="stp"><button data-a="lvl" data-k="lvlMax" data-d="-1">−</button><input class="nb" data-a="lvlMax" inputmode="numeric" value="${cfg.lvlMax}"><button data-a="lvl" data-k="lvlMax" data-d="1">+</button></div>
               ${l ? `<button class="chip" data-a="lvlme" title="Level ${Math.max(1, l - 5)}–${l + 3}">um Lvl ${l}</button>` : ''}
             </div>
-            <h4>${mode === 'xp' ? 'XP-Ort' : 'Route'}</h4>
+            <h4>${mode === 'xp' ? 'XP-Orte · nach Level' : 'Route'}</h4>
             ${body}
             ${cta}
             ${suggestionsHtml()}
@@ -3513,6 +3707,9 @@
             <select data-a="optimal"><option value="1" ${cfg.optimal ? 'selected' : ''}>kürzeste Route über alle Mobs</option>
               <option value="0" ${cfg.optimal ? '' : 'selected'}>immer den nächsten Mob</option></select>
             <div class="fld"><span>Pause (ms)</span><input class="num" data-a="pauseMin" value="${cfg.pauseMin}">–<input class="num" data-a="pauseMax" value="${cfg.pauseMax}"></div>
+            <div class="fld"><span>Abwechslung</span><select data-a="humanize" style="width:auto">${['aus', 'wenig', 'normal', 'viel'].map((l, v) =>
+                `<option value="${v}" ${(cfg.humanize == null ? 2 : +cfg.humanize) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+            <div class="hint">Würfelt zwischen fast gleich guten Mobs, Anlauf-Seiten, Umwegen, Feldern neben NPCs und Wartezeiten – damit nicht jeder Durchgang gleich aussieht. „aus“ = immer der kürzeste Weg.</div>
             <label class="chk"><input type="checkbox" data-a="closeBattle" ${cfg.closeBattle ? 'checked' : ''}>Kampffenster nach dem Kampf schließen</label>
             <label class="chk"><input type="checkbox" data-a="fogExplore" ${cfg.fogExplore !== false ? 'checked' : ''}>Nebel-Karten erkunden</label>
             <div class="fld"><span>Nebel: weiter nach</span><select data-a="fogPct" style="width:auto">${[100, 75, 50].map(v =>
@@ -3553,8 +3750,12 @@
     // ── Tab „Abläufe“ ──
     let editId = null;
     const TEMPLATES = [
-        { name: 'Level-Aufstieg', when: { t: 'lvl', n: 25 }, steps: [{ t: 'equip', name: '' }, { t: 'xp' }],
-          tip: 'Bei Level 25 neue Ausrüstung anlegen und zum passenden XP-Ort' },
+        { name: 'Beste Ausrüstung', when: { t: 'lvlup', n: 1 }, steps: [{ t: 'gear' }], quick: true,
+          tip: 'Nach jedem Level-Aufstieg die stärksten tragbaren Sachen anlegen' },
+        { name: 'Neuer XP-Ort alle 5 Level', when: { t: 'lvlup', n: 5 }, steps: [{ t: 'gear' }, { t: 'xp' }], quick: true,
+          tip: 'Ausrüstung anlegen und zum passenden XP-Ort für das neue Level' },
+        { name: 'Ab Level …', when: { t: 'lvl', n: 25 }, steps: [{ t: 'gear' }, { t: 'xp' }],
+          tip: 'Bei einem bestimmten Level Ausrüstung anlegen und zum nächsten XP-Ort' },
         { name: 'Tränke nachkaufen', when: { t: 'heal', n: 5 }, steps: [{ t: 'go', map: '' }, { t: 'npc', name: '', say: '' }, { t: 'sell', what: 'quick123' }, { t: 'buy', n: 30, name: '', closeAfter: true }, { t: 'back' }],
           tip: 'Zur Stadt, Beute verkaufen, Tränke kaufen, zurück zum Jagdort' },
         { name: 'Leben niedrig', when: { t: 'hp', n: 30 }, steps: [{ t: 'fill' }],
@@ -3718,7 +3919,7 @@
                 <button class="ib" data-a="rrun" data-r="${r.id}" title="Jetzt ausführen">${ico('play')}</button>
                 <button class="ib" data-a="redit" data-r="${r.id}" title="Bearbeiten">${ico('edit')}</button>
               </div>
-              <details class="sd" ${run ? 'open' : ''}><summary>${ico('chev')}${r.steps.length} ${r.steps.length === 1 ? 'Schritt' : 'Schritte'}${r.name ? ' · ' + esc(whenText(r.when)) : ''}${run ? ' · Schritt ' + (cfg.chain.i + 1) : ''}</summary>
+              <details class="sd" data-k="r:${r.id}" ${run ? 'open' : ''}><summary>${ico('chev')}${r.steps.length} ${r.steps.length === 1 ? 'Schritt' : 'Schritte'}${r.name ? ' · ' + esc(whenText(r.when)) : ''}${run ? ' · Schritt ' + (cfg.chain.i + 1) : ''}</summary>
               <ol class="steps">${stepGroups(r.steps).map(g => {
                   const cls = run && cfg.chain.i >= g.a && cfg.chain.i <= g.b ? 'cur' : run && cfg.chain.i > g.b ? 'past' : '';
                   return `<li class="${cls} from" data-a="rfrom" data-r="${r.id}" data-i="${g.a}" title="Ab hier starten"><span class="no">${g.a === g.b ? g.a + 1 : (g.a + 1) + '–' + (g.b + 1)}</span>${esc(g.text)}</li>`; }).join('')
@@ -3732,18 +3933,18 @@
             ${!cfg.chain && lastChainEnd ? `<div class="hint" style="color:var(--bad,#e07a5f)">${esc(lastChainEnd)}</div>` : ''}
             ${cfg.chain ? `<div class="now"><div class="st"><span class="dot trv"></span>Ablauf läuft</div><div class="dt cdt"></div>
                 <button class="btn" data-a="cstop" style="margin-top:8px">${ico('stop')}Abbrechen</button></div>` : ''}
+            ${rules.length ? `<h4>Deine Abläufe</h4>${rules.map(ruleView).join('')}` :
+              `<div class="empty">Ein Ablauf startet von selbst, wenn seine Bedingung eintritt, und arbeitet dann seine Schritte der Reihe nach ab.
+                 Danach jagt der Bot weiter. Die ersten beiden Vorlagen sind mit einem Klick fertig:</div>`}
+            <h4>Neuer Ablauf</h4>
+            <div class="tpl">${TEMPLATES.map((t, i) => `<button class="tp" data-a="tpl" data-i="${i}"><b>${t.name}${t.quick ? ' <span class="tag">1 Klick</span>' : ''}</b><span>${t.tip}</span></button>`).join('')}
+              <button class="tp" data-a="radd"><b>Leerer Ablauf</b><span>Bedingung und Schritte selbst wählen</span></button></div>
             <h4>Aufnahme</h4>
             ${cfg.flow ? `<div class="now"><div class="st"><span class="dot trv"></span>Aufnahme läuft · ${cfg.flow.steps.length} Schritte</div>
                 <div class="dt">${esc(cfg.flow.steps.length ? stepText(cfg.flow.steps[cfg.flow.steps.length - 1]) : '')}</div>
                 <button class="btn" data-a="recstop" style="margin-top:8px">${ico('stop')}Aufnahme beenden</button></div>`
               : `<button class="btn" data-a="recstart" ${running() ? 'disabled' : ''}>${ico('rec')}Aufnahme starten</button>
                 <div class="hint">Spiel danach selbst: Laufen, Türen, NPCs, Antworten, Angriffe, Gegenstände. Beim Beenden entsteht ein Ablauf „Nur von Hand“, den du bearbeiten und mit ${ico('play')} abspielen kannst. Handel wird nicht aufgenommen.</div>`}
-            ${rules.length ? `<h4>Deine Abläufe</h4>${rules.map(ruleView).join('')}` :
-              `<div class="empty">Ein Ablauf startet von selbst, wenn seine Bedingung eintritt, und arbeitet dann seine Schritte der Reihe nach ab.
-                 Danach jagt der Bot weiter. Starte mit einer Vorlage:</div>`}
-            <h4>${rules.length ? 'Neu' : 'Vorlagen'}</h4>
-            <div class="tpl">${TEMPLATES.map((t, i) => `<button class="tp" data-a="tpl" data-i="${i}"><b>${t.name}</b><span>${t.tip}</span></button>`).join('')}
-              <button class="tp" data-a="radd"><b>Leerer Ablauf</b><span>Bedingung und Schritte selbst wählen</span></button></div>
             <div class="hint">Läuft nur, solange der Bot jagt. Mit ${ico('play')} startest du einen Ablauf sofort, ein Klick auf einen Schritt startet ab dort.</div>
             <details><summary>${ico('chev')}Spieldaten prüfen</summary><div class="log diag"></div></details>`;
     }
@@ -3788,8 +3989,12 @@
         const r = ruleById(el.dataset.r), i = +el.dataset.i;
         if (a === 'tpl') {
             const t = TEMPLATES[i];
-            const nr = { id: newId(), on: true, when: Object.assign({}, t.when), steps: t.steps.map(s => Object.assign({}, s)) };
-            cfg.rules = (cfg.rules || []).concat([nr]); editId = nr.id;
+            const nr = { id: newId(), on: true, name: t.quick ? t.name : undefined, when: Object.assign({}, t.when), steps: t.steps.map(s => Object.assign({}, s)) };
+            if (nr.when.t === 'lvl' && heroLvl()) nr.when.n = heroLvl() + 5;
+            if (nr.when.t === 'lvlup') nr.from = heroLvl() || null;
+            if (!nr.name) delete nr.name;
+            cfg.rules = (cfg.rules || []).concat([nr]);
+            if (t.quick) log(`Ablauf „${t.name}“ ist aktiv – läuft, solange der Bot jagt`); else editId = nr.id;
         } else if (a === 'radd') {
             const nr = { id: newId(), on: true, when: { t: 'lvl', n: heroLvl() + 1 || 2 }, steps: [] };
             cfg.rules = (cfg.rules || []).concat([nr]); editId = nr.id;
@@ -3825,7 +4030,7 @@
         const i = +t.dataset.i;
         if (a === 'ron') { r.on = t.checked; delete lastCond[r.id]; }
         else if (a === 'rname') { const n = t.value.trim().slice(0, 40); if (n) r.name = n; else delete r.name; }
-        else if (a === 'wt') { r.when = { t: t.value, n: COND[t.value].def }; r.done = false; delete lastCond[r.id]; }
+        else if (a === 'wt') { r.when = { t: t.value, n: COND[t.value].def }; r.done = false; delete lastCond[r.id]; if (t.value === 'lvlup') r.from = heroLvl() || null; else delete r.from; }
         else if (a === 'wn') { r.when.n = parseInt(t.value, 10) || 0; r.done = false; delete lastCond[r.id]; }
         else if (a === 'st') r.steps[i] = t.value === 'buy' ? { t: 'buy', n: 30, closeAfter: true } : t.value === 'wait' ? { t: 'wait', s: 2 } : t.value === 'sell' ? { t: 'sell', what: 'quick123' } : { t: t.value };
         else if (a === 'sxp') { if (t.value === 'auto') { delete r.steps[i].min; delete r.steps[i].max; } else { r.steps[i].min = Math.max(1, heroLvl() - 2); r.steps[i].max = heroLvl() + 3; } }
@@ -3861,7 +4066,6 @@
         // Mobs auf dieser Karte (falls eine E2 fehlt oder kein e2/-Icon hat): einzelne Namen, höchstes Level zuerst
         const here = Array.from(new Map(mobs().sort((a, b) => b.lvl - a.lvl).map(m => [m.nick, m])).values()).slice(0, 6);
         return `
-            <div class="now"><div class="st"><span class="dot"></span><span class="stl"></span></div><div class="dt"></div></div>
             <h4>Boss</h4>
             ${keys.length ? `<select data-a="e2sel">${keys.map(k => `<option value="${esc(k)}" ${k === E2.sel ? 'selected' : ''}>${esc(E2.list[k].nick)} (${E2.list[k].lvl || '?'}) · ${esc(wname(E2.list[k].map))}</option>`).join('')}</select>` :
               '<div class="empty">Noch keine E2 gewählt. Unten suchen und antippen.</div>'}
@@ -3901,8 +4105,6 @@
               bestehenden Sitzung. Passwörter gibt er nie ein: Ist die Sitzung abgelaufen, meldet er sich (Benachrichtigung, Ton,
               Vibration) und du loggst dich selbst ein. Die Seite muss offen bleiben.</div>` : ''}
 
-            ${t ? (run ? `<button class="cta stop" data-a="stopall">${ico('stop')}Stopp</button>`
-                       : `<button class="cta" data-a="e2go">${ico('play')}${mapId() === t.map ? 'Hier auf ' : 'Hin & auf '}${esc(t.nick)} warten</button>`) : ''}
 
             <h4>E2 suchen</h4>
             <input type="text" data-a="e2q" placeholder="Name oder Karte, z. B. Mushita" value="${esc(e2Q)}" style="width:100%">
@@ -4210,21 +4412,29 @@
                                      cfg.routes[cfg.route] && routeMode(cfg.routes[cfg.route]), worldN(), xpList && xpList.map(o => o.id), xpSel, cfg.lvlMin, cfg.lvlMax, heroLvl(),
             tab === 'e2' ? [JSON.stringify(cfg.e2), mapId(), mobs().map(m => m.id).sort().join()] : 0,
             tab === 'set' ? [JSON.stringify(cfg.tele || {}).length, cfg.routes[cfg.route] && routeMode(cfg.routes[cfg.route]), mobs().map(m => m.key).sort(), gateways().map(g => g.id), cfg.route, cfg.rec && cfg.rec.length, Object.keys(cfg.routes),
-                             cfg.picked, cfg.lvlOn, (cfg.deaths || []).length, cfg.onDeath, cfg.optimal, cfg.pk.mode, cfg.fogPct] : 0]);
+                             cfg.picked, cfg.lvlOn, (cfg.deaths || []).length, cfg.onDeath, cfg.optimal, cfg.humanize, cfg.pk.mode, cfg.fogPct] : 0,
+            JSON.stringify(cfg.limit), cfg.e2.sel, cfg.heros.selected, cfg.heros.repeat, worldDl]);
         if (sKey !== lastStatic) {
             lastStatic = sKey;
+            /* Vor dem Neuaufbau merken, wo man war: Scrollstand, aufgeklappte Bereiche, Eingabefeld mit Fokus.
+               Sonst springt die Liste nach jedem Klick wieder nach oben. */
+            const same = box.dataset.tab === tab, oldBd = box.querySelector('.bd'), top = same && oldBd ? oldBd.scrollTop : 0;
+            const opened = {};
+            if (same) box.querySelectorAll('.bd details').forEach((d, i) => { opened[d.dataset.k || 'i' + i] = d.open; });
+            const fk = focusKey();
+            const tb = (t, label) => `<button class="tab ${tab === t ? 'on' : ''}" data-a="tab" data-t="${t}">${label}</button>`;
             box.innerHTML = `<div class="hd"><div class="brand"><span class="dot"></span>MargoBot</div>
-                ${headButton(run)}
                 <button class="ib" data-a="fold" title="${cfg.open ? 'Einklappen' : 'Ausklappen'}">${ico(cfg.open ? 'min' : 'max')}</button></div>` +
                 (capt.state ? `<div class="capt ${capt.state}"><b>${capt.state === 'open' ? (cfg.autoCaptcha ? (capt.solving ? 'Zagadka – klicke *…*-Antworten…' : (cfg.autoCaptchaConfirm ? 'Zagadka – Auto-Lösen aktiv' : 'Zagadka – bitte Potwierdzam tippen')) : 'Zagadka – bitte selbst lösen') : 'Zagadka kommt bald'}</b><span class="ct"></span></div>` : '') +
-                (cfg.open ? `<div class="tabs"><button class="tab ${tab === 'xp' ? 'on' : ''}" data-a="tab" data-t="xp">XP</button>
-                    <button class="tab ${tab === 'rules' ? 'on' : ''}" data-a="tab" data-t="rules">Abläufe${(cfg.rules || []).length ? ' · ' + cfg.rules.filter(r => r.on).length : ''}</button>
-                    <button class="tab ${tab === 'trade' ? 'on' : ''}" data-a="tab" data-t="trade">Handel</button>
-                    <button class="tab ${tab === 'heros' ? 'on' : ''}" data-a="tab" data-t="heros">Heros</button>
-                    <button class="tab ${tab === 'e2' ? 'on' : ''}" data-a="tab" data-t="e2">E2</button>
-                    <button class="tab ${tab === 'skills' ? 'on' : ''}" data-a="tab" data-t="skills">Fähigkeiten</button>
-                    <button class="tab ${tab === 'set' ? 'on' : ''}" data-a="tab" data-t="set">Einstellungen</button></div>
+                dockHtml(run) +
+                (cfg.open ? `<div class="tabs">${tb('xp', 'Jagd')}${tb('rules', 'Abläufe' + ((cfg.rules || []).length ? ' ' + cfg.rules.filter(r => r.on).length : ''))}${tb('e2', 'E2')}${tb('heros', 'Heros')}${tb('skills', 'Skills')}${tb('trade', 'Handel')}${tb('set', 'Optionen')}</div>
                     <div class="bd">${tab === 'xp' ? xpTab() : tab === 'rules' ? rulesTab() : tab === 'trade' ? tradeTab() : tab === 'heros' ? herosTab() : tab === 'e2' ? e2Tab() : tab === 'skills' ? skillsTab() : setTab()}</div>` : '');
+            box.dataset.tab = tab;
+            const bd = box.querySelector('.bd');
+            if (bd && top) bd.scrollTop = top;
+            box.querySelectorAll('.bd details').forEach((d, i) => { if (opened[d.dataset.k || 'i' + i]) d.open = true; });
+            refocus(fk);
+            if (typeof fitBox === 'function') fitBox();
         }
         // aktiven Tab sichtbar halten (die Leiste scrollt seitlich)
         const onTab = box.querySelector('.tab.on'), tabBar = box.querySelector('.tabs');
@@ -4240,6 +4450,7 @@
         if (q('.now .dt')) q('.now .dt').textContent = detail;
         if (q('.now .kp')) { const h = sessHtml(); q('.now .kp').innerHTML = h; q('.now .kp').style.display = h ? '' : 'none'; }
         if (q('.log')) q('.log').textContent = logLines.join('\n') || 'noch nichts';
+        if (q('.limr')) q('.limr').textContent = cfg.limitEnd ? `noch ${mmss(cfg.limitEnd - Date.now())} · bis ${clock(cfg.limitEnd)}` : cfg.limit.mode !== 'off' ? 'zählt ab Start' : '';
         if (q('.cdt') && cfg.chain) {
             const r = ruleById(cfg.chain.rid);
             q('.cdt').textContent = r ? `${whenText(r.when)} · Schritt ${cfg.chain.i + 1}/${r.steps.length}: ${r.steps[cfg.chain.i] ? stepText(r.steps[cfg.chain.i]) : ''}` : '';
@@ -4263,14 +4474,47 @@
         }
     }
 
-    function headButton(running) {
-        /* Gleiche Aktion wie der große Knopf unten: Route starten, zum XP-Ort, oder hier jagen. */
-        if (running) return `<button class="mini stop" data-a="stopall">${ico('stop')}Stopp</button>`;
-        if (cfg.tab === 'heros') return heroChoice() && world ? '<button class="mini" data-a="herosStart">Heros suchen</button>' : '';
-        if (botMode() === 'route') return cfg.routes[cfg.route] ? `<button class="mini" data-a="runroute" title="Route „${esc(cfg.route)}“ starten">${ico('play')}Route starten</button>` : '';
+    function focusKey() {
+        const el = document.activeElement;
+        if (!el || !box.contains(el) || !el.dataset || !el.dataset.a) return null;
+        const sel = ['a', 'r', 'i', 'f', 'k'].filter(k => el.dataset[k] != null).map(k => `[data-${k}="${CSS.escape(el.dataset[k])}"]`).join('');
+        let pos = null; try { pos = [el.selectionStart, el.selectionEnd]; } catch (e) {}
+        return { sel: el.tagName.toLowerCase() + sel, pos };
+    }
+    function refocus(k) {
+        if (!k) return;
+        const el = box.querySelector(k.sel);
+        if (!el) return;
+        try { el.focus({ preventScroll: true }); if (k.pos && k.pos[0] != null) el.setSelectionRange(k.pos[0], k.pos[1]); } catch (e) {}
+    }
+    /* Fester Steuerbereich über den Tabs: Status, ein großer Knopf für das, was der aktuelle Tab startet
+       (sonst Jagd), und das Zeitlimit. Läuft etwas, ist der Knopf immer „Stopp“. */
+    function dockHtml(run) {
+        const L = cfg.limit;
+        return `<div class="dock">
+            <div class="now"><div class="st"><span class="dot"></span><span class="stl"></span></div><div class="dt"></div><div class="kp"></div></div>
+            <div class="act">${mainCta(run)}</div>
+            <div class="lim">${ico('clock')}<select data-a="limMode">${opt('off', 'ohne Zeitlimit', L.mode)}${opt('until', 'stoppen um', L.mode)}${opt('for', 'stoppen nach', L.mode)}</select>
+              ${L.mode === 'until' ? `<input type="time" data-a="limAt" value="${esc(L.at)}">` : L.mode === 'for' ? `<input class="num" data-a="limH" inputmode="decimal" value="${String(L.hours).replace('.', ',')}"><span>Std.</span>` : ''}
+              <span class="limr"></span></div>
+          </div>`;
+    }
+    function mainCta(run) {
+        const b = (a, label, icon = 'play', extra = '') => `<button class="cta" data-a="${a}" ${extra}>${ico(icon)}<span>${label}</span></button>`;
+        if (run) return `<button class="cta stop" data-a="stopall">${ico('stop')}<span>${cfg.chain ? 'Stopp · Ablauf läuft' : 'Stopp'}</span></button>`;
+        if (cfg.tab === 'heros') {
+            const h = heroChoice();
+            return b('herosStart', !world ? 'Erst Weltkarte laden' : !h ? 'Hero unten wählen' : cfg.heros.repeat ? 'Heros: Suchrunden starten' : 'Heros einmal absuchen', 'play', !h || !world ? 'disabled' : '');
+        }
+        if (cfg.tab === 'e2') {
+            const t = e2Cur();
+            return t ? b('e2go', (mapId() === t.map ? 'Hier auf ' : 'Hin & auf ') + esc(t.nick) + ' warten') : b('e2go', 'E2 unten wählen', 'play', 'disabled');
+        }
+        if (botMode() === 'route') return cfg.routes[cfg.route] ? b('runroute', `Route „${esc(cfg.route)}“ starten`) : b('huntxp', `Hier jagen · Lvl ${cfg.lvlMin}–${cfg.lvlMax}`);
+        if (!world) return b('loadworldgh', worldDl ? 'Lädt …' : 'Weltkarte laden', 'map') + '<button class="sub2" data-a="loadworld" title="margobot_world.json wählen">Datei</button>';
         const sel = xpList && xpList[xpSel];
-        if (sel && sel.id !== mapId()) return `<button class="mini" data-a="goxp" title="Zu ${esc(wname(sel.id))} laufen und jagen">${ico('play')}Hin & jagen</button>`;
-        return `<button class="mini" data-a="huntxp">${ico('play')}Hier jagen</button>`;
+        if (sel && sel.id !== mapId()) return b('goxp', 'Nach ' + esc(wname(sel.id)) + ' & jagen') + '<button class="sub2" data-a="huntxp" title="Gleich hier jagen">Hier</button>';
+        return b('huntxp', `Hier jagen · Lvl ${cfg.lvlMin}–${cfg.lvlMax}`);
     }
     function huntHere() {
         cfg.e2.on = false;
@@ -4311,7 +4555,7 @@
         }
         if (a === 'tab') cfg.tab = el.dataset.t;
         else if (a === 'fold') cfg.open = !cfg.open;
-        else if (a === 'stopall') { herosStop('Suche gestoppt'); pkRouteSkip = null; if (sess.t0 && !sess.end) { sess.end = Date.now(); saveSess(); } if (cfg.chain) endChain('von Hand'); if (cfg.e2.on) e2Stop(); cfg.on = false; cfg.travel = null; lastTravel = null; goal = null; log('Gestoppt'); }
+        else if (a === 'stopall') stopAll();
         else if (a === 'quick') { cfg.on = true; goal = null; startSession(); log('Gestartet'); }
         else if (a === 'huntxp') huntHere();
         else if (a === 'expoall') cfg.expoAll = !cfg.expoAll;
@@ -4442,6 +4686,10 @@
         else if (a === 'rmode' && cfg.routes[cfg.route]) { cfg.routes[cfg.route].mode = t.value; cfg.routePos = 0; }
         else if (a === 'dest') { destText = t.value; return; }
         else if (a === 'optimal') cfg.optimal = t.value === '1';
+        else if (a === 'humanize') cfg.humanize = Math.max(0, Math.min(3, +t.value || 0));
+        else if (a === 'limMode') { cfg.limit.mode = t.value; cfg.limitEnd = 0; }
+        else if (a === 'limAt') { if (/^\d{1,2}:\d{2}/.test(t.value)) { cfg.limit.at = t.value.slice(0, 5); cfg.limitEnd = 0; } }
+        else if (a === 'limH') { const h = parseFloat(String(t.value).replace(',', '.')); if (h > 0) { cfg.limit.hours = Math.min(48, Math.max(0.1, h)); cfg.limitEnd = 0; } }
         else if (a === 'route') selectRoute(t.value);
         else if (a === 'lvlMin' || a === 'lvlMax') { cfg[a] = parseInt(t.value, 10) || 1; fixRange(a); }
         else if (a === 'pauseMin' || a === 'pauseMax') cfg[a] = Math.max(0, parseInt(t.value, 10) || 0);

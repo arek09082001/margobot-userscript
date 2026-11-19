@@ -7,7 +7,7 @@ const hero = { d: { x: 15, y: 5, lvl: 41 }, autoGoTo(p) { tgt = p; }, heroAtackR
 const Engine = { hero, battle: { show: false }, npcs: { getDrawableList: () => npcs }, deadController: {},
   map: { d: { id: 1, name: 'Flur' }, size: { x: 30, y: 10 }, col: { check: () => 0 }, getGateways: () => ({ townnames: {}, getList: () => [] }) } };
 const el = () => ({ style: {}, dataset: {}, addEventListener() {}, appendChild() {}, querySelector: () => null, querySelectorAll: () => [], set innerHTML(v) {}, closest: () => null });
-const store = { mbauto: { on: true, pauseMin: 0, pauseMax: 0, lvlOn: true, lvlMin: 40, lvlMax: 42 } };
+const store = { mbauto: { humanize: 0, on: true, pauseMin: 0, pauseMax: 0, lvlOn: true, lvlMin: 40, lvlMax: 42 } };
 const timers = [];
 const sb = { unsafeWindow: { Engine }, GM_getValue: (k, d) => store[k] || d, GM_setValue: (k, v) => store[k] = v,
   document: { createElement: el, head: el(), body: el(), addEventListener() {}, querySelector: () => null }, innerWidth: 1400, innerHeight: 900,

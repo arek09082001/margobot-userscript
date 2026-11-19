@@ -10,7 +10,7 @@ const Engine = { hero, battle, npcs: { getDrawableList: () => npcs }, deadContro
   map: { d: { id: 1, name: 'Bagno' }, size: { x: 30, y: 10 }, col: { check: () => 0 }, getGateways: () => ({ townnames: {}, getList: () => [] }) } };
 const el = () => ({ style: {}, dataset: {}, addEventListener() {}, appendChild() {}, querySelector: () => null, querySelectorAll: () => [], set innerHTML(v) {}, closest: () => null });
 const W = { Engine };
-const store = { mbauto: { on: true, pauseMin: 800, pauseMax: 800, lvlOn: true, lvlMin: 220, lvlMax: 230 } };
+const store = { mbauto: { humanize: 0, on: true, pauseMin: 800, pauseMax: 800, lvlOn: true, lvlMin: 220, lvlMax: 230 } };
 const timers = [];
 const sb = { unsafeWindow: W, GM_getValue: (k, d) => store[k] || d, GM_setValue: (k, v) => store[k] = v,
   document: { createElement: el, head: el(), body: el(), addEventListener() {}, querySelector: () => null }, innerWidth: 1400, innerHeight: 900,

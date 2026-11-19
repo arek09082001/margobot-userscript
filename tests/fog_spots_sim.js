@@ -22,7 +22,7 @@ function run(name, { pos, pct, alive, pvp }) {
     if (pos) mob.push(spots.flat(), 'hum/ghul.gif');
     const world = { 500: [W, H, 'Grobowiec', [[501, 79, 30]], [mob]], 501: [20, 20, 'Ausgang', [[500, 0, 10]], []] };
     const el = () => ({ style: {}, dataset: {}, addEventListener() {}, appendChild() {}, querySelector: () => null, querySelectorAll: () => [], set innerHTML(v) {}, closest: () => null });
-    const store = { mbworld: world, mbauto: { on: true, pauseMin: 0, pauseMax: 0, lvlOn: true, lvlMin: 40, lvlMax: 42, exits: { Grobowiec: '501' }, fogPct: pct } };
+    const store = { mbworld: world, mbauto: { humanize: 0, on: true, pauseMin: 0, pauseMax: 0, lvlOn: true, lvlMin: 40, lvlMax: 42, exits: { Grobowiec: '501' }, fogPct: pct } };
     const timers = [];
     const doc = { createElement: el, head: el(), body: el(), addEventListener() {}, querySelector: () => null };
     const sb = { unsafeWindow: { Engine }, GM_getValue: (k, d) => store[k] || d, GM_setValue: (k, v) => store[k] = v,

@@ -12,7 +12,7 @@ function run(loopDoor, mode) {
       getGateways: () => ({ townnames: Object.fromEntries(MAPS[cur].gws.map(g => [g.id, g.to])), getList: () => MAPS[cur].gws.map(g => ({ d: g })) }) } };
   const el = () => ({ style: {}, dataset: {}, addEventListener() {}, appendChild() {}, querySelector: () => null, querySelectorAll: () => [], set innerHTML(v) {}, closest: () => null });
   const route = { maps: ['A', null, 'B', 'B', 'C', 'null', 'D', 'E', 'F'] }; if (mode) route.mode = mode;
-  const store = { mbauto: { on: true, pauseMin: 0, pauseMax: 0, routes: { R: route }, route: 'R' } };
+  const store = { mbauto: { humanize: 0, on: true, pauseMin: 0, pauseMax: 0, routes: { R: route }, route: 'R' } };
   const timers = [];
   const doc = { createElement: el, head: el(), body: el(), addEventListener() {}, querySelector: () => null };
   const sb = { unsafeWindow: { Engine }, GM_getValue: (k, d) => store[k] || d, GM_setValue: (k, v) => store[k] = v,
