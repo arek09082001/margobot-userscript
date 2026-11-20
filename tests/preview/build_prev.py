@@ -34,6 +34,9 @@ if (params.has('e2') || params.has('away')) store.mbauto.e2 = { on: params.has('
   leaveMin: 10, remindMin: 2, remindMax: 4, offline: params.has('away'), wakeAt: Date.now() + 7 * 60000,
   list: { 'Mushita|580': { nick: 'Mushita', lvl: 23, map: 580, x: 23, y: 11, respMin: 15, respMax: 30, lastKill: Date.now() - 6 * 60000, by: 'bot', kills: 3, meas: [17.4, 21.2] } } };
 if (params.has('away')) delete window.Engine;
+if (params.has('tele')) { const Z = 'Zakonnik Planu Astralnego', to = ids => Object.fromEntries(ids.map(i => [i, { path: ['Chcę się teleportować'], text: WORLD[i] ? WORLD[i][2] : String(i) }]));
+  store.mbauto.tele = { 9: { [Z]: { x: 20, y: 12, to: to([1, 2, 33, 35, 589]) } }, 257: { [Z]: { x: 8, y: 9, to: to([1, 70]) } } };
+  store.mbauto.teleMiss = { 35: Date.now() }; store.mbauto.tab = 'set'; }
 let lastSkillsReady = 0;
 // SKILLSDEMO: Fähigkeiten wie beim Paladin (gekürzt), ?noskills = Daten noch nicht geladen
 if (params.has('skills')) {
