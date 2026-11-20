@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.37
+// @version      7.38
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -37,7 +37,7 @@
     const DEF = { on: false, picked: {}, lvlOn: false, lvlMin: 1, lvlMax: 300, pauseMin: 300, pauseMax: 900,
                   exits: {}, closeBattle: true, x: null, y: null, open: true,
                   routes: {}, route: '', routePos: 0, rec: null, flow: null, suggestAuto: true, expoAll: false,
-                  onDeath: 'stop', deaths: [], graph: {}, back: null, optimal: true, humanize: 2, limit: { mode: 'off', at: '03:00', hours: 4 }, limitEnd: 0, bindOk: true, auto: { on: false, mode: 'normal' },
+                  onDeath: 'stop', deaths: [], graph: {}, back: null, optimal: true, humanize: 2, limit: { mode: 'off', at: '03:00', hours: 4 }, limitEnd: 0, bindOk: true, auto: { on: false, mode: 'normal' }, bestRoute: false,
                   names: {}, travel: null, blocked: [], tab: 'xp', logOpen: false, tele: {},
                   rules: [], chain: null, autoCaptcha: false, autoCaptchaConfirm: false, captchaWarn: true,
                   pk: { mode: 'off', maxUp: 5, near: 6, sec: 5, never: '' } };
@@ -2820,6 +2820,7 @@
             return;
         }
         offRoute = null;
+        if (cfg.bestRoute && bestRouteTick()) return;
         // Hier wird gejagt → als Jagdort merken (Ziel für „Zurück zum Jagdort“, auch nach dem Tod)
         if (!cfg.lastHome || cfg.lastHome.map !== mapId()) {
             cfg.lastHome = { map: mapId(), name: mapName(), route: cfg.route || '', lvl: { lvlMin: cfg.lvlMin, lvlMax: cfg.lvlMax, lvlOn: cfg.lvlOn } };
@@ -3010,10 +3011,45 @@
     /* Mit Route: unter den Routen-Vorschlägen (Forum zuerst, sonst aus der Weltkarte) die beste erreichbare für den
        neuen Bereich nehmen. Die Route bekommt den Bereich als Angriffs-Level; der Bot läuft dann selbst zur Route. */
     function autoRouteFor(lo, hi) {
+        const cur = cfg.routes[cfg.route];
+        return bestRouteFor(lo, hi, cur ? JSON.stringify(cur.maps) : '');
+    }
+    /* XP pro Runde einer Kartenfolge für den Angriffsbereich lo–hi: jede Karte einmal (Rückwege bringen nicht sofort
+       neue Mobs), nur Mobs im Bereich, Bosse nicht. So sind Forum-Gebiete und berechnete Routen fair vergleichbar –
+       deren eigene Schätzung gilt für den Bereich des Gebiets, nicht für den, mit dem der Bot angreift. */
+    function routeXpFor(maps, lo, hi) {
+        if (!world) return 0;
+        const ml = [...new Set(maps.flatMap(e => entryIds(e).slice(0, 1)))]
+            .flatMap(id => world[id] ? world[id][4].filter(x => x[1] >= lo && x[1] <= hi && !(x[4] && String(x[4]).startsWith('e2/'))) : []);
+        return ml.length ? rateXp(ml, heroLvl()).xp : 0;
+    }
+    function bestRouteFor(lo, hi, exclude = '') {
         if (!world) return null;
-        const cur = cfg.routes[cfg.route], curMaps = cur ? JSON.stringify(cur.maps) : '';
-        const ok = o => o.n && Number.isFinite(o.d) && o.lv[0] <= hi && o.lv[1] >= lo && JSON.stringify(o.maps) !== curMaps;
-        return forumRoutes(lo, hi).filter(ok)[0] || suggestRoutes(lo, hi, 5).filter(ok)[0] || null;
+        const seen = new Set(), list = [];
+        for (const o of forumRoutes(lo, hi).concat(suggestRoutes(lo, hi, 8))) {
+            const k = JSON.stringify(o.maps);
+            if (seen.has(k) || k === exclude || !o.n || !Number.isFinite(o.d) || o.lv[0] > hi || o.lv[1] < lo) continue;
+            seen.add(k); o.xpHere = routeXpFor(o.maps, lo, hi); if (o.xpHere > 0) list.push(o);
+        }
+        // meiste XP pro Runde; fast gleich (±5 %) → kürzere Anreise
+        list.sort((a, b) => Math.abs(b.xpHere - a.xpHere) > 0.05 * Math.max(a.xpHere, b.xpHere) ? b.xpHere - a.xpHere : a.d - b.d);
+        return list[0] || null;
+    }
+    /* Schalter „Immer die Route mit den meisten XP/Runde“: beim Start, bei jedem Level-Aufstieg und alle 5 min prüfen.
+       Gewechselt wird nur bei mindestens 15 % mehr XP pro Runde – sonst pendelt der Bot zwischen fast gleichen Routen. */
+    let bestAt = 0, bestLvl = 0;
+    function bestRouteTick(force) {
+        if (!cfg.bestRoute || !cfg.route || !world || cfg.chain || cfg.travel) return false;
+        const now = Date.now(), L = heroLvl();
+        if (!force && now - bestAt < 300000 && L === bestLvl) return false;
+        bestAt = now; bestLvl = L;
+        const cur = cfg.routes[cfg.route], lo = cfg.lvlMin, hi = cfg.lvlMax;
+        const curXp = cur ? routeXpFor(cur.maps, lo, hi) : 0, o = bestRouteFor(lo, hi, cur ? JSON.stringify(cur.maps) : '');
+        if (!o || o.xpHere <= curXp * 1.15) { if (force) log(`Beste Route: „${cfg.route}“ bleibt (≈ ${fmtXp(curXp)} XP/Runde)`); return false; }
+        adoptRoute(o, [lo, hi]); committed = null; goal = null; lastPlan = null;
+        log(`Bessere Route: „${cfg.route}“ ≈ ${fmtXp(o.xpHere)} XP/Runde statt ${fmtXp(curXp)} – laufe hin`);
+        save(); lastStatic = '';
+        return true;
     }
     function autoDecide() {
         if (!cfg.auto.on || cfg.chain || cfg.travel || offRoute) return false;
@@ -3926,6 +3962,7 @@
     function suggestionsHtml() {
         refreshSug();
         const [lo, hi] = suggestionRange(), sg = sugList || [];
+        const bestSugXp = Math.max(0, ...sg.filter(o => o.n && Number.isFinite(o.d) && o.r).map(o => o.r.xp));
         return `<h4>${cfg.expoAll ? 'Alle Forum-XP-Routen' : 'XP-Routen für Level ' + lo + '–' + hi} ${tipBtn('sug')}</h4>
             <label class="chk"><input type="checkbox" data-a="suggestAuto" ${cfg.suggestAuto ? 'checked' : ''}>Automatisch passend zu meinem Level</label>
             <button class="sub" data-a="expoall">${cfg.expoAll ? 'Nur passende Vorschläge zeigen' : 'Alle ' + FORUM_EXPOWISKA.length + ' Forum-Gebiete anzeigen'}</button>` +
@@ -3933,7 +3970,7 @@
             `<div class="spots">${sg.map((o, i) => [o, i]).sort((a, b) => a[0].lv[0] - b[0].lv[0] || a[0].lv[1] - b[0].lv[1]).map(([o, i]) => `<button class="spot lv" data-a="sugtake" data-i="${i}" ${running() || !o.n || !Number.isFinite(o.d) ? 'disabled' : ''}
                 title="Karten: ${esc([...new Set(o.maps)].map(wname).join(' · '))}">
                 <span class="lvb"><small>LVL</small>${o.lv[0] === o.lv[1] ? o.lv[0] : o.lv[0] + '–' + o.lv[1]}</span>
-                <span class="nm">${esc(o.name)}${o.recommended ? '<i class="star">★ empfohlen</i>' : ''}</span>
+                <span class="nm">${esc(o.name)}${o.r && o.r.xp === bestSugXp ? '<i class="star">★ meiste XP</i>' : o.recommended ? '<i class="star">★ empfohlen</i>' : ''}</span>
                 <span class="ds">${!o.n ? 'Mob-Daten fehlen' : !Number.isFinite(o.d) ? 'Anreise nicht bekannt' : o.d < 1 ? 'hier' : Math.round(o.d) + ' Schr.'}</span>
                 <span class="mt">${o.cards} ${o.cards === 1 ? 'Karte' : 'Karten'} · ${o.n} Mobs${o.totalCards > o.cards ? ` · Teil (${o.cards}/${o.totalCards} Karten)` : ''} · ${o.source === 'forum' ? 'Forum' : 'berechnet'}</span>
                 <span class="mt xpl">${xpLine(o.r)}</span></button>`).join('')}</div>
@@ -3980,7 +4017,11 @@
                       ${m.length > 2 ? `<div class="hint" style="margin-top:8px">Am Ende der Route</div>
                         <select data-a="rmode"><option value="back" ${routeMode(ro) === 'back' ? 'selected' : ''}>zurück: ${esc(z)} → ${esc(y)} → …</option>
                         <option value="loop" ${routeMode(ro) === 'loop' ? 'selected' : ''}>im Kreis: ${esc(z)} → ${esc(m[0])}</option></select>` : ''}` : ''}
-                    <div class="fld">${rec}${ro && !cfg.rec ? `<button class="btn" data-a="delroute">${ico('trash')}Löschen</button>` : ''}</div>`;
+                    <div class="fld">${rec}${ro && !cfg.rec ? `<button class="btn" data-a="delroute">${ico('trash')}Löschen</button>` : ''}</div>
+                    ${world ? `<div class="autoc ${cfg.bestRoute ? 'on' : ''}"><div class="ah"><label class="sw"><input type="checkbox" data-a="bestRoute" ${cfg.bestRoute ? 'checked' : ''}><i></i></label>
+                      <b>Immer die Route mit den meisten XP/Runde</b>${tipBtn('best')}</div>
+                      ${tipTxt('best', 'Vergleicht alle Routen-Vorschläge (Forum und Weltkarte) für deinen Angriffsbereich. Prüft beim Start, bei jedem Level-Aufstieg und alle 5 min und wechselt bei mindestens 15 % mehr XP pro Runde. Längere Routen bringen pro Runde oft mehr, brauchen aber länger.')}
+                      <button class="btn" data-a="bestnow">${ico('check')}Beste jetzt wählen</button></div>` : ''}`;
             }
             cta = '';
         }
@@ -4991,6 +5032,15 @@
         else if (a === 'teleforget') { if (W.confirm('Alle gelernten Teleporter vergessen?')) { cfg.tele = {}; travelCache = null; } }
         else if (a === 'clearDeaths') cfg.deaths = [];
         else if (a === 'capclear') { cfg.lossCap = null; log('Vorsicht nach Niederlage aufgehoben'); }
+        else if (a === 'bestnow') {
+            const was = cfg.bestRoute; cfg.bestRoute = true;
+            if (!cfg.route) {                                  // noch keine Route: die beste für den Bereich anlegen
+                const o = bestRouteFor(cfg.lvlMin, cfg.lvlMax);
+                if (o) { adoptRoute(o, [cfg.lvlMin, cfg.lvlMax]); log(`Beste Route: „${cfg.route}“ ≈ ${fmtXp(o.xpHere)} XP/Runde`); }
+                else log(`Keine Route für Lvl ${cfg.lvlMin}–${cfg.lvlMax} gefunden`);
+            } else bestRouteTick(true);
+            cfg.bestRoute = was;
+        }
         else if (a === 'loadworldgh') {
             if (worldDl) return;
             worldDl = true; lastStatic = ''; render();
@@ -5076,6 +5126,7 @@
         else if (a === 'dest') { destText = t.value; return; }
         else if (a === 'optimal') cfg.optimal = t.value === '1';
         else if (a === 'humanize') cfg.humanize = Math.max(0, Math.min(3, +t.value || 0));
+        else if (a === 'bestRoute') { cfg.bestRoute = t.checked; bestAt = 0; log(t.checked ? 'Beste Route: an' : 'Beste Route: aus'); }
         else if (a === 'autoOn') { cfg.auto.on = t.checked; autoT.samples = []; autoT.last = 0; autoT.capLog = false; log(t.checked ? 'Auto-Stufe an' : 'Auto-Stufe aus'); }
         else if (a === 'limMode') { cfg.limit.mode = t.value; cfg.limitEnd = 0; }
         else if (a === 'limAt') { if (/^\d{1,2}:\d{2}/.test(t.value)) { cfg.limit.at = t.value.slice(0, 5); cfg.limitEnd = 0; } }
