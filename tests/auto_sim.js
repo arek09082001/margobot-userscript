@@ -106,6 +106,15 @@ function setup({ loss = 2, lossOf = null, settings = {}, dieAt = 0 } = {}) {
     check('vorsichtig: nie über Lvl 46 (41 + 5)', s.t.cfg.lvlMax <= 46, `Lvl ${s.t.cfg.lvlMin}–${s.t.cfg.lvlMax}`);
     s.done();
 }
+// Bereich weit unter dem Helden (wie 5–13 bei Lvl 13): direkt in Heldennähe statt in kleinen Schritten
+{
+    const s = setup({ loss: 0, settings: { lvlMin: 31, lvlMax: 40 } });
+    s.tick(300);
+    check('weit unter dem Helden: ein Sprung in Heldennähe', s.t.cfg.lvlMin >= 39 && s.t.cfg.lvlMax <= 51 && s.visits.includes(2),
+        `Lvl ${s.t.cfg.lvlMin}–${s.t.cfg.lvlMax}, Karten ${s.visits.join('→')}`);
+    check('… Karte zeigt letzte Änderung', /Zuletzt .*→ Lvl/.test(s.t.autoT.lastMsg ? 'Zuletzt ' + s.t.autoT.lastMsg : ''), s.t.autoT.lastMsg);
+    s.done();
+}
 // mittlerer leichter Verlust (Ø 6 %): nur 2 Level
 {
     const s = setup({ loss: 6 });
