@@ -64,7 +64,8 @@ if (process.env.LOG) console.log(kinds);
 assert.equal(nr.when.t, 'hand');
 assert.ok(!kinds.includes('cmd'), 'leere Befehle nicht aufgenommen');
 for (let i = 1; i < nr.steps.length; i++) assert.ok(!(nr.steps[i].t === 'walk' && nr.steps[i - 1].t === 'walk' && nr.steps[i].map === nr.steps[i - 1].map), 'Haltepunkte zusammengefasst');
-assert.deepEqual(kinds.filter(k => !k.startsWith('walk')), ['npc:Kowal', 'say:Daj mi zadanie', 'use:Mała mikstura', 'go:2', 'kill:Wilk', 'cmd:takeitem&id=333']);
+assert.deepEqual(kinds.filter(k => !k.startsWith('walk')), ['npc:Kowal', 'say:Daj mi zadanie', 'go:2', 'kill:Wilk', 'cmd:takeitem&id=333'], 'Trank nicht aufgenommen (ab 7.35)');
+{ const gi = nr.steps.findIndex(x => x.t === 'go'); assert.ok(nr.steps[gi - 1].t !== 'walk', 'kein Laufpunkt direkt vor der Tür'); }
 assert.ok(nr.steps[0].t === 'walk' && nr.steps[0].x === 5, 'Startpunkt mit folgendem Haltepunkt zusammengefasst');
 assert.ok(nr.steps.some(s => s.t === 'walk' && s.x === 5 && s.y === 6 && s.map === '1'), 'Haltepunkt vor dem NPC');
 assert.ok(!sent.slice(0, 0).length && !kinds.some(k => /chat|shop/.test(k)), 'Chat und Handel ausgelassen');
@@ -86,11 +87,11 @@ let guard = 0;
 while (t.cfg.chain && guard++ < 2000) T(1);
 assert.equal(t.cfg.chain, null, 'Ablauf fertig');
 assert.deepEqual(clicks, ['Daj mi zadanie']);
-assert.ok(sent.includes('talk&id=9') && sent.includes('moveitem&st=1&id=501') && sent.includes('takeitem&id=333'));
+assert.ok(sent.includes('talk&id=9') && !sent.includes('moveitem&st=1&id=501') && sent.includes('takeitem&id=333'), 'kein Trank verbraucht');
 assert.ok(!sent.some(c => /^shop|^chat/.test(c)));
 assert.deepEqual(attacks, [71], 'Mob über Namen gefunden, neue ID');
 assert.equal(cur, 2);
-console.log('OK Abspielen: Laufen, NPC, Antwort, Trank, Tür, Angriff auf neue Mob-ID, Rohbefehl');
+console.log('OK Abspielen: Laufen, NPC, Antwort, Tür, Angriff auf neue Mob-ID, Rohbefehl (ohne Trank)');
 
 // ── Kartenname der aktuellen Karte (gleichnamige Etagen) und Abbruchgrund im Tab
 go(1); hero.d.x = 15; hero.d.y = 15; T(3);
