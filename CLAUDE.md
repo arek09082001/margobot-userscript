@@ -85,6 +85,8 @@ Auto-Stufe: Tode und schnelleres Heben (ab 7.39): Tode pro Ort (`autoPlace`: Rou
 
 Nach dem Wiederbeleben (ab 7.40, Nutzer: Bot plant schon den Weg, Held kann sich noch nicht bewegen, danach kein direkter Weg): `checkDeath` merkt `deadAt` und beim Wiederbeleben `revive` (Zeit, Position). `reviveTick` hält in den ersten `REVIVE_HOLD` = 5 s jede Aktion an; Reise-Cache, Türwahl, Laufziel und Ziele werden neu aufgesetzt. Solange sich der Held seit dem Wiederbeleben nicht bewegt hat (`reviveFrozen`, höchstens 3 min), sperrt `travelStep` keine Türen („kommt nicht weiter“/„geht nicht“), sondern wiederholt den Laufbefehl. Türsperren seit `deadAt` − 5 s werden zurückgenommen. Test: `tests/revive_sim.js` (alter Stand sperrte dort die Stadttür und nahm den Umweg).
 
+Leere Karte → weiter (ab 7.41): Ohne Ziele und ohne Ausgang (`currentExit`) wartet der Bot nicht mehr auf den Respawn. `emptyNext` nach `EMPTY_WAIT` = 8 s pro Kartenbesuch (`mapAt`; Nebel-Erkundung zuerst): XP-Modus → nächster XP-Ort (`xpMaps`, ohne aktuelle und die zwei zuletzt verlassenen Karten `recentSpots`, ohne gemiedene); Route mit einer Karte → nächster Jagdort per `spotRoute(…, skip)` und `adoptRoute`; Route mit mehreren Karten, aber fehlender Tür → `travelStep` zur nächsten Routenkarte, `routeHop` hält dieses Ziel auf Zwischenkarten fest (sonst zöge der Weg zurück zur nächstgelegenen Routenkarte). Ohne Weltkarte oder ohne Ziel bleibt er stehen und meldet es einmal. Test: `tests/empty_sim.js`.
+
 ## Im echten Spiel geprüfte Fakten
 
 - `Engine.hero.d` (x, y, lvl, exp, gold, `warrior_stats`), `hero.autoGoTo({x, y}, false)`, `hero.heroAtackRequest(id, true)`.

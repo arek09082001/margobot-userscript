@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.40
+// @version      7.41
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -2851,8 +2851,10 @@
         // Route gewählt, aber diese Karte gehört nicht dazu → nur hinlaufen, NICHTS angreifen.
         // Gejagt wird ausschließlich auf den Karten der Route (vorher fiel der Bot ohne Weg in den Jagdmodus).
         const rt = cfg.routes[cfg.route];
+        if (rt && rt.maps.length && routeHop && routeStep()) routeHop = null;     // nächste Routenkarte erreicht
         if (rt && rt.maps.length && !routeStep()) {
-            const ids = routeIds(rt);
+            // Durchgang zur nächsten Routenkarte (Tür fehlte): an deren Ziel festhalten, nicht zur nächstgelegenen zurück
+            const ids = routeHop && routeHop.until > Date.now() ? routeHop.to : routeIds(rt);
             const r = world && ids.length ? travelStep(ids, cfg.route) : 'kein Weg';
             offRoute = { map: mapId(), way: r !== 'kein Weg' };
             if (r === 'kein Weg' && offRouteLog !== mapId() && performance.now() - mapAt > 5000) {
@@ -2886,12 +2888,12 @@
             lastPlan = null;
             // Nebel: das Spiel zeigt nur Mobs in Sichtweite → Karte ablaufen, bevor sie als leer gilt
             if (fog.on && cfg.fogExplore !== false && exploreStep(hx, hy, !!exit)) { render(); return; }
-            if (exit) {
-                useDoor(exit.x, exit.y, 'Ausgang ' + exit.name);
-            }
+            if (exit) useDoor(exit.x, exit.y, 'Ausgang ' + exit.name);
+            else if (emptyNext()) return;                           // nicht stehen bleiben: nächster Ort
             render();
             return;
         }
+        emptyMap = null;
         // Ziel festhalten: Ist ein Mob gewählt, läuft der Held zu ihm, bis er angegriffen wird oder verschwindet –
         // kein Umplanen unterwegs (sonst pendelt er zwischen zwei fast gleich guten Mobs). Ausnahmen: ein anderer
         // gewünschter Mob steht direkt neben dem Helden (gleich mitnehmen), oder der Held kommt 6 s nicht voran.
@@ -3065,9 +3067,9 @@
     }
     /* Keine Route aus mehreren Karten für den Bereich: der beste einzelne Jagdort wird zur Route (eine Karte, dort
        bleiben) – besser als auf der alten, zu schweren Route weiterzulaufen und nichts mehr anzugreifen. */
-    function spotRoute(lo, hi, exclude = '') {
+    function spotRoute(lo, hi, exclude = '', skip = []) {
         if (!world) return null;
-        const o = xpMaps(lo, hi, 10).find(x => !autoAvoided('m:' + x.id) && !autoAvoided('r:' + JSON.stringify([x.id])) && JSON.stringify([x.id]) !== exclude);
+        const o = xpMaps(lo, hi, 10).find(x => !skip.includes(x.id) && !autoAvoided('m:' + x.id) && !autoAvoided('r:' + JSON.stringify([x.id])) && JSON.stringify([x.id]) !== exclude);
         return o ? { maps: [o.id], mode: 'loop', cards: 1, n: o.n, d: o.d, lv: o.lv, name: wname(o.id) + ' (Jagdort)', source: 'world', xpHere: o.r.xp } : null;
     }
     /* XP pro Runde einer Kartenfolge für den Angriffsbereich lo–hi: jede Karte einmal (Rückwege bringen nicht sofort
@@ -3105,6 +3107,48 @@
         adoptRoute(o, [lo, hi]); committed = null; goal = null; lastPlan = null;
         log(`Bessere Route: „${cfg.route}“ ≈ ${fmtXp(o.xpHere)} XP/Runde statt ${fmtXp(curXp)} – laufe hin`);
         save(); lastStatic = '';
+        return true;
+    }
+    /* Leere Karte ohne Ausgang (XP-Modus, Route mit nur einer Karte, Routentür fehlt): nicht auf den Respawn warten,
+       sondern nach EMPTY_WAIT weiter – zum nächsten XP-Ort bzw. zur nächsten Routenkarte über die Weltkarte.
+       Die zwei zuletzt verlassenen Orte werden ausgelassen, damit er nicht zwischen zwei Karten pendelt. */
+    const EMPTY_WAIT = 8000;
+    let emptyMap = null, emptySince = 0, recentSpots = [], emptyLog = '', routeHop = null;
+    function emptyNext() {
+        const now = performance.now();
+        if (emptyMap !== mapAt) { emptyMap = mapAt; emptySince = now; return false; }
+        if (now - emptySince < EMPTY_WAIT || cfg.chain || cfg.travel) return false;
+        const say = msg => { if (emptyLog !== msg + mapAt) { emptyLog = msg + mapAt; log(msg); } };
+        if (!world) { say('Karte leer – ohne Weltkarte warte ich hier auf den Respawn'); return false; }
+        const lo = cfg.lvlMin, hi = cfg.lvlMax, here = mapId();
+        const r = cfg.route && cfg.routes[cfg.route];
+        if (r && new Set(r.maps.flatMap(entryIds)).size > 1) {
+            // Route mit mehreren Karten, aber die Tür zur nächsten fehlt hier: über die Weltkarte hinlaufen
+            const rs = routeStep(), ids = rs ? entryIds(rs.nextE) : [];
+            if (!ids.length) { say('Karte leer, nächste Routenkarte unbekannt – warte hier'); return false; }
+            const st = travelStep(ids, wname(ids[0]));
+            if (st === 'kein Weg') { say(`Karte leer, kein Weg zur nächsten Routenkarte ${wname(ids[0])} – warte hier`); return false; }
+            routeHop = { to: ids, until: Date.now() + 180000 };
+            say(`Karte leer – weiter zur nächsten Routenkarte ${wname(ids[0])}`);
+            render(); return true;
+        }
+        const skip = [here].concat(recentSpots);
+        if (r) {
+            const o = spotRoute(lo, hi, JSON.stringify(r.maps), skip) || spotRoute(lo, hi, JSON.stringify(r.maps));
+            if (!o) { say('Karte leer, kein anderer Jagdort für Lvl ' + lo + '–' + hi + ' – warte hier'); return false; }
+            recentSpots = [here].concat(recentSpots.filter(x => x !== here)).slice(0, 2);
+            adoptRoute(o, [lo, hi]); committed = null; goal = null;
+            log(`Karte leer – weiter zum Jagdort ${wname(o.maps[0])}`);
+        } else {
+            const L = xpMaps(lo, hi, 10).filter(x => !autoAvoided('m:' + x.id));
+            const o = L.find(x => !skip.includes(x.id)) || L.find(x => x.id !== here);
+            if (!o) { say('Karte leer, kein anderer XP-Ort für Lvl ' + lo + '–' + hi + ' – warte hier'); return false; }
+            recentSpots = [here].concat(recentSpots.filter(x => x !== here)).slice(0, 2);
+            committed = null; goal = null;
+            log(`Karte leer – weiter zum XP-Ort ${wname(o.id)}`);
+            startTravel([o.id], wname(o.id), 'hunt');
+        }
+        emptyMap = null; save(); lastStatic = '';
         return true;
     }
     function autoDecide() {
