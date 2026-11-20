@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.41
+// @version      7.42
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -3050,12 +3050,13 @@
             return false;
         }
         autoT.capLog = false; autoT.fail = '';
-        autoT.lastMsg = `${clock(Date.now())}: ${why.replace(/^Ø \d+ % HP pro Kampf – /, '')} → Lvl ${lo}–${hi}`;
+        const whyShort = why.replace(/^Ø \d+ % HP pro Kampf – /, '');
         cfg.lvlMin = lo; cfg.lvlMax = hi; cfg.lvlOn = true; xpKey = '';
         log(`Auto-Stufe: ${why} → Mobs Lvl ${lo}–${hi}`);
         committed = null; goal = null; lastPlan = null;
         if (route) { adoptRoute(route, [lo, hi]); log(`Auto-Stufe: neue Route „${cfg.route}“ (${route.cards} ${route.cards === 1 ? 'Karte' : 'Karten'}) – laufe hin`); }
         else if (spot.id !== mapId()) startTravel([spot.id], wname(spot.id), 'hunt');
+        autoT.lastMsg = `${clock(Date.now())}: ${whyShort} → Lvl ${lo}–${hi}, ${route ? 'Route „' + cfg.route + '“' : spot.id === mapId() ? 'hier weiter' : wname(spot.id)}`;
         save(); lastStatic = '';
         return true;
     }
@@ -4175,6 +4176,15 @@
             ['goto', 'pin', 'Zu Karte', world ? 'Ziel suchen' : 'Weltkarte fehlt']
         ].filter(Boolean);
     }
+    /* Was der Bot gerade tut – damit man nach einem Wechsel sieht, warum (noch) nicht gekämpft wird. */
+    function autoDoing() {
+        if (!running()) return 'Bot steht';
+        if (cfg.chain) return 'Ablauf läuft';
+        if (cfg.travel) return 'unterwegs nach ' + cfg.travel.label;
+        if (offRoute) return offRoute.way ? 'unterwegs zur Route' : 'kein Weg zur Route';
+        if (lastPlan && lastPlan.order && lastPlan.order.length) return `jagt hier · ${lastPlan.order.length + (lastPlan.more || 0)} Ziele`;
+        return `hier keine Mobs Lvl ${cfg.lvlMin}–${cfg.lvlMax} – zieht weiter`;
+    }
     function autoCard() {
         const A = cfg.auto, P = AUTO_P[A.mode] || AUTO_P.normal, avg = autoAvg(), n = autoT.samples.length;
         const pos = avg == null ? null : Math.min(100, avg / (P.danger * 1.2) * 100);
@@ -4190,7 +4200,9 @@
             ${A.on ? `${segc('autoMode', A.mode, [['safe', 'vorsichtig'], ['normal', 'normal'], ['bold', 'mutig']])}
               <div class="meter"><span class="z1" style="width:${P.easy / (P.danger * 1.2) * 100}%"></span><span class="z3" style="left:${P.hard / (P.danger * 1.2) * 100}%"></span>${pos == null ? '' : `<i style="left:${pos}%"></i>`}</div>
               <div class="mtx"><span>${avg == null ? '–' : `Ø ${Math.round(avg)} % HP pro Kampf`}</span><span>${verdict}</span></div>
-              <div class="mtx"><span>${h ? `HP jetzt ${fmt(h.hp)}/${fmt(h.max)}` : 'HP nicht lesbar'}</span><span style="color:var(--mut)">${autoT.lastMsg ? 'Zuletzt ' + esc(autoT.lastMsg) : ''}</span></div>` : ''}
+              <div class="mtx"><span>${h ? `HP jetzt ${fmt(h.hp)}/${fmt(h.max)}` : 'HP nicht lesbar'}</span><span>${esc(autoDoing())}</span></div>
+              ${autoT.lastMsg ? `<div class="mtx"><span style="color:var(--mut)">Zuletzt ${esc(autoT.lastMsg)}</span></div>` : ''}
+              ${cfg.lvlMax >= heroLvl() + P.above ? `<div class="hint">Obergrenze erreicht: höchstens ${P.above} Level über dir (Lvl ${heroLvl() + P.above}).${A.mode !== 'bold' ? ' Für stärkere Mobs „mutig“ wählen.' : ''}</div>` : ''}` : ''}
           </div>`;
     }
     function setTab() {
@@ -4928,7 +4940,8 @@
                              cfg.picked, cfg.lvlOn, (cfg.deaths || []).length, cfg.onDeath, cfg.optimal, cfg.humanize, cfg.pk.mode, cfg.fogPct] : 0,
             JSON.stringify(cfg.limit), cfg.e2.sel, cfg.heros.selected, cfg.heros.repeat, worldDl,
             tab === 'xp' ? [JSON.stringify(cfg.auto), autoT.samples.length, Math.round(autoAvg() || 0), JSON.stringify(cfg.lossCap || 0), autoT.lastMsg, autoT.fail,
-                            Math.ceil((AUTO_COOL - (Date.now() - autoT.last)) / 10000), ok() && hpNow() ? Math.round(hpNow().hp / Math.max(1, hpNow().max) * 50) : 0] : 0]);
+                            Math.ceil((AUTO_COOL - (Date.now() - autoT.last)) / 10000), ok() && hpNow() ? Math.round(hpNow().hp / Math.max(1, hpNow().max) * 50) : 0,
+                            cfg.travel && cfg.travel.label, !!offRoute, !!(lastPlan && lastPlan.order && lastPlan.order.length)] : 0]);
         if (sKey !== lastStatic) {
             lastStatic = sKey;
             /* Vor dem Neuaufbau merken, wo man war: Scrollstand, aufgeklappte Bereiche, Eingabefeld mit Fokus.

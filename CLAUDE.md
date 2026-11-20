@@ -87,6 +87,8 @@ Nach dem Wiederbeleben (ab 7.40, Nutzer: Bot plant schon den Weg, Held kann sich
 
 Leere Karte → weiter (ab 7.41): Ohne Ziele und ohne Ausgang (`currentExit`) wartet der Bot nicht mehr auf den Respawn. `emptyNext` nach `EMPTY_WAIT` = 8 s pro Kartenbesuch (`mapAt`; Nebel-Erkundung zuerst): XP-Modus → nächster XP-Ort (`xpMaps`, ohne aktuelle und die zwei zuletzt verlassenen Karten `recentSpots`, ohne gemiedene); Route mit einer Karte → nächster Jagdort per `spotRoute(…, skip)` und `adoptRoute`; Route mit mehreren Karten, aber fehlender Tür → `travelStep` zur nächsten Routenkarte, `routeHop` hält dieses Ziel auf Zwischenkarten fest (sonst zöge der Weg zurück zur nächstgelegenen Routenkarte). Ohne Weltkarte oder ohne Ziel bleibt er stehen und meldet es einmal. Test: `tests/empty_sim.js`.
 
+Auto-Stufe sichtbarer (ab 7.42): Die Karte zeigt mit `autoDoing()`, was der Bot gerade tut (Bot steht, Ablauf, unterwegs nach …, unterwegs zur Route, jagt hier · n Ziele, hier keine Mobs im Bereich – zieht weiter). `autoT.lastMsg` nennt zusätzlich das Ziel des letzten Wechsels (XP-Ort, Route oder „hier weiter“). Ist `lvlMax` an der Obergrenze (Heldenlevel + `above`), steht ein Hinweis da, mit Tipp auf „mutig“. Anlass: Nutzer sah „deutlich zu leicht“ und hielt das für „wechselt nicht“, tatsächlich war der Bereich schon an der Obergrenze und seit dem Wechsel kein Kampf gemessen.
+
 ## Im echten Spiel geprüfte Fakten
 
 - `Engine.hero.d` (x, y, lvl, exp, gold, `warrior_stats`), `hero.autoGoTo({x, y}, false)`, `hero.heroAtackRequest(id, true)`.
