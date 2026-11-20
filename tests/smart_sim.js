@@ -187,5 +187,26 @@ for (const [name, why] of [['', 'leerer Name'], ['Heiltrank', 'Trank als „Ausr
     s.tick(2); s.t.startRule(s.t.cfg.rules[0], 'Test'); s.tick(10);
     check(`Schritt „Ausrüsten“ (${why}): nichts angelegt oder verbraucht`, !s.sent.some(c => /moveitem/.test(c)) && s.t.cfg.chain === null);
 }
+// ── Ab 7.45: Werte statt Level – Unikat mit weniger Level bleibt, wenn es besser ist
+{
+    const items = [
+        { id: 40, name: 'Unikat-Helm', loc: 'g', st: 1, cl: 9, stat: 'lvl=18;rarity=unique;ac=30;hp=80;ds=4' },
+        { id: 41, name: 'Common-Helm', loc: 'g', st: 0, cl: 9, stat: 'lvl=24;ac=34' },
+        { id: 42, name: 'Alte Schuhe', loc: 'g', st: 1, cl: 10, stat: 'lvl=20;rarity=unique;ac=10;hp=20' },
+        { id: 43, name: 'Starke Schuhe', loc: 'g', st: 0, cl: 10, stat: 'lvl=24;ac=22;hp=40' },
+        { id: 44, name: 'Siła-Ring', loc: 'g', st: 0, cl: 12, stat: 'lvl=20;ds=5' },
+        { id: 45, name: 'Intelekt-Ring', loc: 'g', st: 0, cl: 12, stat: 'lvl=22;di=8' },
+        { id: 46, name: 'Fast gleiche Handschuhe', loc: 'g', st: 0, cl: 11, stat: 'lvl=24;ac=20' },
+        { id: 47, name: 'Handschuhe', loc: 'g', st: 1, cl: 11, stat: 'lvl=15;ac=20' }];
+    const s = setup({ items });                                   // Paladin: Siła ist Hauptattribut
+    s.tick(1);
+    const up = s.t.gearUpgrades(), ids = up.map(u => u.item.id);
+    check('Werte: Unikat-Helm (niedrigeres Level, mehr Werte) bleibt', !ids.includes(41), JSON.stringify(ids));
+    check('Werte: deutlich stärkere Schuhe werden angelegt', ids.includes(43));
+    check('Werte: Paladin nimmt Siła-Ring vor höherem Intelekt-Ring', ids.includes(44) && !ids.includes(45));
+    check('Werte: gleich starke Teile nicht tauschen, auch bei höherem Level', !ids.includes(46));
+    const m = setup({ items, prof: 'm' }); m.tick(1);
+    check('Werte: Magier nimmt den Intelekt-Ring', m.t.gearUpgrades().some(u => u.item.id === 45));
+}
 Date.now = realNow;
 process.exit(fail);

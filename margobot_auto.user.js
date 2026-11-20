@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.44
+// @version      7.45
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -1487,6 +1487,35 @@
     }
     const RAR_BONUS = { common: 0, unique: 5, upgraded: 8, heroic: 10, legendary: 20, artefact: 25 };
     function gearScore(d) { return (+parseStat(d.stat).lvl || 0) + (RAR_BONUS[rarity(d)] || 0); }
+    /* Werte vergleichen statt nur Level (Nutzer: ein Common mit höherem Level verdrängte ein besseres Unikat).
+       Gewichtete Summe der Kampfwerte aus dem Stat-Text. Die Gewichte sind Faustwerte, die Schlüssel stammen aus den
+       Item-Stats des Spiels (ac Pancerz, dmg Schaden „min,max“, hp Leben, ds/dz/di Siła/Zręczność/Intelekt, da alle
+       Attribute, sa Tempo, crit …) – nicht alle im Spiel geprüft. Hauptattribut nach Profession zählt dreifach.
+       Nur wenn beide Teile solche Werte haben, entscheiden die Werte; sonst wie bisher Level + Seltenheit. */
+    const MAIN_STAT = { w: 'ds', p: 'ds', b: 'dz', h: 'dz', t: 'dz', m: 'di' };
+    const STAT_W = { ac: 1, dmg: 1, pdmg: 1, fire: 1, light: 1, frost: 1, poison: 1, wound: 0.6, hp: 0.2, sa: 4, crit: 4, critmval: 2, critval: 2,
+        evade: 2, blok: 2, pierce: 2, pierceb: 2, contra: 2, heal: 3, abs: 0.6, absm: 0.6, slow: 3, lowevade: 2, lowcrit: 2, resdmg: 2,
+        resfire: 0.7, reslight: 0.7, resfrost: 0.7, act: 0.7, mana: 0.2, energy: 0.2, manadest: 1, endest: 1 };
+    const statNum = v => { const a = String(v).split(',').map(Number).filter(x => isFinite(x)); return a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0; };
+    function statScore(d) {
+        const p = parseStat(d.stat), main = MAIN_STAT[(E().hero.d || {}).prof] || 'ds';
+        let sc = 0, n = 0;
+        for (const k in p) {
+            const w = k in STAT_W ? STAT_W[k] : k === 'da' ? 5 : ['ds', 'dz', 'di'].includes(k) ? (k === main ? 3 : 1) : 0;
+            const v = w && statNum(p[k]);
+            if (!v) continue;
+            sc += w * v; n++;
+        }
+        if (p.legbon) sc += 10;                          // legendärer Bonus: kein Zahlenwert, aber spürbar
+        return n ? Math.round(sc * 10) / 10 : null;
+    }
+    /* > 0: a ist besser als b. Mit Werten: mindestens 3 % besser, damit gleichwertige Teile nicht hin und her getauscht werden. */
+    function gearCmp(a, b) {
+        const x = statScore(a), y = statScore(b);
+        if (x != null && y != null) return x > y * 1.03 + 0.5 || y > x * 1.03 + 0.5 ? x - y : 0;
+        return gearScore(a) - gearScore(b);
+    }
+    const gearWhy = (a, b) => { const x = statScore(a), y = b && statScore(b); return x != null && y != null ? ` (Werte ${x} gegen ${y})` : b ? ' (nach Level)' : ''; };
     function canWear(d) {
         const p = parseStat(d.stat), prof = (E().hero.d || {}).prof;
         if (p.quest || +p.lvl > heroLvl()) return false;
@@ -1501,8 +1530,8 @@
         // Bogen (cl 4): Pfeile (cl 21) sind ein eigener Platz – fehlten vorher ganz, darum wurden sie nie angelegt
         if (weapon && +weapon.cl === 4) groups.push({ slot: 'Pfeile', ok: d => +d.cl === ARROW_CL, old: w.find(d => +d.cl === ARROW_CL) });
         for (const g of groups) {
-            const best = b.filter(g.ok).sort((x, y) => gearScore(y) - gearScore(x))[0];
-            if (best && (!g.old || gearScore(best) > gearScore(g.old))) out.push({ item: best, slot: g.slot, old: g.old });
+            const best = b.filter(g.ok).sort((x, y) => gearCmp(y, x) || gearScore(y) - gearScore(x))[0];
+            if (best && (!g.old || gearCmp(best, g.old) > 0)) out.push({ item: best, slot: g.slot, old: g.old });
         }
         return out;
     }
@@ -1634,7 +1663,7 @@
                 if (!up.length || (st.n || 0) >= 12) { log(st.n ? `Ausrüstung: ${st.n} ${st.n === 1 ? 'Teil' : 'Teile'} angelegt` : 'Ausrüstung: nichts Besseres in der Tasche'); return 'ok'; }
                 const u = up[0];
                 send('moveitem&st=1&id=' + u.item.id); st.sentId = u.item.id; st.sentAt = now; st.n = (st.n || 0) + 1; st.wait = now + jit(400);
-                log(`Lege an (${u.slot}): ${u.item.name}${u.old ? ' statt ' + u.old.name : ''}`);
+                log(`Lege an (${u.slot}): ${u.item.name}${u.old ? ' statt ' + u.old.name + gearWhy(u.item, u.old) : ''}`);
                 return 'run';
             }
             case 'equip': case 'use': {
@@ -4640,7 +4669,9 @@
             'Spielbefehl _g: ' + (typeof W._g === 'function' ? 'da' : 'FEHLT'),
             'Gegenstände gefunden: ' + it.length + ' (Tasche ' + bag().length + ', angelegt ' + worn().length + ')',
             'Heiltränke: ' + potionCount(),
-            'Angelegt (Platz/Klasse): ' + (worn().map(d => `${d.name} ${d.st}/${d.cl}${parseStat(d.stat).amount ? ' ×' + parseStat(d.stat).amount : ''}`).join(', ') || 'nichts'),
+            'Angelegt (Platz/Klasse, Wert): ' + (worn().map(d => `${d.name} ${d.st}/${d.cl}${parseStat(d.stat).amount ? ' ×' + parseStat(d.stat).amount : ''} · ${statScore(d) ?? 'keine Werte'}`).join(', ') || 'nichts'),
+            'Bessere Ausrüstung in der Tasche: ' + (gearUpgrades().map(u => `${u.slot}: ${u.item.name}${gearWhy(u.item, u.old)}`).join(', ') || 'keine'),
+            'Stat-Text Beispiel: ' + ((worn()[0] || {}).stat || '–').slice(0, 160),
             'Zagadka: ' + (captchaOpen() ? 'offen' : capt.state === 'soon' ? 'kommt bald' : 'keine') + ' · Gerät: ' + (touchDev() ? 'Handy/Touch' : 'PC') +
                 ' · Klick-Art: ' + (cfg.captchaClick || 'noch keine') + ' · jQuery: ' + (typeof (W.jQuery || W.$) === 'function' ? 'da' : 'fehlt') + '\n' + captchaDiag() + '\n' +
                 ' · Elemente „captcha“ im Spiel: ' + (document.querySelectorAll('[class*="captcha"]').length),
