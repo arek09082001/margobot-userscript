@@ -4,10 +4,10 @@ const src = fs.readFileSync(path.join(__dirname, '..', 'margobot_auto.user.js'),
     .replace('function log(t) {', 'function log(t) { if (process.env.LOG) console.log("   log:", t); logs.push(t);')
     .replace(/\}\)\(\);\s*$/, 'W.test = { cfg, autoT }; })();');
 
-// Drei Karten: Start (Mobs Lvl 40), Schwer (Lvl 44, rechts), Leicht (Lvl 36, links)
-const NAMES = { 1: 'Start', 2: 'Schwer', 3: 'Leicht' };
-const G = { 1: [[2, 19, 5], [3, 0, 10]], 2: [[1, 0, 5]], 3: [[1, 19, 10]] };
-const MOBLVL = { 1: 40, 2: 44, 3: 36 };
+// Start (Mobs Lvl 40); rechts Schwer (44) ↔ Schwerer (45); links Leicht (36) ↔ Leichter (35)
+const NAMES = { 1: 'Start', 2: 'Schwer', 3: 'Leicht', 4: 'Schwerer', 5: 'Leichter' };
+const G = { 1: [[2, 19, 5], [3, 0, 10]], 2: [[1, 0, 5], [4, 19, 15]], 3: [[1, 19, 10], [5, 0, 15]], 4: [[2, 0, 15]], 5: [[3, 19, 15]] };
+const MOBLVL = { 1: 40, 2: 44, 3: 36, 4: 45, 5: 35 };
 const world = {};
 for (const id in G) world[id] = [20, 20, 'pl_' + NAMES[id], G[id], [['Wilk', MOBLVL[id], 10]]];
 
@@ -68,6 +68,7 @@ function setup({ loss = 2, lossOf = null, settings = {}, dieAt = 0 } = {}) {
     check('zu leicht: Bereich nach 8 Kämpfen hoch, neuer XP-Ort', s.t.cfg.lvlMin > 37 && s.visits.includes(2),
         `Lvl ${s.t.cfg.lvlMin}–${s.t.cfg.lvlMax}, Karten ${s.visits.join('→') || '–'}`);
     check('… Grund im Verlauf', s.logs.some(l => /Auto-Stufe: .*zu leicht/.test(l)));
+    check('… kaum Verlust: gleich 4 Level höher', s.t.cfg.lvlMin === 41 && s.t.cfg.lvlMax === 47, `Lvl ${s.t.cfg.lvlMin}–${s.t.cfg.lvlMax}`);
     s.done();
 }
 // passt: mittlerer Verlust → nichts ändern
@@ -103,6 +104,32 @@ function setup({ loss = 2, lossOf = null, settings = {}, dieAt = 0 } = {}) {
     const s = setup({ loss: 1, settings: { lvlMin: 40, lvlMax: 46, auto: { on: true, mode: 'safe' } } });
     s.tick(400);
     check('vorsichtig: nie über Lvl 46 (41 + 5)', s.t.cfg.lvlMax <= 46, `Lvl ${s.t.cfg.lvlMin}–${s.t.cfg.lvlMax}`);
+    s.done();
+}
+// mittlerer leichter Verlust (Ø 6 %): nur 2 Level
+{
+    const s = setup({ loss: 6 });
+    s.tick(300);
+    check('etwas zu leicht (Ø 6 %): 2 Level höher', s.t.cfg.lvlMin === 39 && s.t.cfg.lvlMax === 45, `Lvl ${s.t.cfg.lvlMin}–${s.t.cfg.lvlMax}`);
+    s.done();
+}
+// mit Route: zu leicht → neue, stärkere Route aus den Vorschlägen, dorthin laufen
+{
+    const s = setup({ loss: 1, settings: { mode: 'route', route: 'Start', routes: { Start: { maps: [1], lvlOn: true, lvlMin: 37, lvlMax: 43 } } } });
+    s.tick(400);
+    const r = s.t.cfg.routes[s.t.cfg.route];
+    check('Route zu leicht: neue Route mit stärkeren Karten, Bot läuft hin', s.t.cfg.route !== 'Start' && r && r.maps.some(id => id === 2 || id === 4) && s.visits.includes(2),
+        `Route „${s.t.cfg.route}“ ${r && r.maps.join('→')}, Lvl ${s.t.cfg.lvlMin}–${s.t.cfg.lvlMax}, Karten ${s.visits.join('→')}`);
+    check('… alte Route bleibt gespeichert', !!s.t.cfg.routes.Start);
+    s.done();
+}
+// mit Route: zu schwer → schwächere Route
+{
+    const s = setup({ loss: 40, settings: { mode: 'route', route: 'Start', routes: { Start: { maps: [1], lvlOn: true, lvlMin: 37, lvlMax: 43 } } } });
+    s.tick(300);
+    const r = s.t.cfg.routes[s.t.cfg.route];
+    check('Route zu schwer: schwächere Route', s.t.cfg.route !== 'Start' && r && r.maps.some(id => id === 3 || id === 5) && s.t.cfg.lvlMax < 40,
+        `Route „${s.t.cfg.route}“ ${r && r.maps.join('→')}, Lvl ${s.t.cfg.lvlMin}–${s.t.cfg.lvlMax}`);
     s.done();
 }
 // aus bzw. Route: nichts anfassen
