@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.43
+// @version      7.44
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -67,7 +67,7 @@
        Gemeinsam bleibt, was zur Welt oder zum Gerät gehört (gelerntes Kartenwissen, Panel-Lage, Handel).
        Gespeichert unter „mbhero:<Welt>#<Held-ID>“; „mbauto“ behält wie bisher alles (Stand des zuletzt aktiven
        Helden) – daraus startet ein neuer Held. Auf Seiten ohne Spiel (E2 offline) gilt der zuletzt aktive Held. */
-    const GLOBAL = new Set(['graph', 'names', 'tele', 'npcs', 'dlg', 'shops', 'blocked', 'blockedAt', 'x', 'y', 'open', 'tab',
+    const GLOBAL = new Set(['graph', 'names', 'tele', 'teleAt', 'teleNo', 'npcs', 'dlg', 'shops', 'blocked', 'blockedAt', 'x', 'y', 'open', 'tab',
                             'logOpen', 'trade', 'captchaClick']);
     const heroPart = () => { const o = {}; for (const k in cfg) if (!GLOBAL.has(k)) o[k] = cfg[k]; return o; };
     function applyHero(data) {
@@ -298,6 +298,55 @@
         return d.length ? [d[d.length >> 1][1], d[d.length >> 1][2]] : [m[0] >> 1, m[1] >> 1];
     }
     const TELE_COST = 30;
+    /* Teleport-Netz: Die Stadt-Teleporter (Zakonnik Planu Astralnego) bieten in jeder Stadt dieselben Ziele an –
+       welche, hängt an den Zezwolenia des Helden, nicht an der Stadt. Darum gilt eine einmal gelernte Zielliste für
+       alle Teleporter derselben Art, auch in Städten, in denen der Spieler den NPC nie angesprochen hat (jede Stadt,
+       in die das Netz führt, hat selbst einen). Abgeleitet bei Bedarf aus cfg.tele, nichts davon wird doppelt gespeichert.
+       Ausnahmen bleiben bei ihrer eigenen, gelernten Liste:
+       – Tuzmer: der Zakonnik dort schickt nur zum Astralnen Koncentrator (Quest „Teleport do Tuzmer“), nicht in die Städte;
+       – Teleporter gleichen Namens, deren Ziele kaum zum Netz passen (z. B. Mythar: Ithan und Góry Zrębowe);
+       – Event-Ziele und Koncentrator-Antworten (nur zeitweise bzw. nur an einem Ort im Angebot);
+       – Städte, in denen der NPC nicht gefunden wurde (cfg.teleNo, 7 Tage), und Ziele, die dieser Held nicht hat
+         (cfg.teleMiss, pro Held, 12 h – die Zezwolenia gelten pro Held, cfg.tele ist für alle Helden gemeinsam). */
+    const TELE_KIND = /planu astralnego|astral/;
+    const TELE_OWN_MAP = /tuzmer/;
+    const TELE_LOCAL = /koncentrator|concentrator|\b(event|eventow\w*|wydarzen\w*|swiat\w*|swieta|halloween|bozonarodzeni\w*|wielkanoc\w*|walentyn\w*|mikolaj\w*|christmas|easter|summer|winter|lato|zima|urodzin\w*|anniversary|jubileusz\w*)\b/;
+    const TELE_NPC_DIST = 20;                          // Laufweg zum NPC, wenn seine Lage in der Stadt noch unbekannt ist
+    let teleNetKey = '', teleNetVal = null;
+    function teleNet() {
+        const key = JSON.stringify(cfg.tele || {}) + '|' + JSON.stringify(cfg.teleAt || {}) + '|' + JSON.stringify(cfg.teleNo || {}) + '|' + (world ? worldN() : 0);
+        if (key === teleNetKey && teleNetVal) return teleNetVal;
+        const tele = cfg.tele || {}, byName = {};
+        for (const mid in tele) for (const npc in tele[mid]) (byName[npc] = byName[npc] || []).push(+mid);
+        const kinds = [], useAt = new Map(), own = [];
+        const ownMap = mid => TELE_OWN_MAP.test(fold(world && world[mid] ? world[mid][2] : '') + ' ' + fold((cfg.names || {})[mid] || ''));
+        const local = (dest, opt) => TELE_LOCAL.test(fold(opt.text || '')) || TELE_LOCAL.test(fold(world && world[dest] ? world[dest][2] : ''));
+        for (const npc in byName) {
+            if (!TELE_KIND.test(fold(npc)) && byName[npc].length < 2) continue;
+            const k = { npc, to: {}, src: [], at: {}, own: [] };
+            // die Quelle mit den meisten Zielen zuerst, damit Sonderfälle (wenige Ziele) nicht das Netz bestimmen
+            const srcs = byName[npc].map(mid => [mid, tele[mid][npc]]).sort((a, b) => Object.keys(b[1].to).length - Object.keys(a[1].to).length);
+            for (const [mid, e] of srcs) {
+                const ds = Object.keys(e.to).filter(d => !local(+d, e.to[d]));
+                const have = Object.keys(k.to), both = ds.filter(d => d in k.to).length;
+                if (ownMap(mid) || (have.length && both < Math.min(2, have.length, ds.length || 1))) { k.own.push(mid); continue; }
+                for (const d of ds) if (!k.to[d]) k.to[d] = e.to[d];
+                k.src.push(mid); k.at[mid] = [e.x, e.y];
+            }
+            if (Object.keys(k.to).length < 2) continue;
+            for (const mid in cfg.teleAt || {}) if (cfg.teleAt[mid].npc === npc && !k.at[mid]) k.at[mid] = [cfg.teleAt[mid].x, cfg.teleAt[mid].y];
+            const no = cfg.teleNo || {}, cand = new Set(k.src.concat(Object.keys(k.at).map(Number), Object.keys(k.to).map(Number)));
+            for (const mid of cand) {
+                if (k.own.includes(mid) || ownMap(mid) || useAt.has(mid)) continue;
+                if (no[mid] && Date.now() - no[mid] < 7 * 864e5 && !k.at[mid]) continue;
+                useAt.set(mid, k);
+            }
+            kinds.push(k); own.push(...k.own);
+        }
+        teleNetKey = key; teleNetVal = { kinds, useAt, own };
+        return teleNetVal;
+    }
+    const teleMissed = to => { const t = (cfg.teleMiss || {})[to]; return t && Date.now() - t < 12 * 3600000; };
     function worldSearch(start, sxy, goals) {
         /* Dijkstra über alle Karten: Laufweg in der Karte (Luftlinie ×1.3) + 8 je Kartenwechsel.
            Rückgabe: {best, prev} – prev[id] = [vorige Karte, Tür auf der vorigen Karte]. */
@@ -305,7 +354,7 @@
         cfg.blocked = (cfg.blocked || []).filter(k => at[k] && Date.now() - at[k] < 15 * 60000);
         const blocked = new Set(cfg.blocked), goal = goals ? new Set(goals.map(Number)) : null;
         const best = { [start]: 0 }, prev = { [start]: null }, pos = { [start]: sxy };
-        const heap = [[0, start]];
+        const heap = [[0, start]], net = teleNet();
         const push = it => { heap.push(it); let i = heap.length - 1; while (i) { const p = (i - 1) >> 1; if (heap[p][0] <= heap[i][0]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
         const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } } return top; };
         while (heap.length) {
@@ -332,10 +381,23 @@
                 const tp = tl[npc], dw = Math.abs(tp.x - x0) + Math.abs(tp.y - y0);
                 for (const to in tp.to) {
                     const t = +to;
-                    if (!world[t] || t === id || blocked.has(id + '~' + t)) continue;
+                    if (!world[t] || t === id || blocked.has(id + '~' + t) || teleMissed(t)) continue;
                     const nc = c + dw * 1.3 + TELE_COST;
                     if (best[t] === undefined || nc < best[t]) {
                         best[t] = nc; prev[t] = [id, tp.x, tp.y, { npc, to: t }]; pos[t] = entryXY(t, -1); push([nc, t]);
+                    }
+                }
+            }
+            // Teleport-Netz: dieselben Ziele wie bei jedem anderen Teleporter dieser Art
+            const k = net.useAt.get(+id);
+            if (k) {
+                const at = k.at[id], dw = at ? Math.abs(at[0] - x0) + Math.abs(at[1] - y0) : TELE_NPC_DIST;
+                for (const to in k.to) {
+                    const t = +to;
+                    if (!world[t] || t === id || blocked.has(id + '~' + t) || teleMissed(t) || (tl && tl[k.npc] && tl[k.npc].to[t])) continue;
+                    const nc = c + dw * 1.3 + TELE_COST;
+                    if (best[t] === undefined || nc < best[t]) {
+                        best[t] = nc; prev[t] = [id, at ? at[0] : x0, at ? at[1] : y0, { npc: k.npc, to: t, net: 1 }]; pos[t] = entryXY(t, -1); push([nc, t]);
                     }
                 }
             }
@@ -543,7 +605,12 @@
         /* Zum Teleport-NPC laufen, ansprechen, gelernten Dialogweg anklicken, auf den Kartenwechsel warten.
            Klappt es nicht (NPC weg, Antwort fehlt, zu wenig Gold …), wird dieser Teleport 15 min gesperrt. */
         const now = performance.now(), here = mapId(), key = here + '~' + tp.to;
-        const info = ((cfg.tele || {})[here] || {})[tp.npc], opt = info && info.to[tp.to];
+        let info = ((cfg.tele || {})[here] || {})[tp.npc], opt = info && info.to[tp.to];
+        if (!opt && tp.net) {                           // aus dem Netz: Antworten eines anderen Teleporters derselben Art
+            const k = teleNet().kinds.find(x => x.npc === tp.npc), at = k && k.at[here];
+            opt = k && k.to[tp.to];
+            info = { x: at ? at[0] : heroXY()[0], y: at ? at[1] : heroXY()[1] };
+        }
         const fail = why => {
             cfg.blocked = Array.from(new Set((cfg.blocked || []).concat([key])));
             cfg.blockedAt = Object.assign(cfg.blockedAt || {}, { [key]: Date.now() });
@@ -555,7 +622,11 @@
         if (!tst || tst.key !== key) tst = { key, t0: now, talk: 0, i: 0, clickAt: 0 };
         if (now - tst.t0 > 45000) return fail('hat nicht geklappt');
         const n = npcList().filter(d => d.nick === tp.npc).sort((a, b) => (Math.abs(a.x - info.x) + Math.abs(a.y - info.y)) - (Math.abs(b.x - info.x) + Math.abs(b.y - info.y)))[0];
-        if (!n) return now - tst.t0 > 8000 ? fail(`– ${tp.npc} nicht gefunden`) : 'läuft';
+        if (!n) {
+            if (now - tst.t0 <= 8000) return 'läuft';
+            if (tp.net) { cfg.teleNo = Object.assign(cfg.teleNo || {}, { [here]: Date.now() }); teleNetKey = ''; }   // hier gibt es keinen
+            return fail(`– ${tp.npc} nicht gefunden`);
+        }
         const [hx, hy] = heroXY();
         if (Math.abs(n.x - hx) > 1 || Math.abs(n.y - hy) > 1) { walkTo(n.x, n.y + 1, tp.npc + ' (Teleport)'); return 'läuft'; }
         const d = dialogOpen();
@@ -568,7 +639,12 @@
         const want = fold(steps[Math.min(tst.i, steps.length - 1)]);
         const li = [...d.querySelectorAll('.dialogue-window-answer')].find(x => fold(answerOf(x)) === want)
             || [...d.querySelectorAll('.dialogue-window-answer')].find(x => fold(answerOf(x)).includes(want));
-        if (!li) return now - tst.talk > 6000 ? fail(`– Antwort „${steps[tst.i]}“ fehlt`) : 'läuft';
+        if (!li) {
+            if (now - tst.talk <= 6000) return 'läuft';
+            // Ziel fehlt im Menü: dieser Held hat das Zezwolenie (noch) nicht – 12 h nicht mehr dorthin teleportieren
+            if (tst.i >= steps.length - 1) cfg.teleMiss = Object.assign(cfg.teleMiss || {}, { [tp.to]: Date.now() });
+            return fail(`– Antwort „${steps[tst.i]}“ fehlt`);
+        }
         li.click(); tst.clickAt = now; tst.i++;
         const ok = confirmPopup();                      // „Kosten X Gold, sicher?“ → ja
         return 'läuft';
@@ -1838,10 +1914,19 @@
         cfg.tele = cfg.tele || {};
         const m = cfg.tele[mapId()] = cfg.tele[mapId()] || {};
         const e = m[who] = m[who] || { x: n.x, y: n.y, to: {} };
-        let added = 0;
-        for (const [a, id] of hits) if (!e.to[id]) { e.to[id] = { path: convPath.slice(), text: a }; added++; }
-        if (added) { log(`Teleporter gelernt: ${who} (${mapName()}) → ${hits.map(h => wname(h[1])).join(', ')}`); travelCache = null; lastStatic = ''; }
-        return added > 0;
+        let added = 0, gone = [];
+        for (const [a, id] of hits) {
+            if (!e.to[id]) { e.to[id] = { path: convPath.slice(), text: a }; added++; }
+            if (cfg.teleMiss && cfg.teleMiss[id]) delete cfg.teleMiss[id];          // jetzt im Angebot
+        }
+        // Gleiches Menü, aber ein Ziel fehlt (Event vorbei, Angebot geändert): vergessen
+        const shown = new Set(hits.map(h => h[1])), sameMenu = o => JSON.stringify(o.path || []) === JSON.stringify(convPath);
+        for (const id in e.to) if (!shown.has(+id) && sameMenu(e.to[id])) { gone.push(+id); delete e.to[id]; }
+        if (added) log(`Teleporter gelernt: ${who} (${mapName()}) → ${hits.map(h => wname(h[1])).join(', ')}`);
+        if (gone.length) log(`Teleporter ${who} (${mapName()}): nicht mehr im Angebot → ${gone.map(wname).join(', ')}`);
+        if (added && TELE_KIND.test(fold(who)) && !TELE_OWN_MAP.test(fold(mapName()))) log('Diese Ziele gelten jetzt auch für die Teleporter in den anderen Städten.');
+        if (added || gone.length) { travelCache = null; lastStatic = ''; teleNetKey = ''; }
+        return added > 0 || gone.length > 0;
     }
     function learnWorldBits() {
         /* Für die Auswahllisten der Abläufe: was der Spieler gesehen hat, wird gemerkt (1×/s, nur bei Änderung gespeichert). */
@@ -1853,6 +1938,13 @@
         const id = mapId(), here = npcList().map(d => d.nick).filter(n => n && !/^\d+$/.test(n));
         const old = cfg.npcs[id] || [], add = here.filter(n => !old.includes(n));
         if (add.length) { cfg.npcs[id] = old.concat(add).slice(0, 40); ch = true; }
+        // Teleporter einer Netz-Art hier sichtbar → Lage merken (genauerer Weg), „nicht gefunden“ aufheben
+        const kn = teleNet().kinds.map(k => k.npc), tn = npcList().find(d => kn.includes(d.nick));
+        if (tn) {
+            const o = (cfg.teleAt || {})[id];
+            if (!o || o.npc !== tn.nick || o.x !== tn.x || o.y !== tn.y) { cfg.teleAt = Object.assign(cfg.teleAt || {}, { [id]: { npc: tn.nick, x: tn.x, y: tn.y } }); ch = true; }
+            if (cfg.teleNo && cfg.teleNo[id]) { delete cfg.teleNo[id]; ch = true; }
+        }
         const d = dialogOpen();
         if (!d && now - convLastOpen > 2500) { convPath = []; convWho = ''; }
         if (d) {
@@ -4010,7 +4102,7 @@
     const suggestionRange = () => cfg.suggestAuto && heroLvl() ? [Math.max(1, heroLvl() - 5), heroLvl() + 3] : [cfg.lvlMin, cfg.lvlMax];
     function refreshSug() {                         // fertige Routen nur neu rechnen, wenn Bereich/Karte sich ändern
         const [lo, hi] = suggestionRange();
-        const k = [lo, hi, mapId(), worldN(), heroLvl(), cfg.expoAll, JSON.stringify(cfg.blockedAt || {}), JSON.stringify(cfg.tele || {}), Math.floor(Date.now() / 60000)].join('|');
+        const k = [lo, hi, mapId(), worldN(), heroLvl(), cfg.expoAll, JSON.stringify(cfg.blockedAt || {}), JSON.stringify(cfg.tele || {}), JSON.stringify(cfg.teleAt || {}), Math.floor(Date.now() / 60000)].join('|');
         if (k === sugKey) return;
         sugKey = k;
         const forum = world ? forumRoutes(lo, hi, !!cfg.expoAll) : [];
@@ -4202,7 +4294,7 @@
     function setSections() {
         const mn = mapName(), gw = gateways(), picked = Object.values(cfg.picked || {}).filter(Boolean).length;
         const exitG = gw.find(g => String(g.id) === String(cfg.exits[mn]));
-        const teleN = Object.values(cfg.tele || {}).reduce((n, o) => n + Object.keys(o).length, 0);
+        const teleN = Object.values(cfg.tele || {}).reduce((n, o) => n + Object.keys(o).length, 0), teleK = teleNet().kinds;
         return [
             ['goal', 'target', 'Ziele', (cfg.lvlOn ? `Lvl ${cfg.lvlMin}–${cfg.lvlMax}` : 'nur Auswahl') + (picked ? ` + ${picked}` : '')],
             cfg.route ? null : ['empty', 'door', 'Leere Karte', exitG ? '→ ' + exitG.name : 'warten'],
@@ -4212,7 +4304,7 @@
             ['pk', 'users', 'Andere Spieler', { off: 'ignorieren', follow: 'bei Verfolger', any: 'bei jedem' }[cfg.pk.mode] || cfg.pk.mode],
             ['death', 'skull', 'Bei Tod', (cfg.onDeath === 'back' ? 'zurücklaufen' : 'stoppen') + ((cfg.deaths || []).length ? ` · ${cfg.deaths.length}×` : '')],
             ['world', 'map', 'Weltkarte', world ? fmt(worldN()) + ' Karten' : 'fehlt', !world],
-            ['tele', 'spark', 'Teleporter', teleN ? teleN + ' bekannt' : 'keiner'],
+            ['tele', 'spark', 'Teleporter', teleK.length ? `${Object.keys(teleK[0].to).length} Ziele · ${[...teleNet().useAt.values()].filter(k => k === teleK[0]).length} Städte` : teleN ? teleN + ' bekannt' : 'keiner'],
             ['goto', 'pin', 'Zu Karte', world ? 'Ziel suchen' : 'Weltkarte fehlt']
         ].filter(Boolean);
     }
@@ -4301,7 +4393,7 @@
                 <button class="btn" data-a="clearDeaths" style="margin-top:8px">${ico('trash')}Liste leeren</button>` : ''}`;
         if (k === 'world') return `<div class="big1">${world ? fmt(worldN()) : '–'}<span>${world ? 'Karten geladen' : 'nicht geladen'}</span></div>
             <div class="fld"><button class="btn pri" data-a="loadworldgh">${ico('map')}${worldDl ? 'Lädt …' : 'Von GitHub laden'}</button><button class="btn" data-a="loadworld">Datei wählen</button></div>`;
-        if (k === 'tele') return Object.keys(cfg.tele || {}).length ? Object.entries(cfg.tele).map(([mid, npcs]) => Object.entries(npcs).map(([npc, t]) =>
+        if (k === 'tele') return Object.keys(cfg.tele || {}).length ? teleNetHtml() + Object.entries(cfg.tele).map(([mid, npcs]) => Object.entries(npcs).map(([npc, t]) =>
                 `<div class="spot"><span class="nm">${esc(wname(+mid))} · ${esc(npc)}</span><span class="mt">→ ${Object.keys(t.to).map(id => esc(wname(+id))).join(', ')}</span></div>`).join('')).join('') +
                 `<button class="btn" data-a="teleforget" style="margin-top:8px">${ico('trash')}Alle vergessen</button>`
             : '<div class="hint">Noch keiner. Beim Teleport-NPC einmal die Zielliste öffnen – der Bot merkt sie sich.</div>';
@@ -4309,6 +4401,19 @@
               <button class="btn pri" data-a="go">${ico('pin')}Hin</button></div><div class="hint">Englischer Name unbekannt? Polnisch eingeben.</div>`
             : '<div class="hint">Erst die Weltkarte laden.</div>';
         return '';
+    }
+
+    function teleNetHtml() {
+        const net = teleNet();
+        return net.kinds.map(k => {
+            const towns = [...net.useAt].filter(([, x]) => x === k).map(([mid]) => mid);
+            const miss = Object.keys(k.to).filter(d => teleMissed(+d));
+            return `<h4>${esc(k.npc)} – gleiche Ziele in jeder Stadt</h4>
+              <div class="spot"><span class="nm">${Object.keys(k.to).length} Ziele</span><span class="mt">${Object.keys(k.to).map(id => esc(wname(+id))).join(', ')}</span></div>
+              <div class="spot"><span class="nm">nutzbar in ${towns.length} ${towns.length === 1 ? 'Stadt' : 'Städten'}</span><span class="mt">${towns.map(id => esc(wname(id))).join(', ')}</span></div>
+              ${k.own.length ? `<div class="hint">Eigene Liste (Sonderfall): ${k.own.map(id => esc(wname(id))).join(', ')}</div>` : ''}
+              ${miss.length ? `<div class="hint">Für diesen Helden nicht im Angebot: ${miss.map(id => esc(wname(+id))).join(', ')}</div>` : ''}`;
+        }).join('') + (net.kinds.length ? '<h4>Gelernt</h4>' : '');
     }
 
     // ── Tab „Abläufe“ ──
@@ -5186,7 +5291,7 @@
             }
         }
         else if (a === 'delroute') { if (W.confirm('Route „' + cfg.route + '“ löschen?')) { delete cfg.routes[cfg.route]; cfg.route = ''; cfg.mode = 'route'; } }
-        else if (a === 'teleforget') { if (W.confirm('Alle gelernten Teleporter vergessen?')) { cfg.tele = {}; travelCache = null; } }
+        else if (a === 'teleforget') { if (W.confirm('Alle gelernten Teleporter vergessen?')) { cfg.tele = {}; cfg.teleAt = {}; cfg.teleNo = {}; cfg.teleMiss = {}; teleNetKey = ''; travelCache = null; } }
         else if (a === 'clearDeaths') cfg.deaths = [];
         else if (a === 'capclear') { cfg.lossCap = null; log('Vorsicht nach Niederlage aufgehoben'); }
         else if (a === 'bestnow') {
