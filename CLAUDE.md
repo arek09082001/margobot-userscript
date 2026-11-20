@@ -83,6 +83,8 @@ Beste Route nach XP pro Runde (ab 7.38): `routeXpFor(maps, lo, hi)` schätzt XP 
 
 Auto-Stufe: Tode und schnelleres Heben (ab 7.39): Tode pro Ort (`autoPlace`: Route = Kartenfolge, sonst Karte) in `autoT.deaths` (30 min). Zwei Tode am selben Ort → `autoT.avoid` 60 min (`autoAvoided`); `bestRouteFor`, `spotRoute` und die XP-Ort-Wahl lassen gemiedene Orte aus. Nach wiederholtem Tod wird stärker gesenkt (Schritt 4, bis zu zwei weitere Versuche mit 6/8) und `cfg.back` immer verworfen. Findet sich mit Route keine Route aus mehreren Karten, wird der beste einzelne Jagdort zur Route (`spotRoute`). Schnell hoch: nach `AUTO_FAST_N` = 4 Kämpfen mit Ø ≤ 40 % von „easy“ und keinem Kampf ≥ „easy“, Pause `AUTO_FAST_COOL` = 1 min, Schritt 4. Test: `tests/auto_sim.js`.
 
+Nach dem Wiederbeleben (ab 7.40, Nutzer: Bot plant schon den Weg, Held kann sich noch nicht bewegen, danach kein direkter Weg): `checkDeath` merkt `deadAt` und beim Wiederbeleben `revive` (Zeit, Position). `reviveTick` hält in den ersten `REVIVE_HOLD` = 5 s jede Aktion an; Reise-Cache, Türwahl, Laufziel und Ziele werden neu aufgesetzt. Solange sich der Held seit dem Wiederbeleben nicht bewegt hat (`reviveFrozen`, höchstens 3 min), sperrt `travelStep` keine Türen („kommt nicht weiter“/„geht nicht“), sondern wiederholt den Laufbefehl. Türsperren seit `deadAt` − 5 s werden zurückgenommen. Test: `tests/revive_sim.js` (alter Stand sperrte dort die Stadttür und nahm den Umweg).
+
 ## Im echten Spiel geprüfte Fakten
 
 - `Engine.hero.d` (x, y, lvl, exp, gold, `warrior_stats`), `hero.autoGoTo({x, y}, false)`, `hero.heroAtackRequest(id, true)`.

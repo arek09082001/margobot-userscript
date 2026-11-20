@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.39
+// @version      7.40
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -526,8 +526,13 @@
         if (!travelDoor || travelDoor.key !== key) travelDoor = { key, since: now, pos: hx + ',' + hy, moved: now };
         if (travelDoor.pos !== hx + ',' + hy) { travelDoor.pos = hx + ',' + hy; travelDoor.moved = now; }
         // Held kommt nicht voran (10 s kein Schritt) oder Tür geht nicht auf (Level, Schlüssel, Quest; 45 s)
-        if (now - travelDoor.moved > 10000 && Math.abs(hx - door.x) + Math.abs(hy - door.y) > 1) return block('ist nicht erreichbar (Held kommt nicht weiter)');
-        if (now - travelDoor.since > 45000) return block('geht nicht');
+        if (reviveFrozen()) {                                   // noch betäubt: nichts sperren, Laufbefehl wiederholen
+            travelDoor.since = now; travelDoor.moved = now;
+            if (goal && now - goalSince > 3000) goal = null;
+        } else {
+            if (now - travelDoor.moved > 10000 && Math.abs(hx - door.x) + Math.abs(hy - door.y) > 1) return block('ist nicht erreichbar (Held kommt nicht weiter)');
+            if (now - travelDoor.since > 45000) return block('geht nicht');
+        }
         lastTravel = { left: r.path.length - 1, next: wname(next), label };
         useDoor(door.x, door.y, '→ ' + wname(next));
         return 'läuft';
@@ -1194,9 +1199,33 @@
             if (cfg.e2.on && cfg.onDeath !== 'back') { cfg.e2.on = false; log('E2-Jagd gestoppt (Tod)'); }
             save(); lastStatic = '';
         }
-        if (!dead && deadNow) revived = true;
+        if (dead && !deadNow) deadAt = Date.now();
+        if (!dead && deadNow) {
+            revived = true;
+            /* Nach dem Wiederbeleben kann sich der Held oft noch nicht bewegen (Betäubung, Karte lädt). Wer jetzt schon
+               losläuft, bleibt stehen – und die Reise hält die Tür dann für „nicht erreichbar“ und sperrt den direkten
+               Weg. Darum: kurz warten, Weg neu planen, und bis zum ersten echten Schritt keine Tür sperren. */
+            const [rx, ry] = heroXY();
+            revive = { at: performance.now(), pos: mapId() + ':' + rx + ',' + ry, moved: false };
+            travelCache = null; travelDoor = null; unreachAt = 0; goal = null; committed = null; lastPlan = null; via = null; approach = null;
+            // Türsperren seit dem Tod zurücknehmen: die entstanden, weil der Held nicht laufen konnte
+            const since = deadAt - 5000, bAt = cfg.blockedAt || {};
+            const undo = (cfg.blocked || []).filter(k => (bAt[k] || 0) >= since);
+            if (undo.length) { cfg.blocked = cfg.blocked.filter(k => !undo.includes(k)); for (const k of undo) delete bAt[k]; log(`${undo.length} Türsperre(n) seit dem Tod zurückgenommen`); save(); }
+        }
         deadNow = dead;
         return dead;
+    }
+    let deadAt = 0, revive = null;
+    const REVIVE_HOLD = 5000;
+    // Held seit dem Wiederbeleben noch keinen Schritt gemacht (höchstens 3 min lang so werten)
+    const reviveFrozen = () => !!revive && !revive.moved && performance.now() - revive.at < 180000;
+    function reviveTick() {
+        if (!revive) return false;
+        const [x, y] = heroXY(), pos = mapId() + ':' + x + ',' + y;
+        if (!revive.moved && pos !== revive.pos) { revive.moved = true; }
+        if (revive.moved && performance.now() - revive.at > REVIVE_HOLD) { revive = null; return false; }
+        return performance.now() - revive.at < REVIVE_HOLD;      // in den ersten Sekunden nichts anlaufen
     }
     function idsByName(n) {                        // Karten-IDs mit genau diesem Namen (englisch oder polnisch)
         const q = fold(n), out = new Set();
@@ -2729,6 +2758,7 @@
             if (cfg.flow) { if (running()) { recStop(); log('Aufnahme beendet: Bot gestartet'); } else recTick(); }
         }
         if (!ok() || checkDeath()) return;
+        if (reviveTick()) return;                                  // gerade wiederbelebt: kurz still halten
         watchBattle();
         watchPlayers();
         if (watchCaptcha()) return;                                // Rätsel offen → nichts tun, bis es gelöst ist
