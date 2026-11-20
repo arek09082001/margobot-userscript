@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.33
+// @version      7.34
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -2653,7 +2653,7 @@
         // Auto-Stufe nach dem Tod: nicht zurück auf die zu schwere Karte, sondern Bereich senken und neu suchen
         if (autoT.deathPending && !deadNow) {
             autoT.deathPending = false;
-            if (cfg.auto.on && !cfg.route && botMode() === 'xp') { autoT.last = 0; if (autoShift(-1, 'gestorben')) { cfg.back = null; save(); return; } }
+            if (cfg.auto.on) { autoT.last = 0; if (autoShift(-1, 'gestorben')) { cfg.back = null; save(); return; } }
         }
         // Rückweg nach dem Tod: zur Todeskarte bzw. zur nächsten Karte der Route
         if (cfg.back) {
@@ -2846,10 +2846,10 @@
     function autoSample(loss, lvl) {
         autoT.samples = autoT.samples.concat([{ loss: Math.max(0, Math.min(100, loss)), lvl }]).slice(-AUTO_N);
     }
-    function autoShift(dir, why) {
+    function autoShift(dir, why, minStep = 0) {
         const P = AUTO_P[cfg.auto.mode] || AUTO_P.normal, L = heroLvl();
         if (!L) return false;
-        const w = Math.max(2, cfg.lvlMax - cfg.lvlMin), step = Math.max(2, Math.round(w / 3));
+        const w = Math.max(2, cfg.lvlMax - cfg.lvlMin), step = Math.max(2, Math.round(w / 3), minStep);
         let lo = cfg.lvlMin + dir * step, hi = cfg.lvlMax + dir * step;
         if (hi > L + P.above) { hi = L + P.above; lo = Math.max(1, hi - w); }
         if (dir < 0) {                                         // zu schwer: unter die Mobs, die gerade zu stark waren
@@ -2861,24 +2861,44 @@
             if (!autoT.capLog) { autoT.capLog = true; log(`Auto-Stufe: ${why}, aber schon an der Grenze (Lvl ${hi} = dein Level + ${P.above})`); }
             return false;
         }
-        autoT.capLog = false; autoT.samples = []; autoT.last = Date.now();
+        /* Erst ein Ziel für den neuen Bereich suchen. Ohne Ziel bleibt alles, wie es ist – sonst gälte ein Bereich,
+           in dem hier kein Mob liegt, und der Bot liefe nur noch herum. */
+        const route = cfg.route ? autoRouteFor(lo, hi) : null, spot = cfg.route ? null : (world ? xpMaps(lo, hi, 1)[0] : null);
+        autoT.samples = []; autoT.last = Date.now();
+        if (!route && !spot) {
+            if (!autoT.capLog) { autoT.capLog = true; log(`Auto-Stufe: ${why}, aber ${cfg.route ? 'keine andere Route' : 'kein XP-Ort'} für Lvl ${lo}–${hi} – bleibe hier`); }
+            return false;
+        }
+        autoT.capLog = false;
         cfg.lvlMin = lo; cfg.lvlMax = hi; cfg.lvlOn = true; xpKey = '';
         log(`Auto-Stufe: ${why} → Mobs Lvl ${lo}–${hi}`);
-        const o = world ? xpMaps(lo, hi, 1)[0] : null;
-        if (o && o.id !== mapId()) { committed = null; goal = null; lastPlan = null; startTravel([o.id], wname(o.id), 'hunt'); }
-        else if (!o) log('Auto-Stufe: kein XP-Ort für diesen Bereich – jage hier weiter');
+        committed = null; goal = null; lastPlan = null;
+        if (route) { adoptRoute(route, [lo, hi]); log(`Auto-Stufe: neue Route „${cfg.route}“ (${route.cards} ${route.cards === 1 ? 'Karte' : 'Karten'}) – laufe hin`); }
+        else if (spot.id !== mapId()) startTravel([spot.id], wname(spot.id), 'hunt');
         save(); lastStatic = '';
         return true;
     }
+    /* Mit Route: unter den Routen-Vorschlägen (Forum zuerst, sonst aus der Weltkarte) die beste erreichbare für den
+       neuen Bereich nehmen. Die Route bekommt den Bereich als Angriffs-Level; der Bot läuft dann selbst zur Route. */
+    function autoRouteFor(lo, hi) {
+        if (!world) return null;
+        const cur = cfg.routes[cfg.route], curMaps = cur ? JSON.stringify(cur.maps) : '';
+        const ok = o => o.n && Number.isFinite(o.d) && o.lv[0] <= hi && o.lv[1] >= lo && JSON.stringify(o.maps) !== curMaps;
+        return forumRoutes(lo, hi).filter(ok)[0] || suggestRoutes(lo, hi, 5).filter(ok)[0] || null;
+    }
     function autoDecide() {
-        if (!cfg.auto.on || cfg.route || cfg.chain || cfg.travel || botMode() !== 'xp') return false;
+        if (!cfg.auto.on || cfg.chain || cfg.travel || offRoute) return false;
         const P = AUTO_P[cfg.auto.mode] || AUTO_P.normal, S = autoT.samples, now = Date.now();
         if (!S.length) return false;
         const worst = Math.max(...S.map(x => x.loss)), avg = autoAvg(), r = v => Math.round(v);
         if (worst >= P.danger && now - autoT.last > 120000) return autoShift(-1, `ein Kampf kostete ${r(worst)} % HP`);
         if (S.length < AUTO_N) return false;
         if (avg >= P.hard && now - autoT.last > 120000) return autoShift(-1, `Ø ${r(avg)} % HP pro Kampf – zu schwer`);
-        if (avg <= P.easy && worst < P.hard && now - autoT.last > 300000) return autoShift(1, `Ø ${r(avg)} % HP pro Kampf – zu leicht`);
+        if (avg <= P.easy && worst < P.hard && now - autoT.last > 300000) {
+            // fast kein Verlust → gleich 3–4 Level höher statt in kleinen Schritten
+            const step = avg <= P.easy * 0.4 ? 4 : avg <= P.easy * 0.7 ? 3 : 2;
+            return autoShift(1, `Ø ${r(avg)} % HP pro Kampf – zu leicht`, step);
+        }
         return false;
     }
     function noteAttack(id, before, lvl) {
@@ -3760,12 +3780,15 @@
 
     function takeSuggestion(o) {
         if (!o || !o.n || running() || !Number.isFinite(o.d)) return false;
+        return adoptRoute(o, o.lv);
+    }
+    function adoptRoute(o, lv) {
         let name = o.name, k = 2;
         // Eigene Routen gleichen Namens erhalten, auch wenn ihre Kartenfolge identisch ist.
         while (cfg.routes[name] && !(cfg.routes[name].gen && JSON.stringify(cfg.routes[name].maps) === JSON.stringify(o.maps)))
             name = o.name + ' (' + k++ + ')';
         cfg.routes[name] = { maps: o.maps.slice(), mode: o.mode, picked: {}, lvlOn: true,
-            lvlMin: o.lv[0], lvlMax: o.lv[1], gen: true, source: o.source, forumId: o.forumId };
+            lvlMin: lv[0], lvlMax: lv[1], gen: true, source: o.source, forumId: o.forumId };
         selectRoute(name);
         return true;
     }
@@ -3842,7 +3865,7 @@
               <div class="stp"><button data-a="lvl" data-k="lvlMax" data-d="-1">−</button><input class="nb" data-a="lvlMax" inputmode="numeric" value="${cfg.lvlMax}"><button data-a="lvl" data-k="lvlMax" data-d="1">+</button></div>
               ${l ? `<button class="chip" data-a="lvlme" title="Level ${Math.max(1, l - 5)}–${l + 3}">um Lvl ${l}</button>` : ''}
             </div>
-            ${mode === 'xp' ? autoCard() : ''}
+            ${autoCard()}
             <h4>${mode === 'xp' ? 'XP-Orte · nach Level' : 'Route'}</h4>
             ${body}
             ${cta}
@@ -3884,7 +3907,7 @@
         return `<div class="autoc ${A.on ? 'on' : ''}">
             <div class="ah"><label class="sw"><input type="checkbox" data-a="autoOn" ${A.on ? 'checked' : ''}><i></i></label>
               <b>Auto-Stufe</b>${tipBtn('auto')}<span class="ahv">${A.on ? `bis Lvl ${heroLvl() + P.above}` : 'aus'}</span></div>
-            ${tipTxt('auto', `Misst, wie viel HP ein Kampf kostet. Kaum Verlust (Ø ≤ ${P.easy} %) → stärkere Mobs und neuer XP-Ort. Ø ≥ ${P.hard} %, ein Kampf ≥ ${P.danger} % oder Tod → schwächere. Höchstens ${P.above} Level über dir. Nur im XP-Modus ohne Route.`)}
+            ${tipTxt('auto', `Misst, wie viel HP ein Kampf kostet. Kaum Verlust (Ø ≤ ${P.easy} %) → stärkere Mobs und neuer XP-Ort. Ø ≥ ${P.hard} %, ein Kampf ≥ ${P.danger} % oder Tod → schwächere. Bei sehr wenig Verlust gleich 3–4 Level höher. Höchstens ${P.above} Level über dir. Mit Route wählt er die beste Route aus den Vorschlägen.`)}
             ${A.on ? `${segc('autoMode', A.mode, [['safe', 'vorsichtig'], ['normal', 'normal'], ['bold', 'mutig']])}
               <div class="meter"><span class="z1" style="width:${P.easy / (P.danger * 1.2) * 100}%"></span><span class="z3" style="left:${P.hard / (P.danger * 1.2) * 100}%"></span>${pos == null ? '' : `<i style="left:${pos}%"></i>`}</div>
               <div class="mtx"><span>${avg == null ? '–' : `Ø ${Math.round(avg)} % HP pro Kampf`}</span><span>${verdict}</span></div>` : ''}
