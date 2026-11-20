@@ -79,6 +79,8 @@ Bosse und Vorsicht nach Niederlage (ab 7.36): `wanted()` lehnt Bosse ab (`isBoss
 
 Auto-Stufe nachgeschärft (ab 7.37, Nutzer: Bereich 5–13 bei Lvl 13 blieb trotz „zu leicht“ stehen): Beim Heben mindestens bis `Heldenlevel − ¼ Bereichsbreite` (ein Sprung in Heldennähe statt mehrerer Runden à 8 Kämpfe). Pause zwischen Änderungen einheitlich `AUTO_COOL` = 2 min (vorher 5 min fürs Heben). Die Karte zeigt den echten Stand: „Wechsel in m:ss“, „kein XP-Ort für Lvl …“ bzw. „schon an der Grenze“ (`autoT.fail`) statt pauschal „bald stärkere Mobs“, dazu aktuelle HP (zum Prüfen, ob die Messung HP sieht) und die letzte Änderung (`autoT.lastMsg`). Test: `tests/auto_sim.js`.
 
+Beste Route nach XP pro Runde (ab 7.38): `routeXpFor(maps, lo, hi)` schätzt XP pro Runde einer Kartenfolge für den Angriffsbereich (jede Karte einmal, E2 ausgenommen); `bestRouteFor(lo, hi, exclude)` vergleicht `forumRoutes` und `suggestRoutes` danach (fast gleich ±5 % → kürzere Anreise). Schalter `cfg.bestRoute` („Immer die Route mit den meisten XP/Runde“ im Routen-Modus): `bestRouteTick` beim Start, bei Level-Aufstieg und alle 5 min, Wechsel per `adoptRoute` nur bei ≥ 15 % mehr XP; Knopf „Beste jetzt wählen“. Auto-Stufe nutzt `bestRouteFor` ebenfalls. Vorschlagsliste markiert „★ meiste XP“. Achtung: XP pro Runde bevorzugt lange Routen (mit echten Daten z. B. 28 Karten); Zeit pro Runde wird nicht geschätzt. Test: `tests/auto_sim.js`.
+
 ## Im echten Spiel geprüfte Fakten
 
 - `Engine.hero.d` (x, y, lvl, exp, gold, `warrior_stats`), `hero.autoGoTo({x, y}, false)`, `hero.heroAtackRequest(id, true)`.

@@ -141,6 +141,19 @@ function setup({ loss = 2, lossOf = null, settings = {}, dieAt = 0 } = {}) {
         `Route „${s.t.cfg.route}“ ${r && r.maps.join('→')}, Lvl ${s.t.cfg.lvlMin}–${s.t.cfg.lvlMax}`);
     s.done();
 }
+// „Immer die Route mit den meisten XP/Runde“: wechselt einmal auf die beste, pendelt danach nicht
+{
+    const s = setup({ loss: 20, settings: { mode: 'route', route: 'Start', bestRoute: true, auto: { on: false, mode: 'normal' }, lvlMin: 33, lvlMax: 47,
+        routes: { Start: { maps: [1], lvlOn: true, lvlMin: 33, lvlMax: 47 } } } });
+    s.tick(30);
+    const r1 = s.t.cfg.route, m1 = s.t.cfg.routes[r1] && s.t.cfg.routes[r1].maps;
+    check('beste Route: wechselt auf die Route mit den meisten XP', r1 !== 'Start' && m1 && new Set(m1).size > 1 && s.logs.some(l => /Bessere Route: .*XP\/Runde statt/.test(l)),
+        `„${r1}“ ${m1 && m1.join('→')}`);
+    s.tick(2000);                                                       // > 5 min: erneute Prüfung
+    check('… bleibt danach dabei (kein Hin und Her)', s.t.cfg.route === r1, s.t.cfg.route);
+    check('… Angriffsbereich unverändert', s.t.cfg.lvlMin === 33 && s.t.cfg.lvlMax === 47);
+    s.done();
+}
 // aus bzw. Route: nichts anfassen
 {
     const s = setup({ loss: 1, settings: { auto: { on: false, mode: 'normal' } } });
