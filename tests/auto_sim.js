@@ -155,6 +155,14 @@ function setup({ loss = 2, lossOf = null, settings = {}, dieAt = 0, dieOn = null
     check('… Angriffsbereich unverändert', s.t.cfg.lvlMin === 33 && s.t.cfg.lvlMax === 47);
     s.done();
 }
+// wie beim Nutzer: Bereich an der Obergrenze, hier nur schwache Mobs → trotzdem zu stärkeren Mobs ziehen
+{
+    const s = setup({ loss: 1, settings: { lvlMin: 38, lvlMax: 46, auto: { on: true, mode: 'safe' } } });   // Lvl 41 + 5 = 46
+    s.tick(300);
+    check('an der Obergrenze, hier zu leicht: zieht zu stärkeren Mobs', s.visits.includes(2) && s.logs.some(l => /ziehe zu stärkeren Mobs/.test(l)) && s.t.cfg.lvlMax <= 46,
+        `Karten ${s.visits.join('→')}, Lvl ${s.t.cfg.lvlMin}–${s.t.cfg.lvlMax}`);
+    s.done();
+}
 // kaum Verlust: schon nach 4 Kämpfen hoch
 {
     const s = setup({ loss: 0 });

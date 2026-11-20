@@ -89,6 +89,8 @@ Leere Karte → weiter (ab 7.41): Ohne Ziele und ohne Ausgang (`currentExit`) wa
 
 Auto-Stufe sichtbarer (ab 7.42): Die Karte zeigt mit `autoDoing()`, was der Bot gerade tut (Bot steht, Ablauf, unterwegs nach …, unterwegs zur Route, jagt hier · n Ziele, hier keine Mobs im Bereich – zieht weiter). `autoT.lastMsg` nennt zusätzlich das Ziel des letzten Wechsels (XP-Ort, Route oder „hier weiter“). Ist `lvlMax` an der Obergrenze (Heldenlevel + `above`), steht ein Hinweis da, mit Tipp auf „mutig“. Anlass: Nutzer sah „deutlich zu leicht“ und hielt das für „wechselt nicht“, tatsächlich war der Bereich schon an der Obergrenze und seit dem Wechsel kein Kampf gemessen.
 
+Auto-Stufe wählt stärkere Orte (ab 7.43, Nutzer: kämpft dauerhaft gegen Lvl 29–31, zieht aber nicht zu Gobliny): Die Ortswahl lief über `xpMaps`, deren Wertung nahe Orte stark bevorzugt (`/(1 + d/400)`) – die aktuelle Karte gewann fast immer („hier weiter“). `autoSpot(lo, hi, dir)` nimmt jetzt beim Heben nur Orte mit stärkeren Mobs als hier (`o.lv[1] > hereTopLvl()`), beim Senken nur schwächere, nie die aktuelle Karte, sortiert nach XP pro Runde mit schwacher Entfernung (`/(1 + d/3000)`). An der Obergrenze versucht `autoMoveStronger` trotzdem einen Ort mit stärkeren Mobs (bzw. mit Route eine Route mit ≥ 10 % mehr XP pro Runde), bevor „schon an der Grenze“ gemeldet wird. Test: `tests/auto_sim.js` (alter Stand blieb im neuen Fall stehen).
+
 ## Im echten Spiel geprüfte Fakten
 
 - `Engine.hero.d` (x, y, lvl, exp, gold, `warrior_stats`), `hero.autoGoTo({x, y}, false)`, `hero.heroAtackRequest(id, true)`.
