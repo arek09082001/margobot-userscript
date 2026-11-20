@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.35
+// @version      7.36
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -145,13 +145,56 @@
         for (const n of E().npcs.getDrawableList()) {
             const d = n.d;
             if (!d || (d.type !== 2 && d.type !== 3)) continue;
-            out.push({ id: d.id, nick: d.nick, lvl: d.lvl || 0, x: d.x, y: d.y, key: mobKey(d.icon) });
+            out.push({ id: d.id, nick: d.nick, lvl: d.lvl || 0, x: d.x, y: d.y, key: mobKey(d.icon), icon: d.icon, wt: d.wt, grp: d.grp });
         }
         return out;
     }
     function wanted(m) {
+        if (isBoss(m) || !capOk(m)) return false;
         if (cfg.lvlOn && m.lvl >= cfg.lvlMin && m.lvl <= cfg.lvlMax) return true;
         return !!cfg.picked[m.key];
+    }
+    /* Bosse nie beim Expen angreifen (Wunsch: „E2 schon mal gar nicht“): E2-Grafik aus der Weltkarte (Ordner e2/),
+       bekannte Namen (Weltkarte, Aliasse, eigene E2- und Heros-Liste) und die Stärke-Angabe wt des Spiels
+       (vermutlich ab 20 Elita II, ab 30 Heros – nicht im Spiel geprüft). Die E2-Jagd hat ihre eigene Zielwahl. */
+    let bossCache = null;
+    function bossSets() {
+        const k = worldN() + '|' + herosCatalog.length + '|' + Object.keys(cfg.e2.list || {}).length;
+        if (bossCache && bossCache.k === k) return bossCache;
+        const icons = new Set(), names = new Set();
+        for (const e of e2World()) { icons.add(e2Icon(e.icon)); names.add(fold(e.nick)); }
+        for (const g of E2_ALIASES) for (const n of g) names.add(fold(n));
+        for (const h of herosCatalog) names.add(fold(h.name));
+        for (const t of Object.values(cfg.e2.list || {})) { names.add(fold(t.nick)); if (t.gameNick) names.add(fold(t.gameNick)); }
+        return (bossCache = { k, icons, names });
+    }
+    function isBoss(m) {
+        if (+m.wt >= 20) return true;
+        const ic = e2Icon(m.icon);
+        if (ic.startsWith('e2/')) return true;
+        const b = bossSets();
+        return (ic && b.icons.has(ic)) || (!!m.nick && b.names.has(fold(m.nick)));
+    }
+    /* Vorsicht nach einer Niederlage: eine Weile nur Mobs bis Heldenlevel + 2 (und unter dem Level, das gewonnen hat);
+       Gruppen, die so groß sind wie die tödliche, nur bis zum eigenen Level. Endet nach 45 min oder beim Level-Aufstieg. */
+    let grpCnt = { t: -1, m: new Map() };
+    function groupSize(g) {
+        if (!g) return 1;
+        const now = performance.now();
+        if (now - grpCnt.t > 150) { grpCnt = { t: now, m: new Map() }; for (const d of mobRaw()) if (d.grp) grpCnt.m.set(d.grp, (grpCnt.m.get(d.grp) || 0) + 1); }
+        return grpCnt.m.get(g) || 1;
+    }
+    function capOk(m) {
+        const c = cfg.lossCap;
+        if (!c) return true;
+        if (Date.now() > c.until || (heroLvl() && heroLvl() > c.hero)) {
+            cfg.lossCap = null; save(); lastStatic = '';
+            log('Vorsicht nach der Niederlage vorbei – wieder normaler Level-Bereich');
+            return true;
+        }
+        if (m.lvl > c.lvl) return false;
+        if (c.size >= 2 && m.grp && groupSize(m.grp) >= c.size && m.lvl > c.hero) return false;
+        return true;
     }
     function gateways() {
         try {
@@ -659,7 +702,7 @@
         if (!wm) return out;
         for (const m of wm[4]) {
             const P = m[3];
-            if (!Array.isArray(P) || !wanted({ lvl: m[1], key: m[4] ? mobKey(m[4]) : '' })) continue;
+            if (!Array.isArray(P) || !wanted({ lvl: m[1], key: m[4] ? mobKey(m[4]) : '', nick: m[0], icon: m[4] })) continue;
             for (let i = 0; i + 1 < P.length; i += 2) {
                 const x = P[i], y = P[i + 1], k = (x >> 1) + ',' + (y >> 1);
                 if (seen.has(k) || x >= MW || y >= MH) continue;
@@ -1123,6 +1166,16 @@
                           target: t ? t.nick + ' (' + t.lvl + ')' : '', lvl: (E().hero.d || {}).lvl };
             cfg.deaths = [rec].concat(cfg.deaths || []).slice(0, 20);
             log('☠ Gestorben auf ' + rec.map + ' (' + hx + ',' + hy + ')' + (rec.target ? ' gegen ' + rec.target : ''));
+            {   // Wer hat gewonnen? Die angegriffene Gruppe (kw.ids), sonst das geplante Ziel.
+                const grp = mobRaw().filter(d => kw.ids.includes(d.id)), L = heroLvl();
+                const top = grp.length ? Math.max(...grp.map(d => +d.lvl || 0)) : (t ? +t.lvl || 0 : 0);
+                if (L && (cfg.on || cfg.chain)) {
+                    const cap = Math.max(1, Math.min(L + 2, (top || L + 3) - 1)), size = Math.max(grp.length, 1);
+                    cfg.lossCap = { lvl: cap, size, hero: L, vs: top, until: Date.now() + 45 * 60000 };
+                    log(`Vorsicht nach der Niederlage${top ? ' gegen Lvl ' + top + (size > 1 ? ` (${size}er-Gruppe)` : '') : ''}: 45 min nur Mobs bis Lvl ${cap}` +
+                        (size > 1 ? `, Gruppen ab ${size} nur bis Lvl ${L}` : ''));
+                }
+            }
             if (cfg.auto.on) { autoSample(100, (autoT.cur && autoT.cur.lvl) || autoT.lastLvl); autoT.cur = null; autoT.deathPending = true; }
             if (cfg.on && cfg.onDeath === 'back') {
                 cfg.back = { map: rec.map, id: mapId(), since: Date.now() };
@@ -3473,6 +3526,8 @@
     #mba .ii:hover,#mba .ii.on{border-color:var(--amb);color:var(--amb2)}
     #mba .tipx{background:var(--bg2);border-left:2px solid var(--amb);padding:7px 9px;border-radius:0 7px 7px 0;color:var(--mut)}
     #mba .chk.big{padding:7px 0;font-size:14px} #mba .chk.big input{width:16px;height:16px}
+    #mba .capw{display:flex;align-items:center;gap:8px;margin-top:12px;padding:9px 10px;border-radius:10px;background:rgba(236,122,106,.12);color:#ffb3a8;font-size:12.5px}
+    #mba .capw svg{color:var(--bad);flex:none} #mba .capw span{flex:1} #mba .capw .chip{margin:0;color:var(--tx)}
     #mba .autoc{margin-top:12px;padding:11px 12px;border-radius:12px;background:var(--bg2);border:1px solid transparent;display:flex;flex-direction:column;gap:9px}
     #mba .autoc.on{border-color:rgba(232,169,60,.45)}
     #mba .autoc .ah{display:flex;align-items:center;gap:8px} #mba .autoc .ah b{font:700 14.5px/1 var(--disp)}
@@ -3934,6 +3989,7 @@
               <div class="stp"><button data-a="lvl" data-k="lvlMax" data-d="-1">−</button><input class="nb" data-a="lvlMax" inputmode="numeric" value="${cfg.lvlMax}"><button data-a="lvl" data-k="lvlMax" data-d="1">+</button></div>
               ${l ? `<button class="chip" data-a="lvlme" title="Level ${Math.max(1, l - 5)}–${l + 3}">um Lvl ${l}</button>` : ''}
             </div>
+            ${cfg.lossCap ? `<div class="capw">${ico('skull')}<span>Vorsicht nach Niederlage${cfg.lossCap.vs ? ' gegen Lvl ' + cfg.lossCap.vs : ''}: bis ${clock(cfg.lossCap.until)} nur Mobs bis Lvl ${cfg.lossCap.lvl}${cfg.lossCap.size > 1 ? `, ${cfg.lossCap.size}er-Gruppen nur bis Lvl ${cfg.lossCap.hero}` : ''}</span><button class="chip" data-a="capclear">aufheben</button></div>` : ''}
             ${autoCard()}
             <h4>${mode === 'xp' ? 'XP-Orte · nach Level' : 'Route'}</h4>
             ${body}
@@ -4716,7 +4772,7 @@
             tab === 'set' ? [JSON.stringify(cfg.tele || {}).length, cfg.routes[cfg.route] && routeMode(cfg.routes[cfg.route]), mobs().map(m => m.key).sort(), gateways().map(g => g.id), cfg.route, cfg.rec && cfg.rec.length, Object.keys(cfg.routes),
                              cfg.picked, cfg.lvlOn, (cfg.deaths || []).length, cfg.onDeath, cfg.optimal, cfg.humanize, cfg.pk.mode, cfg.fogPct] : 0,
             JSON.stringify(cfg.limit), cfg.e2.sel, cfg.heros.selected, cfg.heros.repeat, worldDl,
-            tab === 'xp' ? [JSON.stringify(cfg.auto), autoT.samples.length, Math.round(autoAvg() || 0)] : 0]);
+            tab === 'xp' ? [JSON.stringify(cfg.auto), autoT.samples.length, Math.round(autoAvg() || 0), JSON.stringify(cfg.lossCap || 0)] : 0]);
         if (sKey !== lastStatic) {
             lastStatic = sKey;
             /* Vor dem Neuaufbau merken, wo man war: Scrollstand, aufgeklappte Bereiche, Eingabefeld mit Fokus.
@@ -4923,6 +4979,7 @@
         else if (a === 'delroute') { if (W.confirm('Route „' + cfg.route + '“ löschen?')) { delete cfg.routes[cfg.route]; cfg.route = ''; cfg.mode = 'route'; } }
         else if (a === 'teleforget') { if (W.confirm('Alle gelernten Teleporter vergessen?')) { cfg.tele = {}; travelCache = null; } }
         else if (a === 'clearDeaths') cfg.deaths = [];
+        else if (a === 'capclear') { cfg.lossCap = null; log('Vorsicht nach Niederlage aufgehoben'); }
         else if (a === 'loadworldgh') {
             if (worldDl) return;
             worldDl = true; lastStatic = ''; render();
