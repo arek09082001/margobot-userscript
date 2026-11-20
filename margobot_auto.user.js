@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.42
+// @version      7.43
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -3036,13 +3036,15 @@
         }
         if (lo < 1) { lo = 1; hi = lo + w; }
         if (lo === cfg.lvlMin && hi === cfg.lvlMax) {
+            // Bereich an der Grenze: trotzdem zu stärkeren Mobs im erlaubten Bereich ziehen, statt hier zu bleiben
+            if (dir > 0 && autoMoveStronger(lo, hi, why)) return true;
             autoT.fail = `schon an der Grenze (Lvl ${hi})`;
             if (!autoT.capLog) { autoT.capLog = true; log(`Auto-Stufe: ${why}, aber schon an der Grenze (Lvl ${hi} = dein Level + ${P.above})`); }
             return false;
         }
         /* Erst ein Ziel für den neuen Bereich suchen. Ohne Ziel bleibt alles, wie es ist – sonst gälte ein Bereich,
            in dem hier kein Mob liegt, und der Bot liefe nur noch herum. */
-        const route = cfg.route ? autoRouteFor(lo, hi) : null, spot = cfg.route ? null : (world ? xpMaps(lo, hi, 10).find(o => !autoAvoided('m:' + o.id)) : null);
+        const route = cfg.route ? autoRouteFor(lo, hi) : null, spot = cfg.route ? null : autoSpot(lo, hi, dir);
         autoT.samples = []; autoT.last = Date.now();
         if (!route && !spot) {
             autoT.fail = `${cfg.route ? 'keine andere Route' : world ? 'kein XP-Ort' : 'Weltkarte fehlt – kein XP-Ort'} für Lvl ${lo}–${hi}`;
@@ -3057,6 +3059,44 @@
         if (route) { adoptRoute(route, [lo, hi]); log(`Auto-Stufe: neue Route „${cfg.route}“ (${route.cards} ${route.cards === 1 ? 'Karte' : 'Karten'}) – laufe hin`); }
         else if (spot.id !== mapId()) startTravel([spot.id], wname(spot.id), 'hunt');
         autoT.lastMsg = `${clock(Date.now())}: ${whyShort} → Lvl ${lo}–${hi}, ${route ? 'Route „' + cfg.route + '“' : spot.id === mapId() ? 'hier weiter' : wname(spot.id)}`;
+        save(); lastStatic = '';
+        return true;
+    }
+    /* XP-Ort für die Auto-Stufe: Die normale XP-Ort-Liste bevorzugt nahe Orte stark – die aktuelle Karte (Abstand 0)
+       gewann dadurch fast immer, sobald ein paar ihrer Mobs in den neuen Bereich fielen („hier weiter“, obwohl es hier
+       zu leicht war). Darum: beim Heben nur Orte mit stärkeren Mobs als hier, beim Senken nur schwächere, gewählt nach
+       XP pro Runde; die Entfernung zählt nur schwach. */
+    function hereTopLvl() {
+        const wm = world && world[mapId()];
+        const lv = wm ? wm[4].filter(x => !(x[4] && String(x[4]).startsWith('e2/'))).map(x => x[1]) : [];
+        return Math.max(autoT.lastLvl || 0, ...lv, 0);
+    }
+    function autoSpot(lo, hi, dir) {
+        if (!world) return null;
+        const here = mapId(), top = hereTopLvl();
+        const L = xpMaps(lo, hi, 60).filter(o => o.id !== here && !autoAvoided('m:' + o.id));
+        const pref = L.filter(o => dir > 0 ? o.lv[1] > top : o.lv[1] < top);
+        const rank = o => o.r.xp / (1 + o.d / 3000);
+        return (pref.length ? pref : dir > 0 ? [] : L).sort((a, b) => rank(b) - rank(a))[0] || null;
+    }
+    function autoMoveStronger(lo, hi, why) {
+        if (cfg.route) {
+            const cur = cfg.routes[cfg.route], curXp = cur ? routeXpFor(cur.maps, lo, hi) : 0;
+            const o = bestRouteFor(lo, hi, cur ? JSON.stringify(cur.maps) : '');
+            if (!o || o.xpHere <= curXp * 1.1) return false;
+            autoT.samples = []; autoT.last = Date.now(); autoT.capLog = false; autoT.fail = '';
+            adoptRoute(o, [lo, hi]); committed = null; goal = null; lastPlan = null;
+            log(`Auto-Stufe: ${why}, Bereich an der Grenze – bessere Route „${cfg.route}“ (≈ ${fmtXp(o.xpHere)} statt ${fmtXp(curXp)} XP/Runde)`);
+            autoT.lastMsg = `${clock(Date.now())}: zu leicht → Route „${cfg.route}“`;
+        } else {
+            const o = autoSpot(lo, hi, 1);
+            if (!o) return false;
+            autoT.samples = []; autoT.last = Date.now(); autoT.capLog = false; autoT.fail = '';
+            committed = null; goal = null; lastPlan = null;
+            log(`Auto-Stufe: ${why}, Bereich an der Grenze – ziehe zu stärkeren Mobs: ${wname(o.id)} (Lvl ${o.lv[0]}–${o.lv[1]})`);
+            startTravel([o.id], wname(o.id), 'hunt');
+            autoT.lastMsg = `${clock(Date.now())}: zu leicht → ${wname(o.id)} (Lvl ${o.lv[0]}–${o.lv[1]})`;
+        }
         save(); lastStatic = '';
         return true;
     }
