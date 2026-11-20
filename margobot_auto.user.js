@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.36
+// @version      7.37
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -2961,7 +2961,8 @@
        Grenzen gegen Hin und Her: mindestens 8 Kämpfe pro Urteil, Pausen zwischen Wechseln, Obergrenze über dem Heldenlevel. */
     const AUTO_P = { safe: { easy: 4, hard: 25, danger: 45, above: 5 }, normal: { easy: 8, hard: 35, danger: 60, above: 10 },
                      bold: { easy: 12, hard: 45, danger: 70, above: 20 } };
-    const autoT = { samples: [], cur: null, last: 0, capLog: false, deathPending: false, lastLvl: 0 };
+    const autoT = { samples: [], cur: null, last: 0, capLog: false, deathPending: false, lastLvl: 0, lastMsg: '', fail: '', minHp: null };
+    const AUTO_COOL = 120000;                       // Pause zwischen zwei Änderungen (2 min), damit die Messung neu läuft
     const AUTO_N = 8;
     const hpNow = () => { const w = (E().hero.d || {}).warrior_stats || {}; return w.maxhp ? { hp: +w.hp, max: +w.maxhp } : null; };
     const autoAvg = () => { const S = autoT.samples; return S.length ? S.reduce((a, x) => a + x.loss, 0) / S.length : null; };
@@ -2973,6 +2974,9 @@
         if (!L) return false;
         const w = Math.max(2, cfg.lvlMax - cfg.lvlMin), step = Math.max(2, Math.round(w / 3), minStep);
         let lo = cfg.lvlMin + dir * step, hi = cfg.lvlMax + dir * step;
+        // Zu leicht und der Bereich liegt weit unter dem Helden (z. B. 5–13 bei Lvl 13): gleich in Heldennähe springen,
+        // statt in mehreren Runden zu je 8 Kämpfen hochzurutschen.
+        if (dir > 0) { const floorLo = L - Math.round(w / 4); if (lo < floorLo) { lo = floorLo; hi = lo + w; } }
         if (hi > L + P.above) { hi = L + P.above; lo = Math.max(1, hi - w); }
         if (dir < 0) {                                         // zu schwer: unter die Mobs, die gerade zu stark waren
             const top = Math.max(0, autoT.lastLvl || 0, ...autoT.samples.map(x => x.lvl || 0));
@@ -2980,6 +2984,7 @@
         }
         if (lo < 1) { lo = 1; hi = lo + w; }
         if (lo === cfg.lvlMin && hi === cfg.lvlMax) {
+            autoT.fail = `schon an der Grenze (Lvl ${hi})`;
             if (!autoT.capLog) { autoT.capLog = true; log(`Auto-Stufe: ${why}, aber schon an der Grenze (Lvl ${hi} = dein Level + ${P.above})`); }
             return false;
         }
@@ -2988,10 +2993,12 @@
         const route = cfg.route ? autoRouteFor(lo, hi) : null, spot = cfg.route ? null : (world ? xpMaps(lo, hi, 1)[0] : null);
         autoT.samples = []; autoT.last = Date.now();
         if (!route && !spot) {
-            if (!autoT.capLog) { autoT.capLog = true; log(`Auto-Stufe: ${why}, aber ${cfg.route ? 'keine andere Route' : 'kein XP-Ort'} für Lvl ${lo}–${hi} – bleibe hier`); }
+            autoT.fail = `${cfg.route ? 'keine andere Route' : world ? 'kein XP-Ort' : 'Weltkarte fehlt – kein XP-Ort'} für Lvl ${lo}–${hi}`;
+            if (!autoT.capLog) { autoT.capLog = true; log(`Auto-Stufe: ${why}, aber ${autoT.fail} – bleibe hier`); }
             return false;
         }
-        autoT.capLog = false;
+        autoT.capLog = false; autoT.fail = '';
+        autoT.lastMsg = `${clock(Date.now())}: ${why.replace(/^Ø \d+ % HP pro Kampf – /, '')} → Lvl ${lo}–${hi}`;
         cfg.lvlMin = lo; cfg.lvlMax = hi; cfg.lvlOn = true; xpKey = '';
         log(`Auto-Stufe: ${why} → Mobs Lvl ${lo}–${hi}`);
         committed = null; goal = null; lastPlan = null;
@@ -3013,10 +3020,10 @@
         const P = AUTO_P[cfg.auto.mode] || AUTO_P.normal, S = autoT.samples, now = Date.now();
         if (!S.length) return false;
         const worst = Math.max(...S.map(x => x.loss)), avg = autoAvg(), r = v => Math.round(v);
-        if (worst >= P.danger && now - autoT.last > 120000) return autoShift(-1, `ein Kampf kostete ${r(worst)} % HP`);
+        if (worst >= P.danger && now - autoT.last > AUTO_COOL) return autoShift(-1, `ein Kampf kostete ${r(worst)} % HP`);
         if (S.length < AUTO_N) return false;
-        if (avg >= P.hard && now - autoT.last > 120000) return autoShift(-1, `Ø ${r(avg)} % HP pro Kampf – zu schwer`);
-        if (avg <= P.easy && worst < P.hard && now - autoT.last > 300000) {
+        if (avg >= P.hard && now - autoT.last > AUTO_COOL) return autoShift(-1, `Ø ${r(avg)} % HP pro Kampf – zu schwer`);
+        if (avg <= P.easy && worst < P.hard && now - autoT.last > AUTO_COOL) {
             // fast kein Verlust → gleich 3–4 Level höher statt in kleinen Schritten
             const step = avg <= P.easy * 0.4 ? 4 : avg <= P.easy * 0.7 ? 3 : 2;
             return autoShift(1, `Ø ${r(avg)} % HP pro Kampf – zu leicht`, step);
@@ -4027,15 +4034,18 @@
     function autoCard() {
         const A = cfg.auto, P = AUTO_P[A.mode] || AUTO_P.normal, avg = autoAvg(), n = autoT.samples.length;
         const pos = avg == null ? null : Math.min(100, avg / (P.danger * 1.2) * 100);
+        const wait = autoT.last ? AUTO_COOL - (Date.now() - autoT.last) : 0, h = ok() ? hpNow() : null;
+        const kind = avg == null || n < AUTO_N ? '' : avg <= P.easy ? 'zu leicht' : avg >= P.hard ? 'zu schwer' : 'passt';
         const verdict = avg == null ? 'Noch keine Kämpfe gemessen' : n < AUTO_N ? `${n}/${AUTO_N} Kämpfe gemessen`
-            : avg <= P.easy ? 'zu leicht – bald stärkere Mobs' : avg >= P.hard ? 'zu schwer – bald schwächere Mobs' : 'passt';
+            : kind === 'passt' ? 'passt' : autoT.fail ? `${kind} – ${autoT.fail}` : wait > 0 ? `${kind} – Wechsel in ${mmss(wait)}` : `${kind} – wechselt nach diesem Kampf`;
         return `<div class="autoc ${A.on ? 'on' : ''}">
             <div class="ah"><label class="sw"><input type="checkbox" data-a="autoOn" ${A.on ? 'checked' : ''}><i></i></label>
               <b>Auto-Stufe</b>${tipBtn('auto')}<span class="ahv">${A.on ? `bis Lvl ${heroLvl() + P.above}` : 'aus'}</span></div>
-            ${tipTxt('auto', `Misst, wie viel HP ein Kampf kostet. Kaum Verlust (Ø ≤ ${P.easy} %) → stärkere Mobs und neuer XP-Ort. Ø ≥ ${P.hard} %, ein Kampf ≥ ${P.danger} % oder Tod → schwächere. Bei sehr wenig Verlust gleich 3–4 Level höher. Höchstens ${P.above} Level über dir. Mit Route wählt er die beste Route aus den Vorschlägen.`)}
+            ${tipTxt('auto', `Misst, wie viel HP ein Kampf kostet. Kaum Verlust (Ø ≤ ${P.easy} %) → stärkere Mobs und neuer XP-Ort. Ø ≥ ${P.hard} %, ein Kampf ≥ ${P.danger} % oder Tod → schwächere. Bei sehr wenig Verlust gleich 3–4 Level höher; liegt der Bereich weit unter deinem Level, springt er direkt in deine Nähe. Zwischen zwei Änderungen 2 min Pause. Höchstens ${P.above} Level über dir. Mit Route wählt er die beste Route aus den Vorschlägen.`)}
             ${A.on ? `${segc('autoMode', A.mode, [['safe', 'vorsichtig'], ['normal', 'normal'], ['bold', 'mutig']])}
               <div class="meter"><span class="z1" style="width:${P.easy / (P.danger * 1.2) * 100}%"></span><span class="z3" style="left:${P.hard / (P.danger * 1.2) * 100}%"></span>${pos == null ? '' : `<i style="left:${pos}%"></i>`}</div>
-              <div class="mtx"><span>${avg == null ? '–' : `Ø ${Math.round(avg)} % HP pro Kampf`}</span><span>${verdict}</span></div>` : ''}
+              <div class="mtx"><span>${avg == null ? '–' : `Ø ${Math.round(avg)} % HP pro Kampf`}</span><span>${verdict}</span></div>
+              <div class="mtx"><span>${h ? `HP jetzt ${fmt(h.hp)}/${fmt(h.max)}` : 'HP nicht lesbar'}</span><span style="color:var(--mut)">${autoT.lastMsg ? 'Zuletzt ' + esc(autoT.lastMsg) : ''}</span></div>` : ''}
           </div>`;
     }
     function setTab() {
@@ -4772,7 +4782,8 @@
             tab === 'set' ? [JSON.stringify(cfg.tele || {}).length, cfg.routes[cfg.route] && routeMode(cfg.routes[cfg.route]), mobs().map(m => m.key).sort(), gateways().map(g => g.id), cfg.route, cfg.rec && cfg.rec.length, Object.keys(cfg.routes),
                              cfg.picked, cfg.lvlOn, (cfg.deaths || []).length, cfg.onDeath, cfg.optimal, cfg.humanize, cfg.pk.mode, cfg.fogPct] : 0,
             JSON.stringify(cfg.limit), cfg.e2.sel, cfg.heros.selected, cfg.heros.repeat, worldDl,
-            tab === 'xp' ? [JSON.stringify(cfg.auto), autoT.samples.length, Math.round(autoAvg() || 0), JSON.stringify(cfg.lossCap || 0)] : 0]);
+            tab === 'xp' ? [JSON.stringify(cfg.auto), autoT.samples.length, Math.round(autoAvg() || 0), JSON.stringify(cfg.lossCap || 0), autoT.lastMsg, autoT.fail,
+                            Math.ceil((AUTO_COOL - (Date.now() - autoT.last)) / 10000), ok() && hpNow() ? Math.round(hpNow().hp / Math.max(1, hpNow().max) * 50) : 0] : 0]);
         if (sKey !== lastStatic) {
             lastStatic = sKey;
             /* Vor dem Neuaufbau merken, wo man war: Scrollstand, aufgeklappte Bereiche, Eingabefeld mit Fokus.

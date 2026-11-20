@@ -77,6 +77,8 @@ Aufnahme überarbeitet (ab 7.35, Nutzer: „Aufnahme und Abspielen klappt überh
 
 Bosse und Vorsicht nach Niederlage (ab 7.36): `wanted()` lehnt Bosse ab (`isBoss`: E2-Grafik `e2/` bzw. bekannte E2-Grafiken aus der Weltkarte, Namen aus Weltkarte/`E2_ALIASES`/eigener E2-Liste/Heros-Katalog, `wt` ≥ 20 – Bedeutung von `wt` nicht im Spiel geprüft); gilt für Jagd, Routen, Nebel-Plätze und angehakte Mobs, nicht für die E2-Jagd (eigene Zielwahl). Beim Tod während Jagd/Ablauf setzt `checkDeath` `cfg.lossCap` aus der angegriffenen Gruppe (`kw.ids`): `lvl` = min(Heldenlevel + 2, Gewinner-Level − 1), `size` = Gruppengröße, `hero` = Heldenlevel, 45 min. `capOk` sperrt Mobs über `lvl` und Gruppen ab `size` Mitgliedern über dem Heldenlevel; endet nach Ablauf oder beim Level-Aufstieg. Hinweis mit „aufheben“ im Jagd-Tab. Test: `tests/caution_sim.js`.
 
+Auto-Stufe nachgeschärft (ab 7.37, Nutzer: Bereich 5–13 bei Lvl 13 blieb trotz „zu leicht“ stehen): Beim Heben mindestens bis `Heldenlevel − ¼ Bereichsbreite` (ein Sprung in Heldennähe statt mehrerer Runden à 8 Kämpfe). Pause zwischen Änderungen einheitlich `AUTO_COOL` = 2 min (vorher 5 min fürs Heben). Die Karte zeigt den echten Stand: „Wechsel in m:ss“, „kein XP-Ort für Lvl …“ bzw. „schon an der Grenze“ (`autoT.fail`) statt pauschal „bald stärkere Mobs“, dazu aktuelle HP (zum Prüfen, ob die Messung HP sieht) und die letzte Änderung (`autoT.lastMsg`). Test: `tests/auto_sim.js`.
+
 ## Im echten Spiel geprüfte Fakten
 
 - `Engine.hero.d` (x, y, lvl, exp, gold, `warrior_stats`), `hero.autoGoTo({x, y}, false)`, `hero.heroAtackRequest(id, true)`.
