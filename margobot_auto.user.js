@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.38
+// @version      7.40
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -526,8 +526,13 @@
         if (!travelDoor || travelDoor.key !== key) travelDoor = { key, since: now, pos: hx + ',' + hy, moved: now };
         if (travelDoor.pos !== hx + ',' + hy) { travelDoor.pos = hx + ',' + hy; travelDoor.moved = now; }
         // Held kommt nicht voran (10 s kein Schritt) oder Tür geht nicht auf (Level, Schlüssel, Quest; 45 s)
-        if (now - travelDoor.moved > 10000 && Math.abs(hx - door.x) + Math.abs(hy - door.y) > 1) return block('ist nicht erreichbar (Held kommt nicht weiter)');
-        if (now - travelDoor.since > 45000) return block('geht nicht');
+        if (reviveFrozen()) {                                   // noch betäubt: nichts sperren, Laufbefehl wiederholen
+            travelDoor.since = now; travelDoor.moved = now;
+            if (goal && now - goalSince > 3000) goal = null;
+        } else {
+            if (now - travelDoor.moved > 10000 && Math.abs(hx - door.x) + Math.abs(hy - door.y) > 1) return block('ist nicht erreichbar (Held kommt nicht weiter)');
+            if (now - travelDoor.since > 45000) return block('geht nicht');
+        }
         lastTravel = { left: r.path.length - 1, next: wname(next), label };
         useDoor(door.x, door.y, '→ ' + wname(next));
         return 'läuft';
@@ -1176,7 +1181,13 @@
                         (size > 1 ? `, Gruppen ab ${size} nur bis Lvl ${L}` : ''));
                 }
             }
-            if (cfg.auto.on) { autoSample(100, (autoT.cur && autoT.cur.lvl) || autoT.lastLvl); autoT.cur = null; autoT.deathPending = true; }
+            if (cfg.auto.on) {
+                autoSample(100, (autoT.cur && autoT.cur.lvl) || autoT.lastLvl); autoT.cur = null; autoT.deathPending = true;
+                const k = autoPlace(), now = Date.now();
+                autoT.deaths = autoT.deaths.filter(d => now - d.t < 30 * 60000).concat([{ t: now, k }]);
+                autoT.repeat = autoT.deaths.filter(d => d.k === k).length >= 2;
+                if (autoT.repeat) { autoT.avoid[k] = now + 60 * 60000; log(`Auto-Stufe: zweimal gestorben auf ${cfg.route ? 'Route „' + cfg.route + '“' : mapName()} – meide sie 60 min`); }
+            }
             if (cfg.on && cfg.onDeath === 'back') {
                 cfg.back = { map: rec.map, id: mapId(), since: Date.now() };
                 log('Nach der Wiederbelebung geht es zurück nach ' + rec.map);
@@ -1188,9 +1199,33 @@
             if (cfg.e2.on && cfg.onDeath !== 'back') { cfg.e2.on = false; log('E2-Jagd gestoppt (Tod)'); }
             save(); lastStatic = '';
         }
-        if (!dead && deadNow) revived = true;
+        if (dead && !deadNow) deadAt = Date.now();
+        if (!dead && deadNow) {
+            revived = true;
+            /* Nach dem Wiederbeleben kann sich der Held oft noch nicht bewegen (Betäubung, Karte lädt). Wer jetzt schon
+               losläuft, bleibt stehen – und die Reise hält die Tür dann für „nicht erreichbar“ und sperrt den direkten
+               Weg. Darum: kurz warten, Weg neu planen, und bis zum ersten echten Schritt keine Tür sperren. */
+            const [rx, ry] = heroXY();
+            revive = { at: performance.now(), pos: mapId() + ':' + rx + ',' + ry, moved: false };
+            travelCache = null; travelDoor = null; unreachAt = 0; goal = null; committed = null; lastPlan = null; via = null; approach = null;
+            // Türsperren seit dem Tod zurücknehmen: die entstanden, weil der Held nicht laufen konnte
+            const since = deadAt - 5000, bAt = cfg.blockedAt || {};
+            const undo = (cfg.blocked || []).filter(k => (bAt[k] || 0) >= since);
+            if (undo.length) { cfg.blocked = cfg.blocked.filter(k => !undo.includes(k)); for (const k of undo) delete bAt[k]; log(`${undo.length} Türsperre(n) seit dem Tod zurückgenommen`); save(); }
+        }
         deadNow = dead;
         return dead;
+    }
+    let deadAt = 0, revive = null;
+    const REVIVE_HOLD = 5000;
+    // Held seit dem Wiederbeleben noch keinen Schritt gemacht (höchstens 3 min lang so werten)
+    const reviveFrozen = () => !!revive && !revive.moved && performance.now() - revive.at < 180000;
+    function reviveTick() {
+        if (!revive) return false;
+        const [x, y] = heroXY(), pos = mapId() + ':' + x + ',' + y;
+        if (!revive.moved && pos !== revive.pos) { revive.moved = true; }
+        if (revive.moved && performance.now() - revive.at > REVIVE_HOLD) { revive = null; return false; }
+        return performance.now() - revive.at < REVIVE_HOLD;      // in den ersten Sekunden nichts anlaufen
     }
     function idsByName(n) {                        // Karten-IDs mit genau diesem Namen (englisch oder polnisch)
         const q = fold(n), out = new Set();
@@ -2723,6 +2758,7 @@
             if (cfg.flow) { if (running()) { recStop(); log('Aufnahme beendet: Bot gestartet'); } else recTick(); }
         }
         if (!ok() || checkDeath()) return;
+        if (reviveTick()) return;                                  // gerade wiederbelebt: kurz still halten
         watchBattle();
         watchPlayers();
         if (watchCaptcha()) return;                                // Rätsel offen → nichts tun, bis es gelöst ist
@@ -2775,7 +2811,14 @@
         // Auto-Stufe nach dem Tod: nicht zurück auf die zu schwere Karte, sondern Bereich senken und neu suchen
         if (autoT.deathPending && !deadNow) {
             autoT.deathPending = false;
-            if (cfg.auto.on) { autoT.last = 0; if (autoShift(-1, 'gestorben')) { cfg.back = null; save(); return; } }
+            if (cfg.auto.on) {
+                autoT.last = 0;
+                // oft gestorben: stärker senken; findet sich kein Ziel, noch zweimal etwas tiefer versuchen
+                const rep = autoT.repeat; autoT.repeat = false;
+                let okShift = false;
+                for (let k = 0; k < (rep ? 3 : 1) && !okShift; k++) { autoT.capLog = false; autoT.last = 0; okShift = autoShift(-1, rep ? 'oft gestorben' : 'gestorben', rep ? 4 + 2 * k : 0); }
+                if (okShift || rep) { cfg.back = null; save(); if (okShift) return; }
+            }
         }
         // Rückweg nach dem Tod: zur Todeskarte bzw. zur nächsten Karte der Route
         if (cfg.back) {
@@ -2962,8 +3005,14 @@
        Grenzen gegen Hin und Her: mindestens 8 Kämpfe pro Urteil, Pausen zwischen Wechseln, Obergrenze über dem Heldenlevel. */
     const AUTO_P = { safe: { easy: 4, hard: 25, danger: 45, above: 5 }, normal: { easy: 8, hard: 35, danger: 60, above: 10 },
                      bold: { easy: 12, hard: 45, danger: 70, above: 20 } };
-    const autoT = { samples: [], cur: null, last: 0, capLog: false, deathPending: false, lastLvl: 0, lastMsg: '', fail: '', minHp: null };
+    const autoT = { samples: [], cur: null, last: 0, capLog: false, deathPending: false, lastLvl: 0, lastMsg: '', fail: '', minHp: null,
+                    deaths: [], avoid: {}, repeat: false };
     const AUTO_COOL = 120000;                       // Pause zwischen zwei Änderungen (2 min), damit die Messung neu läuft
+    const AUTO_FAST_N = 4, AUTO_FAST_COOL = 60000;  // fast kein Verlust: schon nach 4 Kämpfen, 1 min Pause
+    /* Häufiges Sterben: Tode pro Ort (Route = Kartenfolge, sonst Karte) der letzten 30 min. Ab 2 Toden am selben Ort
+       wird er 60 min gemieden – sonst schickt der Bot den Helden immer wieder dorthin zurück. */
+    const autoPlace = () => cfg.route && cfg.routes[cfg.route] ? 'r:' + JSON.stringify(cfg.routes[cfg.route].maps) : 'm:' + mapId();
+    const autoAvoided = k => (autoT.avoid[k] || 0) > Date.now();
     const AUTO_N = 8;
     const hpNow = () => { const w = (E().hero.d || {}).warrior_stats || {}; return w.maxhp ? { hp: +w.hp, max: +w.maxhp } : null; };
     const autoAvg = () => { const S = autoT.samples; return S.length ? S.reduce((a, x) => a + x.loss, 0) / S.length : null; };
@@ -2991,7 +3040,7 @@
         }
         /* Erst ein Ziel für den neuen Bereich suchen. Ohne Ziel bleibt alles, wie es ist – sonst gälte ein Bereich,
            in dem hier kein Mob liegt, und der Bot liefe nur noch herum. */
-        const route = cfg.route ? autoRouteFor(lo, hi) : null, spot = cfg.route ? null : (world ? xpMaps(lo, hi, 1)[0] : null);
+        const route = cfg.route ? autoRouteFor(lo, hi) : null, spot = cfg.route ? null : (world ? xpMaps(lo, hi, 10).find(o => !autoAvoided('m:' + o.id)) : null);
         autoT.samples = []; autoT.last = Date.now();
         if (!route && !spot) {
             autoT.fail = `${cfg.route ? 'keine andere Route' : world ? 'kein XP-Ort' : 'Weltkarte fehlt – kein XP-Ort'} für Lvl ${lo}–${hi}`;
@@ -3011,8 +3060,15 @@
     /* Mit Route: unter den Routen-Vorschlägen (Forum zuerst, sonst aus der Weltkarte) die beste erreichbare für den
        neuen Bereich nehmen. Die Route bekommt den Bereich als Angriffs-Level; der Bot läuft dann selbst zur Route. */
     function autoRouteFor(lo, hi) {
-        const cur = cfg.routes[cfg.route];
-        return bestRouteFor(lo, hi, cur ? JSON.stringify(cur.maps) : '');
+        const cur = cfg.routes[cfg.route], ex = cur ? JSON.stringify(cur.maps) : '';
+        return bestRouteFor(lo, hi, ex) || spotRoute(lo, hi, ex);
+    }
+    /* Keine Route aus mehreren Karten für den Bereich: der beste einzelne Jagdort wird zur Route (eine Karte, dort
+       bleiben) – besser als auf der alten, zu schweren Route weiterzulaufen und nichts mehr anzugreifen. */
+    function spotRoute(lo, hi, exclude = '') {
+        if (!world) return null;
+        const o = xpMaps(lo, hi, 10).find(x => !autoAvoided('m:' + x.id) && !autoAvoided('r:' + JSON.stringify([x.id])) && JSON.stringify([x.id]) !== exclude);
+        return o ? { maps: [o.id], mode: 'loop', cards: 1, n: o.n, d: o.d, lv: o.lv, name: wname(o.id) + ' (Jagdort)', source: 'world', xpHere: o.r.xp } : null;
     }
     /* XP pro Runde einer Kartenfolge für den Angriffsbereich lo–hi: jede Karte einmal (Rückwege bringen nicht sofort
        neue Mobs), nur Mobs im Bereich, Bosse nicht. So sind Forum-Gebiete und berechnete Routen fair vergleichbar –
@@ -3028,7 +3084,7 @@
         const seen = new Set(), list = [];
         for (const o of forumRoutes(lo, hi).concat(suggestRoutes(lo, hi, 8))) {
             const k = JSON.stringify(o.maps);
-            if (seen.has(k) || k === exclude || !o.n || !Number.isFinite(o.d) || o.lv[0] > hi || o.lv[1] < lo) continue;
+            if (seen.has(k) || k === exclude || autoAvoided('r:' + k) || !o.n || !Number.isFinite(o.d) || o.lv[0] > hi || o.lv[1] < lo) continue;
             seen.add(k); o.xpHere = routeXpFor(o.maps, lo, hi); if (o.xpHere > 0) list.push(o);
         }
         // meiste XP pro Runde; fast gleich (±5 %) → kürzere Anreise
@@ -3057,6 +3113,9 @@
         if (!S.length) return false;
         const worst = Math.max(...S.map(x => x.loss)), avg = autoAvg(), r = v => Math.round(v);
         if (worst >= P.danger && now - autoT.last > AUTO_COOL) return autoShift(-1, `ein Kampf kostete ${r(worst)} % HP`);
+        // kaum Verlust: schon nach 4 Kämpfen und 1 min Pause hoch (sonst 8 Kämpfe, 2 min)
+        if (S.length >= AUTO_FAST_N && avg <= P.easy * 0.4 && worst < P.easy && now - autoT.last > AUTO_FAST_COOL)
+            return autoShift(1, `Ø ${r(avg)} % HP pro Kampf – deutlich zu leicht`, 4);
         if (S.length < AUTO_N) return false;
         if (avg >= P.hard && now - autoT.last > AUTO_COOL) return autoShift(-1, `Ø ${r(avg)} % HP pro Kampf – zu schwer`);
         if (avg <= P.easy && worst < P.hard && now - autoT.last > AUTO_COOL) {
@@ -4075,14 +4134,15 @@
     function autoCard() {
         const A = cfg.auto, P = AUTO_P[A.mode] || AUTO_P.normal, avg = autoAvg(), n = autoT.samples.length;
         const pos = avg == null ? null : Math.min(100, avg / (P.danger * 1.2) * 100);
-        const wait = autoT.last ? AUTO_COOL - (Date.now() - autoT.last) : 0, h = ok() ? hpNow() : null;
-        const kind = avg == null || n < AUTO_N ? '' : avg <= P.easy ? 'zu leicht' : avg >= P.hard ? 'zu schwer' : 'passt';
-        const verdict = avg == null ? 'Noch keine Kämpfe gemessen' : n < AUTO_N ? `${n}/${AUTO_N} Kämpfe gemessen`
+        const fast = n >= AUTO_FAST_N && avg <= P.easy * 0.4 && Math.max(...autoT.samples.map(x => x.loss)) < P.easy;
+        const wait = autoT.last ? (fast ? AUTO_FAST_COOL : AUTO_COOL) - (Date.now() - autoT.last) : 0, h = ok() ? hpNow() : null;
+        const kind = avg == null || (n < AUTO_N && !fast) ? '' : avg <= P.easy ? 'zu leicht' : avg >= P.hard ? 'zu schwer' : 'passt';
+        const verdict = avg == null ? 'Noch keine Kämpfe gemessen' : n < AUTO_N && !fast ? `${n}/${fast ? AUTO_FAST_N : AUTO_N} Kämpfe gemessen`
             : kind === 'passt' ? 'passt' : autoT.fail ? `${kind} – ${autoT.fail}` : wait > 0 ? `${kind} – Wechsel in ${mmss(wait)}` : `${kind} – wechselt nach diesem Kampf`;
         return `<div class="autoc ${A.on ? 'on' : ''}">
             <div class="ah"><label class="sw"><input type="checkbox" data-a="autoOn" ${A.on ? 'checked' : ''}><i></i></label>
               <b>Auto-Stufe</b>${tipBtn('auto')}<span class="ahv">${A.on ? `bis Lvl ${heroLvl() + P.above}` : 'aus'}</span></div>
-            ${tipTxt('auto', `Misst, wie viel HP ein Kampf kostet. Kaum Verlust (Ø ≤ ${P.easy} %) → stärkere Mobs und neuer XP-Ort. Ø ≥ ${P.hard} %, ein Kampf ≥ ${P.danger} % oder Tod → schwächere. Bei sehr wenig Verlust gleich 3–4 Level höher; liegt der Bereich weit unter deinem Level, springt er direkt in deine Nähe. Zwischen zwei Änderungen 2 min Pause. Höchstens ${P.above} Level über dir. Mit Route wählt er die beste Route aus den Vorschlägen.`)}
+            ${tipTxt('auto', `Misst, wie viel HP ein Kampf kostet. Kaum Verlust (Ø ≤ ${P.easy} %) → stärkere Mobs und neuer XP-Ort. Ø ≥ ${P.hard} %, ein Kampf ≥ ${P.danger} % oder Tod → schwächere. Bei sehr wenig Verlust schon nach 4 Kämpfen gleich 4 Level höher; liegt der Bereich weit unter deinem Level, springt er direkt in deine Nähe. Zweimal in 30 min am selben Ort gestorben → Ort 60 min meiden, stärker senken, andere Route. Höchstens ${P.above} Level über dir. Mit Route wählt er die beste Route aus den Vorschlägen.`)}
             ${A.on ? `${segc('autoMode', A.mode, [['safe', 'vorsichtig'], ['normal', 'normal'], ['bold', 'mutig']])}
               <div class="meter"><span class="z1" style="width:${P.easy / (P.danger * 1.2) * 100}%"></span><span class="z3" style="left:${P.hard / (P.danger * 1.2) * 100}%"></span>${pos == null ? '' : `<i style="left:${pos}%"></i>`}</div>
               <div class="mtx"><span>${avg == null ? '–' : `Ø ${Math.round(avg)} % HP pro Kampf`}</span><span>${verdict}</span></div>

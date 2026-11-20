@@ -14,7 +14,7 @@ for (const id in G) world[id] = [20, 20, 'pl_' + NAMES[id], G[id], [['Wilk', MOB
 let fail = 0;
 const check = (name, ok, info) => { console.log((ok ? 'OK     ' : 'FEHLER ') + name + (info ? ' | ' + info : '')); if (!ok) fail = 1; };
 
-function setup({ loss = 2, lossOf = null, settings = {}, dieAt = 0 } = {}) {
+function setup({ loss = 2, lossOf = null, settings = {}, dieAt = 0, dieOn = null } = {}) {
     let now = 0, cur = 1, nextId = 100, fights = 0;
     const logs = [], visits = [];
     const mobsFor = m => Array.from({ length: 6 }, (_, k) => ({ d: { id: nextId++, nick: 'Wilk', lvl: MOBLVL[m], x: 4 + k * 2, y: 14, type: 2, icon: 'zwi/wilk.gif' } }));
@@ -31,7 +31,7 @@ function setup({ loss = 2, lossOf = null, settings = {}, dieAt = 0 } = {}) {
             fights++;
             const l = lossOf ? lossOf(fights, cur) : loss;
             hero.d.warrior_stats.hp = Math.max(0, hero.d.warrior_stats.hp - l * 10);
-            if (dieAt && fights === dieAt) dead = true;
+            if ((dieAt && fights === dieAt) || (dieOn && dieOn(cur))) { dead = true; return; }   // verloren: Mob bleibt stehen
             npcs = npcs.filter(n => n.d.id !== id);
             heal = 2;                                                     // das Spiel heilt kurz danach wieder
         } };
@@ -58,7 +58,8 @@ function setup({ loss = 2, lossOf = null, settings = {}, dieAt = 0 } = {}) {
             timers[0]();
         }
     }
-    return { tick, logs, visits, t: W.test, get cur() { return cur; }, get fights() { return fights; }, done: () => { Date.now = realNow; } };
+    return { tick, logs, visits, t: W.test, get cur() { return cur; }, get fights() { return fights; }, done: () => { Date.now = realNow; },
+        kill: () => { dead = true; } };
 }
 
 // zu leicht: kaum HP-Verlust → Bereich hoch, Reise zur stärkeren Karte
@@ -152,6 +153,37 @@ function setup({ loss = 2, lossOf = null, settings = {}, dieAt = 0 } = {}) {
     s.tick(2000);                                                       // > 5 min: erneute Prüfung
     check('… bleibt danach dabei (kein Hin und Her)', s.t.cfg.route === r1, s.t.cfg.route);
     check('… Angriffsbereich unverändert', s.t.cfg.lvlMin === 33 && s.t.cfg.lvlMax === 47);
+    s.done();
+}
+// kaum Verlust: schon nach 4 Kämpfen hoch
+{
+    const s = setup({ loss: 0 });
+    s.tick(200);
+    const i = s.logs.findIndex(l => /Auto-Stufe: .*deutlich zu leicht/.test(l));
+    const fights = s.logs.slice(0, i).filter(l => /Kampf vorbei/.test(l)).length;
+    check('kaum Verlust: Wechsel schon nach 4 Kämpfen', i >= 0 && fights <= 5, `${fights} Kämpfe bis zum Wechsel`);
+    s.done();
+}
+// Tod auf einer Route: andere Route, nicht zurück zur Todeskarte
+{
+    const s = setup({ loss: 5, dieOn: cur => cur === 2 || cur === 4, settings: { mode: 'route', route: 'Hart', lvlMin: 41, lvlMax: 47, onDeath: 'back',
+        routes: { Hart: { maps: [2, 4], lvlOn: true, lvlMin: 41, lvlMax: 47 } } } });
+    s.tick(600);
+    const r = s.t.cfg.routes[s.t.cfg.route];
+    check('Tod auf der Route: andere, leichtere Route, kein Rückweg', s.t.cfg.route !== 'Hart' && r && !r.maps.some(id => id === 2 || id === 4) && s.t.cfg.back == null,
+        `Route „${s.t.cfg.route}“ ${r && r.maps.join('→')}, Lvl ${s.t.cfg.lvlMin}–${s.t.cfg.lvlMax}`);
+    s.done();
+}
+// zweimal am selben Ort gestorben: Ort wird gemieden
+{
+    const s = setup({ loss: 5, settings: { auto: { on: true, mode: 'normal' } } });
+    s.tick(5);
+    s.t.cfg.on = true;
+    const die = () => { s.t.autoT.deathPending = false; };
+    // zwei Tode auf Karte 1 direkt hintereinander simulieren
+    s.kill(); s.tick(30); s.kill(); s.tick(30);
+    check('zweimal gestorben: Ort 60 min gemieden', (s.t.autoT.avoid['m:1'] || 0) > Date.now() + 50 * 60000 && s.logs.some(l => /zweimal gestorben/.test(l)),
+        JSON.stringify(Object.keys(s.t.autoT.avoid)));
     s.done();
 }
 // aus bzw. Route: nichts anfassen
