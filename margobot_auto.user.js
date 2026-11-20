@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MargoBot Auto
 // @description  Jagt Mobs direkt im Spiel (ohne Maus): Route über alle Mobs bis zum Ausgang, Panel im Spielfenster
-// @version      7.34
+// @version      7.35
 // @updateURL    https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @downloadURL  https://raw.githubusercontent.com/arek09082001/margobot-userscript/main/margobot_auto.user.js
 // @match        https://*.margonem.com/*
@@ -1698,7 +1698,7 @@
                 }
                 const q = fold(s.name), [hx, hy] = heroXY();
                 const m = mobs().filter(x => fold(x.nick) === q).sort((a, b) => Math.max(Math.abs(a.x - hx), Math.abs(a.y - hy)) - Math.max(Math.abs(b.x - hx), Math.abs(b.y - hy)))[0];
-                if (!m) return age > 60000 ? `„${s.name}“ nicht auf dieser Karte` : 'run';
+                if (!m) { if (age < 30000) return 'run'; log(`„${s.name}“ nicht da – Schritt übersprungen`); return 'ok'; }   // tot/Respawn: Ablauf nicht abbrechen
                 if (Math.abs(m.x - hx) <= 1 && Math.abs(m.y - hy) <= 1) {
                     st.id = m.id; st.atk = now; st.tries = (st.tries || 0) + 1;
                     act(() => E().hero.heroAtackRequest(m.id, true), 'Angriff'); noteAttack(m.id);
@@ -1855,6 +1855,14 @@
        werden wörtlich übernommen. Handel/Verkauf wird nie aufgenommen (feste Regel: nichts Unumkehrbares ohne OK). */
     const REC_SKIP = /^(chat|friends|clan|mail|emo|settings|config|console|shop|sell|buy|auction|trade|ah&|market|depo|bank|skillshop|skills&)/i;
     let recMove = { k: '', t: 0 };
+    let recSeen = [], recNote = '';                // vom Spiel gesehene Befehle (Diagnose) · Ergebnis der Prüfung
+    const POTION_NAME = /mikstur|eliksir|potion|heal|lecz|napar|wywar/i;
+    function recentStep(t, name, ms) {             // gleicher Schritt kürzlich schon da (über den anderen Erkennungsweg)?
+        const now = Date.now();
+        return (cfg.flow ? cfg.flow.steps.slice(-5) : []).some(x => x.t === t && x.name === name && now - (x.at || 0) < ms);
+    }
+    function recNpc(name) { if (!name || recentStep('npc', name, 5000)) return; recFlush(); recAdd({ t: 'npc', name }); }
+    function recKill(name) { if (!name || recentStep('kill', name, 8000)) return; recFlush(); recAdd({ t: 'kill', name }); }
     const recPos = () => { const [x, y] = heroXY(); return { map: mapId(), x, y }; };
     function recAdd(step) {
         if (!cfg.flow) return;
@@ -1878,26 +1886,28 @@
         if (!cfg.flow || running()) return;
         cmd = String(cmd || '').trim();
         if (junkCmd(cmd)) return;                                      // Abfragen des Spiels („_“, leer), keine Handgriffe
+        recSeen = recSeen.concat([cmd.slice(0, 40)]).slice(-8);
         if (/^talk&/.test(cmd)) {
             if (/&c=/.test(cmd)) return;                              // Antwortklick: kommt als Text über den Klick
-            const id = +((cmd.match(/[?&]id=(\d+)/) || [])[1]), n = npcList().find(d => +d.id === id);
-            recFlush(); if (n) return recAdd({ t: 'npc', name: n.nick });
+            const id = Math.abs(+((cmd.match(/[?&]id=(-?\d+)/) || [])[1])), n = npcList().find(d => Math.abs(+d.id) === id);
+            if (n) return recNpc(n.nick);
+            return;                                                   // unbekannter NPC: das Dialogfenster liefert den Namen
         }
         const mi = cmd.match(/^moveitem&st=1&id=(\d+)$/);
         if (mi) {
             const d = allItems().find(x => +x.id === +mi[1]);
-            if (d) return recAdd({ t: isPotion(d) || parseStat(d.stat).amount ? 'use' : 'equip', name: d.name });
+            if (d && isPotion(d)) { log('Trank nicht aufgenommen (würde beim Abspielen verbraucht)'); return; }
+            if (d) return isWearable(d) ? (recentStep('equip', d.name, 5000) ? undefined : recAdd({ t: 'equip', name: d.name })) : recAdd({ t: 'use', name: d.name });
         }
         const fa = cmd.match(/^fight&a=attack&id=(-?\d+)/);
-        if (fa) { const m = mobs().find(x => +x.id === Math.abs(+fa[1])); if (m) return recAttack(m.id); }
+        if (fa) { const m = mobs().find(x => +x.id === Math.abs(+fa[1])); if (m) return recAttack(m.id); return; }
         if (REC_SKIP.test(cmd)) { log('Nicht aufgenommen (Handel/Chat): ' + cmd.split('&')[0]); return; }
         recFlush(1); recAdd({ t: 'cmd', cmd });
     }
     function recAttack(id) {
         if (!cfg.flow || running()) return;
         const m = mobs().find(x => +x.id === +id);
-        if (!m) return;
-        recFlush(); recAdd({ t: 'kill', name: m.nick });
+        if (m) recKill(m.nick);
     }
     function recHook() {
         /* Spielfunktionen umhüllen (einmal je Funktion; das Spiel kann sie nach dem Laden neu setzen). */
@@ -1921,10 +1931,22 @@
         recHook();
         const p = recPos(), now = performance.now();
         if (p.map !== r.map) {                                         // Tür benutzt → Kartenwechsel merken
-            r.map = p.map; r.x = p.x; r.y = p.y;
+            r.map = p.map; r.x = p.x; r.y = p.y; r.near = []; r.dlg = false;
             recAdd({ t: 'go', map: String(p.map) });
             return;
         }
+        /* Zweiter Erkennungsweg, unabhängig von _g (das Spiel kann eine eigene Kopie davon benutzen, dann sieht
+           die Hülle nichts): Dialogfenster geht auf → NPC daneben; Mob direkt neben dem Helden verschwindet ganz →
+           Kampf (Kämpfe laufen ohne Fenster); Gegenstand wandert von der Tasche an den Helden → Anlegen. */
+        const dlg = !!dialogOpen();
+        if (dlg && !r.dlg) recNpc(nearNpcName());
+        r.dlg = dlg;
+        const all = mobs(), ids = new Set(all.map(m => m.id));
+        for (const m of r.near || []) if (!ids.has(m.id)) { recKill(m.nick); break; }
+        r.near = all.filter(m => Math.max(Math.abs(m.x - p.x), Math.abs(m.y - p.y)) <= 1).map(m => ({ id: m.id, nick: m.nick }));
+        const wornNow = worn();
+        if (r.worn) for (const d of wornNow) if (!r.worn.includes(d.id) && isWearable(d) && !recentStep('equip', d.name, 5000)) recAdd({ t: 'equip', name: d.name });
+        r.worn = wornNow.map(d => d.id);
         const k = p.x + ',' + p.y;
         if (k !== recMove.k) { recMove = { k, t: now }; return; }
         if (now - recMove.t > 1500) recFlush(3);                         // stehen geblieben → Haltepunkt
@@ -1949,10 +1971,55 @@
         }
         return out;
     }
+    /* Ergibt die Aufnahme Sinn? Entfernt, was beim Abspielen nur stört oder schadet, und sagt, was weg ist:
+       - Laufpunkt direkt vor einem Kartenwechsel (der Bot sucht die Tür beim Abspielen selbst)
+       - Antwort ohne Gespräch davor (beim Abspielen wäre kein Dialog offen)
+       - Hin und zurück durch eine Tür, ohne dass dazwischen etwas passiert ist (versehentlich)
+       - Tränke (würden beim Abspielen verbraucht)
+       - Spielbefehle, die sich ständig wiederholen (Abfragen des Spiels, keine Handgriffe)
+       - am Ende nur noch Laufpunkte ohne Handlung danach */
+    const NOISE_CMD = /^(_|walk|ev|pl&|minimap|console|ping|watch|getvar|initlvl|refresh|look|loadmap|map&|tutorial)/i;
+    function flowCheck(steps) {
+        const cnt = {}, notes = {};
+        const note = k => { notes[k] = (notes[k] || 0) + 1; };
+        for (const x of steps) if (x.t === 'cmd') cnt[x.cmd] = (cnt[x.cmd] || 0) + 1;
+        let out = [];
+        for (const x of steps) {
+            if (x.t === 'cmd' && (cnt[x.cmd] >= 3 || NOISE_CMD.test(x.cmd))) { note('wiederholte Spielabfragen'); continue; }
+            if (x.t === 'use' && POTION_NAME.test(x.name || '')) { note('Tränke'); continue; }
+            if (x.t === 'say') {
+                const prev = [...out].reverse().find(y => y.t !== 'say');
+                if (!prev || prev.t !== 'npc') { note('Antworten ohne Gespräch'); continue; }
+            }
+            if (x.t === 'go' && out.length && out[out.length - 1].t === 'walk') { out.pop(); note('Laufpunkte vor Türen'); }
+            out.push(x);
+        }
+        // Hin und zurück: go X, (nur Laufpunkte), go zur Karte davor → beides weg
+        let changed = true;
+        while (changed) {
+            changed = false;
+            let map = out.length && out[0].map != null ? String(out[0].map) : null;
+            for (let i = 0; i < out.length; i++) {
+                if (out[i].t !== 'go') { if (out[i].t === 'walk' && out[i].map != null && map == null) map = String(out[i].map); continue; }
+                let j = i + 1;
+                while (j < out.length && out[j].t === 'walk') j++;
+                if (j < out.length && out[j].t === 'go' && map != null && String(out[j].map) === map) {
+                    out.splice(i, j - i + 1); note('Hin und zurück ohne Handlung'); changed = true; break;
+                }
+                map = String(out[i].map);
+            }
+        }
+        // Am Ende nur Laufen: letzter Punkt reicht
+        while (out.length > 2 && out[out.length - 1].t === 'walk' && out[out.length - 2].t === 'walk') { out.splice(out.length - 2, 1); }
+        out = flowClean(out);
+        const parts = Object.entries(notes).map(([k, n]) => `${n}× ${k}`);
+        return { steps: out, note: parts.length ? `${out.length} Schritte, entfernt: ${parts.join(', ')}` : '' };
+    }
     function recStart() {
         if (running()) { log('Erst den Bot stoppen, dann aufnehmen'); return; }
         const p = recPos();
-        cfg.flow = { steps: [], map: p.map, x: p.x, y: p.y, t0: Date.now() };
+        cfg.flow = { steps: [], map: p.map, x: p.x, y: p.y, t0: Date.now(), worn: worn().map(d => d.id), near: [], dlg: !!dialogOpen() };
+        recSeen = []; recNote = '';
         // Startpunkt gehört dazu: beim Abspielen läuft der Bot zuerst dorthin.
         recAdd({ t: 'walk', map: String(p.map), x: p.x, y: p.y });
         recHook(); log('Aufnahme läuft – spiele jetzt selbst');
@@ -1963,7 +2030,9 @@
         recFlush(1);
         cfg.flow = null;
         if (r.steps.length < 2) { log('Aufnahme verworfen (nichts getan)'); return null; }
-        r.steps = flowClean(r.steps);
+        const chk = flowCheck(flowClean(r.steps));
+        r.steps = chk.steps; recNote = chk.note;
+        if (chk.note) log('Aufnahme geprüft: ' + chk.note);
         const nr = { id: newId(), on: true, name: 'Aufnahme ' + new Date(r.t0).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }),
                      when: { t: 'hand' }, steps: r.steps };
         cfg.rules = (cfg.rules || []).concat([nr]);
@@ -4173,9 +4242,10 @@
               <button class="tp" data-a="radd"><b>Leerer Ablauf</b><span>Bedingung und Schritte selbst wählen</span></button></div>
             <h4>Aufnahme ${tipBtn('rec')}</h4>
             ${cfg.flow ? `<div class="now"><div class="st"><span class="dot trv"></span>Aufnahme läuft · ${cfg.flow.steps.length} Schritte</div>
-                <div class="dt">${esc(cfg.flow.steps.length ? stepText(cfg.flow.steps[cfg.flow.steps.length - 1]) : '')}</div>
+                <ol class="steps" style="margin-top:6px">${cfg.flow.steps.slice(-5).map((x, i, a) => `<li class="${i === a.length - 1 ? 'cur' : 'past'}"><span class="no">${cfg.flow.steps.length - a.length + i + 1}</span>${esc(stepText(x))}</li>`).join('')}</ol>
+                <div class="hint">${recSeen.length ? 'Spiel meldet: ' + esc(recSeen.slice(-3).join(' · ')) : 'Noch keine Spielbefehle gesehen – Gespräche, Kämpfe und Anlegen erkennt der Bot dann am Fenster bzw. an der Karte.'}</div>
                 <button class="btn" data-a="recstop" style="margin-top:8px">${ico('stop')}Aufnahme beenden</button></div>`
-              : `<button class="btn" data-a="recstart" ${running() ? 'disabled' : ''}>${ico('rec')}Aufnahme starten</button>
+              : `${recNote ? `<div class="hint tipx">Aufnahme geprüft: ${esc(recNote)}</div>` : ''}<button class="btn" data-a="recstart" ${running() ? 'disabled' : ''}>${ico('rec')}Aufnahme starten</button>
                 ${tipTxt('rec', `Spiel danach selbst: Laufen, Türen, NPCs, Antworten, Angriffe, Gegenstände. Beim Beenden entsteht ein Ablauf „Nur von Hand“, den du bearbeiten und mit ${ico('play')} abspielen kannst. Handel wird nicht aufgenommen.`)}`}
             <div class="hint">Läuft, solange der Bot jagt. ${ico('play')} startet sofort.</div>
             <details><summary>${ico('chev')}Spieldaten prüfen</summary><div class="log diag"></div></details>`;
@@ -4237,7 +4307,7 @@
         else if (a === 'rreset' && r) { r.done = false; delete lastCond[r.id]; }
         else if (a === 'rdel' && r) { if (W.confirm('Ablauf „' + whenText(r.when) + '“ löschen?')) { cfg.rules = cfg.rules.filter(x => x !== r); editId = null; } }
         else if (a === 'sadd' && r) r.steps.push({ t: 'equip' });
-        else if (a === 'rclean' && r) { const n = r.steps.length; r.steps = flowClean(r.steps); log(`Ablauf aufgeräumt: ${n - r.steps.length} Schritte entfernt, ${r.steps.length} übrig`); }
+        else if (a === 'rclean' && r) { const n = r.steps.length, chk = flowCheck(flowClean(r.steps)); r.steps = chk.steps; log(`Ablauf aufgeräumt: ${n - r.steps.length} Schritte entfernt, ${r.steps.length} übrig`); }
         else if (a === 'snum' && r) {
             const st = r.steps[i], f = el.dataset.f, inp = el.parentElement.querySelector('input');
             const lo = +(inp && inp.dataset.min) || 1, hi = +(inp && inp.dataset.max) || 999;
@@ -4635,7 +4705,7 @@
         const mn = mapName(), tab = ['set', 'rules', 'trade', 'e2', 'heros', 'skills'].includes(cfg.tab) ? cfg.tab : 'xp';
         const run = running();
         if (tab === 'xp') refreshXp();
-        const rk = [editId ? [editId, !!shopOpen(), (cfg.rules || []).map(r => [r.id, r.when.t, r.steps.map(x => x.t)])] : cfg.rules, cfg.flow && cfg.flow.steps.length, running()];
+        const rk = [editId ? [editId, !!shopOpen(), (cfg.rules || []).map(r => [r.id, r.when.t, r.steps.map(x => x.t)])] : cfg.rules, cfg.flow && cfg.flow.steps.length, running(), recSeen.length, recSeen[recSeen.length - 1], recNote];
         if (tab === 'xp') refreshSug();
         if (botMode() === 'xp') refreshXp();
         const sKey = JSON.stringify([cfg.open, tab, run, mn, rk, cfg.chain, botMode(), capt.state,
